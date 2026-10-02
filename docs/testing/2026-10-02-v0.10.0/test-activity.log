@@ -1,0 +1,35 @@
+13:54:39  === test activity start
+13:54:39  6 failed SMB logons as bbtest_nosuch1..6 (4625) [DID NOT HAPPEN: net use to 127.0.0.1 failed before authentication]
+13:54:39  created local user bbtest (4720) [DID NOT HAPPEN: net user prompted; see retry at 13:54:57]
+13:54:39  added bbtest to Administrators (4732) [DID NOT HAPPEN]
+13:54:39  3 failed SMB logons as existing user bbtest (4625, sub-status 0xC000006A) [DID NOT HAPPEN]
+13:54:39  1 successful network logon as bbtest (4624 type 3) [DID NOT HAPPEN]
+13:54:39  removed bbtest from Administrators (4733) [DID NOT HAPPEN]
+13:54:40  deleted bbtest (4726) [DID NOT HAPPEN]
+13:54:40  created scheduled task \BBTestTask (4698)
+13:54:40  deleted scheduled task \BBTestTask (4699)
+13:54:40  installed service BBTestSvc (7045 System log, 4697)
+13:54:40  deleted service BBTestSvc
+13:54:41  powershell -WindowStyle Hidden -ExecutionPolicy Bypass -EncodedCommand (4104/4688)
+13:54:41  PowerShell text containing IEX/Net.WebClient/DownloadString/FromBase64String (4104)
+13:54:41  === test activity end
+13:54:57  === user/group section (retry)
+13:54:57  created local user bbtest (4720)
+13:54:57  added bbtest to Administrators (4732)
+13:54:57  3 failed SMB logons as existing user bbtest [DID NOT HAPPEN: net use failed before authentication]
+13:54:57  successful network logon as bbtest: System error 67 has occurred.  The network name cannot be found. 
+13:54:57  removed bbtest from Administrators (4733)
+13:54:57  deleted bbtest (4726)
+13:55:12  8 failed network logons (LogonUser type 3) as bbtest_nosuch1..8 (4625 unknown user)
+13:55:12  5 failed network logons as built-in Administrator (disabled account, wrong password)
+14:00:04  === round 2
+14:00:22  6 failed logons as Administrator, 3 s apart (password-guessing threshold test)
+14:00:22  failed logons with HTML and spreadsheet-formula user names (escaping / CSV injection test)
+14:00:22  created local user bbhid$ (4720)
+14:00:22  added bbhid$ to Administrators (4732)
+14:00:22  successful network logon as bbhid$: True (4624)
+14:00:22  removed bbhid$ from Administrators and deleted it (4733/4726)
+14:00:22  === round 2 end
+14:02:56  === round 3 (exclude_users=bbtest)
+14:03:14  6 failed logons as bbtest (excluded name), 3 s apart
+14:03:32  6 failed logons as OTHERDOMAIN\bbtest, 3 s apart
