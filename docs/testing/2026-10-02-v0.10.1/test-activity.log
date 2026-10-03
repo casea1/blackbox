@@ -1,0 +1,89 @@
+# Test activity, v0.10.1 (times UTC)
+20:15:45  ubuntu-server: logged in on tty2, downloaded v0.10.1 tarball, SHA256 OK, 'blackbox version' = 0.10.1
+20:15:45  ubuntu-server: queued apt install auditd cifs-utils (waiting on first-boot apt upgrade lock)
+20:17:48  local (claude-code): blackbox 0.10.1 linux binary, 'report --xml' on synthetic Security events (scratchpad gen.py):
+          8 formula-like user names (= + - @ tab CR space =cmd|), 5 failed logons for Administrator in 0.72 s from 10.6.6.6,
+          13 failed logons for 9 accounts in 0.9 s from 10.7.7.7
+20:17:48  result: events.csv prefixes ' on all 8 (R1 OK); 5 rows not merged; High "Possible password guessing" and High
+          "One source tried several accounts" (D1 OK). Detail text says "between 18:17:02 and 18:17:02".
+20:21:03  local: report --config d3.conf (exclude_users = bbtest) on 6+6 failed logons (bbtest, OTHERDOMAIN\bbtest) + 1 routine 4624 -> 2 High guessing, routine one excluded and disclosed (D3 OK)
+20:21:03  local: report on bbhid$ create/add-admin/4624/4672/remove/delete, WS-TEST$ logon, 3 hidden PowerShell 4688s, wevtutil/auditpol 4688s -> D2, D4, D9 OK
+          (first run used Audit Failure keyword on every event by mistake; "the attempt failed" text was correct for that input; re-run with correct keywords)
+20:29:07  local: report --xml gap.xml, 21 Security events Blackbox doesn't translate (4704 4705 4946 4950 4612 4739 4713 4826 4611 4614 4622 5038 5145 5140 4800 4801 4673 4907 4657 4670 4765) -> 0 events in report (A1)
+20:29:07  local: report --audit stig-audit.log (perm_access EACCES on /etc/shadow, perm_mod fchmodat/fchownat, rename into /etc/cron.d) -> 1 of 4 kept (chown on sudoers.d) (A3)
+20:49:43  ubuntu-server: first apt install gave up waiting for the first-boot 'apt upgrade' lock; upgrade (187 pkgs, new kernel 7.0.0-38) still in dracut
+20:49:43  ubuntu-server: typed scripts/ubuntu-prep.sh as ~/prep.sh (23 lines); queued to run when apt/dpkg exit, output to ~/prep.log
+21:09:38  ubuntu-server: first-boot apt upgrade finished; prep.sh ran: auditd 1:4.1.2, cifs-utils, smbclient, sshpass installed;
+          /etc/audit/rules.d/99-blackbox.rules (blackbox check --audit-rules) + 50-stig-extra.rules loaded, 38 rules, enabled 2 (locked);
+          auditctl printed "Old style watch rules are slower" for every -w rule (Blackbox's file uses -w)
+21:09:38  ubuntu-server: 'blackbox check' (before reboot): 16 pass, 1 FAIL (audit=1 missing; it is in /etc/default/grub, pending reboot), 1 INFO (40 MB audit log space)
+21:09:38  ubuntu-server: auditd.conf defaults: space_left_action=SYSLOG, admin_space_left_action=SUSPEND, disk_full_action=SUSPEND, disk_error_action=SUSPEND (STIG wants notify/halt); check says nothing (A6 confirmed)
+21:09:38  ubuntu-server: sudo reboot (new kernel 7.0.0-38, audit=1)
+21:18:14  ubuntu-server: back after reboot: kernel 7.0.0-38, cmdline has audit=1 audit_backlog_limit=8192, auditctl enabled 2, lost 0, 38 rules, auditd+ssh active
+21:18:14  ubuntu-server: 'blackbox check --all': 17 pass, 0 need attention (shots/ubu-01-check-after-reboot.jpg) although disk_full_action=SUSPEND (A6)
+21:21:39  ubuntu-server: sudo ./install.sh (collector not up yet): role 2 Send to a collector; empty inbox -> re-asked; '\\10.203.0.2\BlackboxInbox' accepted and normalised to //10.203.0.2/BlackboxInbox;
+          account bbsend; test password with '#', ',' and '=' (not echoed); check -> "not reachable ... mount error(113)"; "Use it anyway?" y; collect every 15 minutes
+21:21:39  ubuntu-server: install 0.10.1 OK; "Scheduled: blackbox.timer - collects every 15 minutes as root; weekly reports" (sender makes no reports);
+          check 17 pass; first collection audit.log 4755 lines -> 393 events, syslog 3844 lines -> 0; 1 batch waiting; error names /var/lib/blackbox/collector, printed twice (shots/ubu-03)
+21:24:48  ubuntu-server: activity set 1 (scripts/ubuntu-activity-1.sh, typed as ~/a1.sh)
+21:24:53    created bbuser (kept; test password)
+21:24:54    created bbtemp
+21:24:55    added bbtemp to sudo
+21:24:56    removed bbtemp from sudo
+21:24:57    locked bbtemp (usermod -L)
+21:24:58    unlock refused by usermod (bbtemp has no password) [DID NOT HAPPEN]
+21:24:59    deleted bbtemp (created+deleted within 6 s)
+21:25:01    created group bbgroup, added bbuser
+21:25:03    /etc/ssh/sshd_config.d/01-bbtest.conf PasswordAuthentication yes (cloud image had it off); ssh reloaded
+21:25:0x-21:25:48  6 wrong ssh passwords for bbuser from localhost
+21:25:48-21:26:16  ssh spray: admin oracle test guest ubuntu postgres (unknown accounts), 1 try each
+21:26:49    1 successful ssh logon + logoff as bbuser (C4: expect 1 row)
+21:26:49    bbuser: sudo -S with wrong password (not in sudoers)
+21:26:49-21:28:15  bbuser: sshpass su root hung, Ctrl+C [MAY NOT HAVE HAPPENED]
+21:28:17    claude: sudo -i bash -c 'id; cat /etc/shadow'
+21:28:18    /etc/sudoers.d/90-bbtest created (bbuser NOPASSWD systemctl)
+21:28:39    claude: su - bbuser with wrong password (interactive, Authentication failure)
+21:30:38  ubuntu-server: activity set 2 (scripts/ubuntu-activity-2.sh, typed as ~/a2.sh)
+21:30:39    bbuser: cat /etc/shadow -> permission denied (perm_access rule)
+21:30:40    chmod 777 /opt/secret/plan.txt (perm_mod)
+21:30:41    cp /bin/bash /tmp/bbsh; chmod u+s (setuid, perm_mod)
+21:30:42    /etc/cron.d/bbtest created (cron watch)
+21:30:43    sshd_config MaxAuthTries edited (sshd watch)
+21:30:44    modprobe dummy; rmmod dummy
+21:30:45    blackbox.timer run: delivery failed (CIFS -113), as expected
+21:31:24    timedatectl set-ntp false; date -s (+1 s); set-ntp true
+21:31:25    mount -t tmpfs none /mnt; umount
+21:31:26    created and deleted /var/log/bbtest.log (log_tamper)
+21:31:28    truncate -s 0 /var/log/dpkg.log (log_tamper)
+21:31:29    auditctl -e 0 (refused, locked)
+21:31:30    auditctl -D (refused)
+21:31:32    systemctl stop auditd -> SUCCEEDED (auditd inactive from here)
+21:31:33    blackbox config set exclude_users bbuser
+21:31:34    blackbox config set exclude_users none -> sets an excluded account literally named "none"
+21:31:38    systemctl stop/start blackbox.timer
+21:31:39    blackbox config set site_name "UBU #2" -> stored quoted, reads back "UBU #2" (R3 OK)
+21:31:40    sed working_hours = Mon-Fri 06:00-18:00 into blackbox.conf (direct edit)
+21:32:20  ubuntu-server: 'blackbox status': role sender, last collection 21:31, settings checked 21:21, 3 batches waiting, last attempt FAILED;
+          NOTHING about auditd being stopped (shots/ubu-04-status-auditd-stopped.jpg)
+21:32:57  ubuntu-server: systemctl start auditd (gap 21:31:32-21:32:57); config set exclude_users "" clears it ("Saved exclude_users = ."); R4 message OK
+21:34:02  ubuntu-server: sudo blackbox report --config none --audit /var/log/audit/audit.log --syslog /var/log/syslog --out /tmp/rl1 (local check of the Linux activity; 349 events, 18 high, 17 medium); rows since 21:24 listed with ~/rows.py (shots/ubu-05..08)
+21:36:47  ubuntu-server: ausearch: 0 USER_CMD and 0 USER_AUTH from sudo since boot; sudo is sudo-rs 0.2.13 (/usr/lib/cargo/bin/sudo) (shots/ubu-10)
+21:37:26  ubuntu-server: bbuser 'sudo -S id' with correct password -> "I'm sorry bbuser. I'm afraid I can't do that"; nothing logged in journal or audit.log about bbuser's attempt (shots/ubu-09)
+21:38:41  ubuntu-server: planned 'sudo reboot' (C6; blackbox-shutdown.service enabled; timer last 21:31:01 next 21:45:06)
+21:44-21:52  ubuntu-server: boot stalled: RCU stalls, kworker blocked >614 s in virtballoon_free_page_report; Umbrel memory 10.6/12.5 GB used, Windows TCG ~47% CPU. VT switch not possible (plymouth)
+21:53:11  ubuntu-server: Umbrel restart_machine (reset during the stalled boot)
+21:57:37  ubuntu-server: restart_machine had no effect (uptime kept counting); force_stop_machine + start_machine (hard power-off of a hung boot)
+22:02:08  ubuntu-server: up again (kernel boot 21:57:43, auditd DAEMON_START 21:59:45); hung boot never started auditd (no audit gap to report)
+22:03:00  ubuntu-server: journal boot -1: blackbox-shutdown.service 21:38:42-56 collected 35 audit events, delivery failed (collector down), kept in outbox, exit 1 (shots/ubu-12)
+22:03:30  ubuntu-server: local report /tmp/rl2: "21:39:02 info The audit service (auditd) stopped as part of a restart or shutdown by root (normal)" (C6 OK, shots/ubu-11); manual stop at 21:31:31 stays High
+22:14:30  windows-11: user asked to restart; storage 16.12 -> 16.03 GB (no progress), black screen ~2h50m, keypress no effect; restart_machine ignored
+22:16:00  windows-11: force_stop_machine + start_machine; firmware: "failed to load Boot0002 'UEFI Misc Device' ... Not Found", booting installer DVD (setup had not yet written a boot loader)
+22:20:30  windows-11: Windows 11 Setup window appeared, then screen black again (unattended setup copies files with a black screen). The power cycle restarted setup from the beginning; the earlier 'stall' was setup expanding files, not a hang.
+22:21-00:19  windows-11: watcher (every 150 s): stayed "running setup-delayed firstBootSetup=true" for 2 h
+00:19:50  windows-11: CPU 0% (was ~46%), storage 16.10 GB, black screen: setup idle, probably waiting for input on a screen the capture doesn't show. Left alone.
+00:20:12  ubuntu-server: auditd + blackbox.timer active; last collection 00:15; settings checked 22:01 (re-checked after the 21:57 boot: C5 OK); 15 batches waiting; log archive "saved up to 21:21 (1 waiting)"
+03:42:44  windows-11: screen 'Installing 42% - Please keep your computer on', CPU 47%, 16.31 GB (the 00:19 CPU 0% was a momentary sample)
+05:19:09  windows-11: Umbrel state 'suspended' (CPU 0, 15.92 GB); start_machine -> boots 'Windows Boot Manager' from disk (install wrote its boot files)
+05:25:05  windows-11: 'Just a moment...' (OOBE stage), 15.63 GB
+07:36:26  windows-11: still 'Just a moment...' since ~05:24 (2h+), CPU 46%, 15.66 GB, Umbrel 'setup-delayed'; not touched
+09:37:20  windows-11: still 'Just a moment...' (~4h15m), 15.65 GB flat, CPU 43%, 'setup-delayed'. Stopped watching; waiting for owner decision (shots/win-02)
