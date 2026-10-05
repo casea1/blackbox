@@ -388,8 +388,14 @@ func (a *App) send(st *store.Store) SendResult {
 		s.LastError = ""
 		if r.Err != nil {
 			s.LastError = r.Err.Error()
-		} else if r.Waiting == 0 && r.ArchivesWaiting == 0 {
-			s.LastDelivered = a.now()
+			if s.FailingSince.IsZero() {
+				s.FailingSince = a.now()
+			}
+		} else {
+			s.FailingSince = time.Time{}
+			if r.Waiting == 0 && r.ArchivesWaiting == 0 {
+				s.LastDelivered = a.now()
+			}
 		}
 		st.Save()
 	}

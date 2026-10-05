@@ -14,6 +14,7 @@ import (
 	"github.com/casea1/blackbox/internal/check"
 	"github.com/casea1/blackbox/internal/collect"
 	"github.com/casea1/blackbox/internal/config"
+	"github.com/casea1/blackbox/internal/lan"
 	"github.com/casea1/blackbox/internal/store"
 )
 
@@ -219,5 +220,49 @@ func TestReportFromFilesRange(t *testing.T) {
 	}
 	if n := count(time.Date(2026, 9, 28, 17, 0, 0, 0, time.UTC), time.Date(2026, 9, 28, 18, 0, 0, 0, time.UTC)); n == 0 || n >= all {
 		t.Errorf("one hour: %d of %d events", n, all)
+	}
+}
+
+// L12: when every delivery fails, status says since when; after a day it
+// needs attention (exit 4), even with nothing new waiting. A delivery that
+// works clears it.
+func TestSendingFailedSince(t *testing.T) {
+	base := t.TempDir()
+	st, _ := store.Open(filepath.Join(base, "data"))
+	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	inbox := filepath.Join(base, "inbox") // not prepared yet: unreachable
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, SendTo: inbox, ReportEvery: "weekly"}, Loc: time.UTC, QuietSend: true}
+	a.Now = func() time.Time { return now.Add(-30 * time.Hour) }
+	if r := a.send(st); r.Err == nil {
+		t.Fatal("send to a missing inbox worked")
+	}
+	a.Now = func() time.Time { return now.Add(-time.Hour) }
+	a.send(st) // fails again: the first failure stays
+	if got := st.State.Send.FailingSince; !got.Equal(now.Add(-30 * time.Hour)) {
+		t.Fatalf("failing since %v", got)
+	}
+
+	a.Now = func() time.Time { return now.Add(-29 * time.Hour) }
+	var b bytes.Buffer
+	if err := a.Status(&b); err != nil {
+		t.Errorf("an hour of failures should not need attention yet: %v\n%s", err, b.String())
+	}
+	a.Now = func() time.Time { return now }
+	b.Reset()
+	var na *NeedsAttention
+	if err := a.Status(&b); !errors.As(err, &na) {
+		t.Errorf("status error after 30 hours of failures: %v", err)
+	}
+	for _, want := range []string{"sending has failed since 2026-10-04 06:00", "NOT SENT:"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("status missing %q:\n%s", want, b.String())
+		}
+	}
+
+	if err := lan.PrepareInbox(inbox, "COLLECTOR"); err != nil {
+		t.Fatal(err)
+	}
+	if r := a.send(st); r.Err != nil || !st.State.Send.FailingSince.IsZero() {
+		t.Errorf("after a delivery that worked: %v, failing since %v", r.Err, st.State.Send.FailingSince)
 	}
 }
