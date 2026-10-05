@@ -114,7 +114,11 @@ var Windows11 = Baseline{
 			gpAdmin + " > Windows Components > Windows PowerShell > Turn on PowerShell Transcription: Enabled", "WN11-CC-000327"},
 	},
 	Logs: []logReq{
-		{"Security", 0, true, "WN11-AU-000505"},
+		// WN11-AU-000505 (V2R8): the Security log must hold a week of
+		// records, and the check fails a MaxSize below 5,120,000 KB (older
+		// releases: 1,024,000 KB). C6: a STIG-audited Windows 11 fills the
+		// 20 MB default within an hour during Windows Update.
+		{"Security", 5120000, false, "WN11-AU-000505"},
 		{"System", 32768, false, "WN11-AU-000510"},
 		{"Application", 32768, false, "WN11-AU-000500"},
 	},

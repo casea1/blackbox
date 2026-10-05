@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -48,6 +49,15 @@ type State struct {
 	LastWindowEnd time.Time `json:"last_window_end,omitzero"` // events before this were reported…
 	LastGenerated time.Time `json:"last_generated,omitzero"`  // …if collected before this
 	LastCollect   time.Time `json:"last_collect,omitzero"`
+	// ReportedTo is how far each events spool file had been read when the
+	// last scheduled report was made (bytes, by file name). An event past
+	// that point was collected since, whatever the clock said (T3): the
+	// report chain follows collection order, not wall-clock time.
+	ReportedTo map[string]int64 `json:"reported_to,omitempty"`
+	// ClockBack lists the times the clock was found to have been moved
+	// back (a stored collection time in the future), until a scheduled
+	// report has shown them.
+	ClockBack []ClockJump `json:"clock_back,omitempty"`
 
 	// Removable devices seen before, so new ones can be flagged.
 	KnownDevices map[string]time.Time `json:"known_devices"`
@@ -242,6 +252,76 @@ func (s *Store) spoolFiles(prefix string, since time.Time) ([]string, error) {
 	return out, nil
 }
 
+// ClockJump is the clock found to have been moved back: when it was
+// noticed (by the corrected clock), the stored time that was in the
+// future, and on which computer.
+type ClockJump struct {
+	Host    string    `json:"host"`
+	Noticed time.Time `json:"noticed"`
+	Was     time.Time `json:"was"` // the stored time, now in the future
+}
+
+// EventSizes is the current size of each events spool file, by name: the
+// point a report has read to.
+func (s *Store) EventSizes() (map[string]int64, error) {
+	files, err := s.spoolFiles("events", time.Time{})
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]int64{}
+	for _, f := range files {
+		if fi, err := os.Stat(f); err == nil {
+			out[filepath.Base(f)] = fi.Size()
+		}
+	}
+	return out, nil
+}
+
+// ReadEventsAfter is ReadEvents, also reading any file that has grown past
+// reportedTo (whatever its date: a file written after the clock was moved
+// back has an earlier date), and marking the events past that point
+// Unreported. With reportedTo nil, nothing is marked.
+func (s *Store) ReadEventsAfter(since time.Time, reportedTo map[string]int64) ([]*event.Event, error) {
+	all, err := s.spoolFiles("events", time.Time{})
+	if err != nil {
+		return nil, err
+	}
+	dated, err := s.spoolFiles("events", since)
+	if err != nil {
+		return nil, err
+	}
+	want := map[string]bool{}
+	for _, f := range dated {
+		want[f] = true
+	}
+	var out []*event.Event
+	for _, f := range all {
+		name := filepath.Base(f)
+		mark, known := reportedTo[name]
+		if reportedTo != nil && !want[f] {
+			fi, err := os.Stat(f)
+			if err != nil || (known && fi.Size() <= mark) {
+				continue
+			}
+		} else if !want[f] {
+			continue
+		}
+		err := readJSONLOffsets(f, func(b []byte, at int64) error {
+			var e event.Event
+			if err := json.Unmarshal(b, &e); err != nil {
+				return err
+			}
+			e.Unreported = reportedTo != nil && (!known || at >= mark)
+			out = append(out, &e)
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
 // ReadEvents returns spooled events collected on or after since (by file
 // date, so callers still filter precisely).
 func (s *Store) ReadEvents(since time.Time) ([]*event.Event, error) {
@@ -323,6 +403,36 @@ func readJSONL(path string, fn func([]byte) error) error {
 		pending = fn(line)
 	}
 	return sc.Err()
+}
+
+// readJSONLOffsets is readJSONL, also giving each line's byte offset.
+func readJSONLOffsets(path string, fn func(line []byte, at int64) error) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	r := bufio.NewReaderSize(f, 1024*1024)
+	var at int64
+	var pending error // a bad line is an error only if another follows (a cut-short last line is not)
+	for {
+		line, err := r.ReadBytes('\n')
+		if len(line) > 0 {
+			if t := strings.TrimSpace(string(line)); t != "" {
+				if pending != nil {
+					return fmt.Errorf("%s: %w", path, pending)
+				}
+				pending = fn([]byte(t), at)
+			}
+			at += int64(len(line))
+		}
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
 }
 
 // spoolKinds are the spool file prefixes.

@@ -240,6 +240,13 @@ func (t *Translator) timeChanged(r *Raw) *event.Event {
 		User: user, Process: r.Get("ProcessName")}
 	if err1 == nil && err2 == nil {
 		e.Summary = fmt.Sprintf("System time was changed by %s, moving the clock %s %s.", orUnknown(user), roundDur(delta.Abs()), map[bool]string{true: "forward", false: "back"}[delta >= 0])
+		if delta <= -5*time.Minute {
+			// Moving the clock back is a way to keep events out of reports
+			// (T3), whoever does it; Blackbox's reports follow collection
+			// order, so none is lost, but the times around it are wrong.
+			e.Severity = event.SevHigh
+			e.AddDetail("Why it matters", "Event times before and after this change don't line up; check the time source. Every collected event is still reported.")
+		}
 	} else {
 		e.Summary = fmt.Sprintf("System time was changed by %s.", orUnknown(user))
 	}

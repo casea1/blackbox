@@ -54,7 +54,7 @@ func Default() *Config {
 		ReportEvery:    "weekly",
 		ReportAt:       DefaultReportAt,
 		DataDir:        DefaultDataDir(),
-		CollectEvery:   time.Hour,
+		CollectEvery:   15 * time.Minute, // C6: an hour lets a busy STIG-audited Security log roll over
 		ScapMaxAgeDays: 30,
 	}
 }

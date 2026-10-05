@@ -2,7 +2,7 @@
 
 ## Collection and report periods
 
-Blackbox **collects** every hour and **reports** on the schedule you
+Blackbox **collects** every 15 minutes (by default) and **reports** on the schedule you
 choose:
 
 - **Collecting:** each run copies only the security-relevant events out of
@@ -202,6 +202,17 @@ only counted. On Linux, a record of any keyed audit rule Blackbox has no
 translation for (your site's own rules included) is an Info row naming
 the rule. See the [Windows](windows.md#what-blackbox-reads) and
 [Linux](linux.md#set-up-auditd) guides.
+
+**When the clock is wrong.** Each report covers what was collected since
+the previous one, in the order it was collected, so changing the clock
+can't keep an event out of every report. A period never starts after it
+ends. When the clock was moved back (a recorded collection time is now in
+the future, or Windows logged the time being set back, event 4616),
+the report has the High detection **The clock was moved back**,
+`blackbox status` says so and exits with code 4, and on Windows the
+collection task is registered again so its next run follows the corrected
+clock. Events recorded while the clock was ahead are shown in the next
+report, not held back until the clock catches up.
 
 **Exclusions.** `exclude_users` and `exclude_processes` leave out routine
 activity only. Failed logons against an excluded account, changes to it,

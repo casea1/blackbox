@@ -46,7 +46,11 @@ func (a *App) Status(w io.Writer) error {
 	if s.LastCollect.IsZero() {
 		p("Last collection:", "never (the scheduled task has not run yet)")
 	} else {
-		p("Last collection:", "%s (%s)", stampLocal(s.LastCollect, a.loc()), ago(now.Sub(s.LastCollect)))
+		when := ago(now.Sub(s.LastCollect))
+		if s.LastCollect.After(now.Add(clockSlack)) {
+			when = "in the future: the clock was moved back" // not "just now" (T1)
+		}
+		p("Last collection:", "%s (%s)", stampLocal(s.LastCollect, a.loc()), when)
 	}
 	if !s.LastCheck.IsZero() {
 		p("Settings checked:", "%s", stampLocal(s.LastCheck, a.loc()))
@@ -72,6 +76,19 @@ func (a *App) Status(w io.Writer) error {
 	}
 	for _, l := range lostSince(st, s.LastWindowEnd, now) {
 		p("Events lost:", "%s", LostText(l, a.loc()))
+		attention = append(attention, "events were lost to log rollover") // C6
+	}
+	// The clock moved back (T3, T1): a stored time in the future, or a
+	// change noticed since the last report.
+	if s.LastCollect.After(now.Add(clockSlack)) {
+		attention = append(attention, "the clock was moved back")
+		p("CLOCK MOVED BACK:", "the last collection is recorded at %s, %s ahead of the clock. Nothing collected is lost (reports follow collection order); check the time source.",
+			stampLocal(s.LastCollect, a.loc()), roughAgo(s.LastCollect.Sub(now)))
+	}
+	for _, j := range s.ClockBack {
+		attention = append(attention, "the clock was moved back")
+		p("CLOCK MOVED BACK:", "noticed %s: the last collection had been recorded at %s, %s ahead. It is shown in the next report; check the time source.",
+			stampLocal(j.Noticed, a.loc()), stampLocal(j.Was, a.loc()), roughAgo(j.Was.Sub(j.Noticed)))
 	}
 
 	if a.Cfg.SendTo != "" {

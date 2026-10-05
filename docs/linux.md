@@ -46,7 +46,7 @@ Setup then:
 - copies `blackbox` to `/usr/local/bin/`
 - creates `/var/lib/blackbox/` (root only) for reports and collected
   events, and `/etc/blackbox/blackbox.conf`
-- installs and starts `blackbox.timer`, which runs every hour and catches
+- installs and starts `blackbox.timer`, which runs every 15 minutes (by default) and catches
   up after the system has been off. The service it runs is sandboxed:
   - no network access
   - a read-only view of the system

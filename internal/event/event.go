@@ -132,6 +132,11 @@ type Event struct {
 	// Late is set by the report when an event happened before the report
 	// period but was collected after the previous report was produced.
 	Late bool `json:"late,omitempty"`
+
+	// Unreported is set when the event was read from the spool after the
+	// point the last scheduled report had read to: collected since then,
+	// whatever the clock said (T3). It is not stored.
+	Unreported bool `json:"-"`
 }
 
 // AddDetail appends a detail row, skipping empty values.

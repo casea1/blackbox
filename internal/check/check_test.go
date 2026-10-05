@@ -104,15 +104,17 @@ func TestRegistryAndLogs(t *testing.T) {
 		}
 		return Result{}
 	}
-	sec := find(EvaluateLogs(Windows11, settings, full(3*24*time.Hour)), "Security log")
-	if sec.Status != Fail || !strings.Contains(sec.Have, "holds about 3 days") || !strings.Contains(sec.Fix, "Event Log Service > Security > Specify the maximum log file size (KB): Enabled, 48128") {
-		t.Errorf("a full 20 MB log holding 3 days fails the one-week rule: %+v", sec)
+	// C6: Windows 11's Security log fails below WN11-AU-000505's 5,120,000
+	// KB, whatever history it happens to hold so far.
+	sec := find(EvaluateLogs(Windows11, settings, full(9*24*time.Hour)), "Security log")
+	if sec.Status != Fail || !strings.Contains(sec.Want, "5120000 KB") || !strings.Contains(sec.Fix, "Specify the maximum log file size (KB): Enabled, 5120000") || sec.STIG != "WN11-AU-000505" {
+		t.Errorf("a 20 MB Security log fails WN11-AU-000505: %+v", sec)
 	}
-	if sec := find(EvaluateLogs(Windows11, settings, full(9*24*time.Hour)), "Security log"); sec.Status != Pass {
-		t.Errorf("a log holding 9 days passes: %+v", sec)
+	big := func(name string) (winevt.LogSettings, error) {
+		return winevt.ParseLogSettings("name: " + name + "\nenabled: true\nlogging:\n  retention: false\n  maxSize: 5242880000\n"), nil
 	}
-	if sec := find(EvaluateLogs(Windows11, settings, full(time.Hour)), "Security log"); sec.Status != Fail {
-		t.Errorf("a full log holding an hour fails: %+v", sec)
+	if sec := find(EvaluateLogs(Windows11, big, full(time.Hour)), "Security log"); sec.Status != Pass {
+		t.Errorf("a 5,120,000 KB log passes: %+v", sec)
 	}
 	if part := find(EvaluateLogs(Windows11, settings, full(time.Hour)), "Microsoft-Windows-Partition/Diagnostic"); part.Status != Fail {
 		t.Errorf("disabled Partition/Diagnostic log should fail: %+v", part)

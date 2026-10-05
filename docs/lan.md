@@ -2,7 +2,7 @@
 
 One computer, the **collector**, produces reports that cover itself and
 every computer that sends to it. The other computers keep collecting their
-own logs every hour and copy what they collect into the collector's
+own logs every 15 minutes and copy what they collect into the collector's
 **inbox**, a folder on the collector.
 
 ![A combined report's Systems page](images/lan-systems.png)

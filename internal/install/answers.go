@@ -56,9 +56,9 @@ var (
 // Intervals lists the collection intervals offered, with cur added when
 // it is none of them, and their labels.
 func Intervals(cur time.Duration) ([]time.Duration, []Choice) {
-	ints := []time.Duration{time.Hour, 30 * time.Minute, 15 * time.Minute}
-	labels := []Choice{{"Every hour", "recommended"}, {"Every 30 minutes", ""},
-		{"Every 15 minutes", "for busy systems whose logs fill up within a few hours"}}
+	ints := []time.Duration{15 * time.Minute, 30 * time.Minute, time.Hour}
+	labels := []Choice{{"Every 15 minutes", "recommended: a STIG-audited Security log can fill within an hour"}, {"Every 30 minutes", ""},
+		{"Every hour", "only for quiet systems with a large Security log"}}
 	if indexOf(ints, cur) < 0 && cur > 0 {
 		ints = append(ints, cur)
 		t := EveryText(cur)
@@ -76,7 +76,9 @@ func WithDefaults(a Answers) Answers {
 		a.ReportAt = config.DefaultReportAt
 	}
 	if a.CollectEvery == 0 {
-		a.CollectEvery = time.Hour
+		// 15 minutes (C6): with the STIG's File System auditing, Windows
+		// Update can overwrite a 20 MB Security log within an hour.
+		a.CollectEvery = 15 * time.Minute
 	}
 	if a.Role == "" {
 		a.Role = RoleOf(a.SendTo, a.Inbox)

@@ -35,8 +35,10 @@ func TestLostEventsAreReported(t *testing.T) {
 	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportEvery: "weekly", ReportAt: config.DefaultReportAt, CollectEvery: time.Hour},
 		Now: func() time.Time { return now }, Loc: time.UTC}
 	var b bytes.Buffer
-	if err := a.Status(&b); err != nil {
-		t.Fatal(err)
+	// Lost events need attention: status exits 4 (C6).
+	var na *NeedsAttention
+	if err := a.Status(&b); !errors.As(err, &na) {
+		t.Fatalf("status: %v", err)
 	}
 	if !strings.Contains(b.String(), "Security log on "+collect.LocalHost()+": 19,125 events overwritten") || !strings.Contains(b.String(), "every 15 minutes") {
 		t.Errorf("status:\n%s", b.String())

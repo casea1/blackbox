@@ -77,8 +77,11 @@ type Options struct {
 
 	// LAN: the computers this data folder knows about, whether this is a
 	// collector, and problems noticed receiving from other computers.
-	Systems     []SystemInfo
-	Collector   bool
+	Systems   []SystemInfo
+	Collector bool
+	// ClockBack are the times the clock was found to have been moved back
+	// since the last scheduled report (T3).
+	ClockBack   []ClockJump
 	LANWarnings []string
 	// Removed are earlier reports deleted under retention_days, with their
 	// original logs, since the last scheduled report (A9).
@@ -91,6 +94,13 @@ type Options struct {
 	Scap           []*scap.Scan
 	ScapEnabled    bool
 	ScapMaxAgeDays int
+}
+
+// ClockJump is the clock found to have been moved back on a computer: a
+// stored time (Was) that was in the future when it was Noticed.
+type ClockJump struct {
+	Host         string
+	Noticed, Was time.Time
 }
 
 // ArchiveRef is one computer's original logs for the period: a zip that
@@ -298,6 +308,7 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	r.buildAttention(rows)
 	r.buildUsers(events)
 	r.buildHealth(runs, events)
+	r.clockFindings()
 	r.buildSystems(runs, events)
 	r.scapTable = r.scapRows()
 	r.checkArchives()
@@ -652,4 +663,29 @@ func commas[T ~int | ~uint64](n T) string {
 		s = s[:i] + "," + s[i:]
 	}
 	return s
+}
+
+// clockFindings reports the clock having been moved back (T3): times in
+// reports and logs are wrong around it, and moving the clock is a way to
+// try to hide activity. Nothing collected is lost: reports follow the
+// order events were collected in.
+func (r *Report) clockFindings() {
+	for _, j := range r.ClockBack {
+		back := j.Was.Sub(j.Noticed)
+		f := Finding{Severity: event.SevHigh, Category: event.CatIntegrity, Host: j.Host, Time: j.Noticed,
+			Title: "The clock was moved back",
+			Detail: fmt.Sprintf("On %s, the last collection was recorded at %s, about %s ahead of the clock at %s: the clock was moved back. "+
+				"Event times around the change may be wrong. Every event collected is still in a report: reports follow the order events were collected in.",
+				j.Host, r.stamp(j.Was), roughDuration(back), r.stamp(j.Noticed))}
+		r.Findings = append(r.Findings, f)
+		r.Health.Warnings = append(r.Health.Warnings, fmt.Sprintf("%s: the clock was moved back by about %s (noticed %s). Check the time source (Windows Time, chrony or timesyncd).",
+			j.Host, roughDuration(back), r.stamp(j.Noticed)))
+	}
+	sort.SliceStable(r.Findings, func(i, j int) bool {
+		a, b := r.Findings[i], r.Findings[j]
+		if a.Severity.Rank() != b.Severity.Rank() {
+			return a.Severity.Rank() > b.Severity.Rank()
+		}
+		return a.Time.Before(b.Time)
+	})
 }

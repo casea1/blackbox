@@ -19,6 +19,7 @@ import (
 	"github.com/casea1/blackbox/internal/collect"
 	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/event"
+	"github.com/casea1/blackbox/internal/install"
 	"github.com/casea1/blackbox/internal/lan"
 	"github.com/casea1/blackbox/internal/report"
 	"github.com/casea1/blackbox/internal/share"
@@ -45,6 +46,9 @@ type App struct {
 	// blackbox-send.service (Linux, a folder the site mounted), so a
 	// delivery problem never stops collection (L8).
 	NoDeliver bool
+	// Reschedule registers the collection task again (nil: the installed
+	// one, install.RefreshSchedule); tests replace it.
+	Reschedule func(every time.Duration) error
 }
 
 func (a *App) now() time.Time {
@@ -201,6 +205,7 @@ func (a *App) open() (*store.Store, func(), error) {
 // system's logs, check its audit settings (daily, or now if force), and
 // receive what other systems sent, if this is a collector.
 func (a *App) gather(st *store.Store, forceCheck bool) error {
+	a.noticeClock(st)
 	run, err := collect.Live(st, collect.Options{Version: a.Version, Now: a.now, Logf: a.Logf})
 	if err != nil {
 		return err
@@ -211,6 +216,43 @@ func (a *App) gather(st *store.Store, forceCheck bool) error {
 	}
 	a.receive(st)
 	return st.Save()
+}
+
+// clockSlack is how far a stored time may be ahead of the clock before the
+// clock counts as moved back (or an event as recorded with a clock ahead).
+const clockSlack = 5 * time.Minute
+
+// noticeClock records the clock having been moved back: the last
+// collection is in the future (T3). On Windows the collection task is
+// registered again, so its next run follows the corrected clock (T1).
+func (a *App) noticeClock(st *store.Store) {
+	now := a.now()
+	was := st.State.LastCollect
+	if was.IsZero() || !was.After(now.Add(clockSlack)) {
+		return
+	}
+	st.State.ClockBack = append(st.State.ClockBack, store.ClockJump{Host: collect.LocalHost(), Noticed: now, Was: was})
+	a.logf("the clock was moved back: the last collection was at %s, %s ahead of the clock now; nothing collected is lost (reports follow collection order)",
+		was.In(a.loc()).Format("2006-01-02 15:04"), roughAgo(was.Sub(now)))
+	if a.Cfg.CollectEvery > 0 {
+		reschedule := a.Reschedule
+		if reschedule == nil {
+			reschedule = install.RefreshSchedule
+		}
+		if err := reschedule(a.Cfg.CollectEvery); err != nil {
+			a.logf("re-registering the collection task after the clock change: %v", err)
+		}
+	}
+}
+
+func roughAgo(d time.Duration) string {
+	switch {
+	case d >= 48*time.Hour:
+		return fmt.Sprintf("%.0f days", d.Hours()/24)
+	case d >= 2*time.Hour:
+		return fmt.Sprintf("%.0f hours", d.Hours())
+	}
+	return fmt.Sprintf("%.0f minutes", d.Minutes())
 }
 
 // checkEvery is how often a system that is not producing a report checks
@@ -463,11 +505,44 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 	if !readFrom.IsZero() {
 		readFrom = readFrom.Add(-contextSpan)
 	}
-	all, err := st.ReadEvents(readFrom)
+	// Since the first report that records how far it read the spool, the
+	// chain follows collection order (T3); before, collection times.
+	positional := st.State.ReportedTo != nil
+	var all []*event.Event
+	var err error
+	if positional {
+		all, err = st.ReadEventsAfter(readFrom, st.State.ReportedTo)
+	} else {
+		all, err = st.ReadEvents(readFrom)
+	}
 	if err != nil {
 		return "", err
 	}
-	events := SelectWindow(all, prevEnd, prevGen, end, generated)
+	marks, err := st.EventSizes()
+	if err != nil {
+		return "", err
+	}
+	var events []*event.Event
+	if positional {
+		events = SelectByCollection(all, prevEnd, prevGen, end, generated)
+	} else {
+		events = SelectWindow(all, prevEnd, prevGen, end, generated)
+	}
+	// Never a period that starts after it ends (T3): after the clock was
+	// moved back, the previous period ended in what is now the future.
+	windowStart := prevEnd
+	clockBack := append([]store.ClockJump(nil), st.State.ClockBack...)
+	if prevEnd.After(end) {
+		windowStart = end
+		for _, e := range events {
+			if e.Time.Before(windowStart) {
+				windowStart = e.Time
+			}
+		}
+		if len(clockBack) == 0 {
+			clockBack = append(clockBack, store.ClockJump{Host: collect.LocalHost(), Noticed: generated, Was: prevEnd})
+		}
+	}
 	// The report's folder holds the original logs for its period: this
 	// computer's are saved up to the end of the period first.
 	var logs []report.ArchiveRef
@@ -481,8 +556,12 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 			}
 		}()
 	}
-	context := contextEvents(all, events, prevEnd)
-	runs, err := st.ReadRuns(prevGen)
+	context := contextEvents(all, events, windowStart)
+	runsSince := prevGen
+	if runsSince.After(generated) {
+		runsSince = windowStart // the previous report's time is in the future (T3)
+	}
+	runs, err := st.ReadRuns(runsSince)
 	if err != nil {
 		return "", err
 	}
@@ -508,8 +587,9 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		// chosen in the settings, or any scan found.
 		Scap: scans, ScapEnabled: len(scans) > 0 || (a.Cfg.ScapResults != "" && a.Cfg.ScapDir() != ""), ScapMaxAgeDays: a.Cfg.ScapMaxAgeDays,
 		Site:        a.Cfg.SiteName,
-		WindowStart: prevEnd, WindowEnd: end, Generated: generated, Version: a.Version,
-		Source: "Live collection", Location: a.loc(), InReportsDir: true, Interim: !advance, Period: a.Cfg.ReportEvery,
+		WindowStart: windowStart, WindowEnd: end, Generated: generated, Version: a.Version,
+		ClockBack: clockJumps(clockBack),
+		Source:    "Live collection", Location: a.loc(), InReportsDir: true, Interim: !advance, Period: a.Cfg.ReportEvery,
 		History:      report.History(a.ReportsDir(), end, 11),
 		ExcludeUsers: a.Cfg.ExcludeUsers, ExcludeProcesses: a.Cfg.ExcludeProcesses,
 		KnownDevices: st.State.KnownDevices, CheckSets: sets,
@@ -542,6 +622,8 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		}
 		st.State.LastWindowEnd = end
 		st.State.LastGenerated = generated
+		st.State.ReportedTo = marks
+		st.State.ClockBack = nil // shown in this report
 		for k, t := range r.NewDevices {
 			st.State.KnownDevices[k] = t
 		}
@@ -674,6 +756,42 @@ func SelectWindow(all []*event.Event, prevEnd, prevGen, end, generated time.Time
 			}
 		}
 		out = append(out, e)
+	}
+	return out
+}
+
+// SelectByCollection picks the events for a report by collection order
+// (T3): an event belongs to this report unless the previous report read it
+// (it is not Unreported) and showed it (it fell in that report's period,
+// or was recorded with a clock ahead of that report's time). The clock
+// can't make an event skip every report: an event collected after the
+// previous report is in this one or, if it happened after this period
+// ends, in the next. An event recorded with a clock ahead of now is shown
+// now rather than when the clock catches up.
+func SelectByCollection(all []*event.Event, prevEnd, prevGen, end, generated time.Time) []*event.Event {
+	backwards := prevEnd.After(end)
+	var out []*event.Event
+	for _, e := range all {
+		future := e.Time.After(generated.Add(clockSlack))
+		if !e.Time.Before(end) && !future {
+			continue // belongs to a later report
+		}
+		if !e.Unreported && (e.Time.Before(prevEnd) || (!prevGen.IsZero() && e.Time.After(prevGen.Add(clockSlack)))) {
+			continue // in the previous report
+		}
+		if e.Unreported && e.Time.Before(prevEnd) && !backwards {
+			e.Late = true
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// clockJumps turns the stored clock changes into the report's.
+func clockJumps(js []store.ClockJump) []report.ClockJump {
+	var out []report.ClockJump
+	for _, j := range js {
+		out = append(out, report.ClockJump{Host: j.Host, Noticed: j.Noticed, Was: j.Was})
 	}
 	return out
 }
