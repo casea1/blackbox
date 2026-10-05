@@ -1,11 +1,13 @@
 package app
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/event"
+	"github.com/casea1/blackbox/internal/store"
 )
 
 func TestDueWindowEnd(t *testing.T) {
@@ -100,4 +102,25 @@ func TestContextEventsAreTheDayBefore(t *testing.T) {
 	if contextEvents([]*event.Event{dayBefore}, nil, time.Time{}) != nil {
 		t.Error("the first report has no previous period")
 	}
+}
+
+// A run started while another holds the lock waits for it rather than
+// failing (the timer and blackbox-send.service starting next to each
+// other); with no wait it still fails at once.
+func TestOpenWaitsForRunInProgress(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	unlock, err := st.Lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &App{Cfg: &config.Config{DataDir: st.Dir}}
+	if _, _, err := a.open(); !errors.Is(err, store.ErrBusy) {
+		t.Fatalf("no wait: %v", err)
+	}
+	go func() { time.Sleep(200 * time.Millisecond); unlock() }()
+	_, unlock2, err := a.openWait(10 * time.Second)
+	if err != nil {
+		t.Fatalf("waiting: %v", err)
+	}
+	unlock2()
 }
