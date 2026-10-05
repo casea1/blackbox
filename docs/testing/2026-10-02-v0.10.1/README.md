@@ -5,6 +5,7 @@ Ubuntu 26.04 sender and Windows Server 2025 collector tested live (the Windows 1
 - [findings.md](findings.md): every finding by ID: 0.10.0 fixes re-checked, new findings, the Linux sender run, and an ISSO/ISSM review of audit coverage (AU-2/AU-6/AU-12) with Splunk-style roadmap items.
 - [worker-prompt.md](worker-prompt.md): the first work list (done in 0.10.2), including the proposal to read SCAP (SCC/OpenSCAP) results into the report.
 - [worker-prompt-2.md](worker-prompt-2.md): the second work list: what 0.10.4 didn't fix, what it introduced, the collector and delivery findings, SCAP, and STIG-image compatibility.
+- [worker-prompt-3.md](worker-prompt-3.md): the third work list, from the 0.11.0 re-test and the Windows 11 standalone tests (clock changes, noise on a fresh Windows 11, SC3).
 - [test-plan.md](test-plan.md): what was planned, including the collector tests still to run.
 - [test-activity.log](test-activity.log): every test action, timestamped (UTC).
 - [scripts/](scripts/): the scripts typed into the VMs (test passwords come from environment variables and aren't stored).
