@@ -4,7 +4,7 @@
 
 **Plain-English audit log reports for air-gapped Windows and Linux systems.**
 
-Blackbox reads your Windows event logs and Linux audit logs every hour. On
+Blackbox reads your Windows event logs and Linux audit logs every 15 minutes. On
 a daily, weekly or monthly schedule it turns them into a single HTML report
 an auditor can actually read. No server, no database, no dependencies,
 and nothing listening on the network. One PC, a PC with Linux VMs, or a
@@ -23,7 +23,7 @@ whole air-gapped LAN can be covered by one report.
   privileged activity, USB, failed logons, account changes, and audit
   integrity. Each category is tagged with the NIST SP 800-53 controls it
   supports.
-- **Nothing lost.** Logs are read every hour, so busy systems can't
+- **Nothing lost.** Logs are read every 15 minutes, so busy systems can't
   overwrite events before they're collected. The report says when events
   were lost, a log was cleared, or auditing was switched off.
 - **Flags what matters.** Blackbox detects password guessing, new USB
@@ -84,7 +84,7 @@ uninstalled like any other program.
 
 A Linux VM on a Windows PC, or a whole air-gapped LAN, can be reviewed in
 one report. One computer, the **collector**, produces the reports. The
-others send their events to its inbox folder every hour:
+others send their events to its inbox folder every 15 minutes:
 
 - a VM uses a VirtualBox shared folder
 - LAN computers use an ordinary Windows share
