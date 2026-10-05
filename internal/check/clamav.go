@@ -47,6 +47,7 @@ func EvaluateClamAV(version string, installed bool, service string, now time.Tim
 		defs.Have += " · build date unknown"
 	} else {
 		age := now.Sub(built)
+		defs.Dated = built
 		defs.Have += fmt.Sprintf(" · built on %s (%s)", built.Format("2 Jan 2006 15:04"), ageText(age))
 		defs.Status = Pass
 		if age > ClamAVMaxAge {

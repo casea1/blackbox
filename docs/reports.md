@@ -357,9 +357,16 @@ Object Access > Audit Removable Storage).
 The **Antivirus** column shows Microsoft Defender on each Windows system:
 the security intelligence (definitions) version, the date that version was
 created, and whether real-time protection is on. Definitions created more
-than 30 days ago, or protection turned off, show as a gap. The Systems page
-lists the version and its date for each system. It is read once a day with
-`Get-MpComputerStatus`.
+than 30 days ago, or protection turned off, show as a gap. It is read once
+a day with `Get-MpComputerStatus`.
+
+**Where to find the definitions date.** Audit health has an **Antivirus**
+table, one row per system, out-of-date ones first: the antivirus, the
+date its definitions were made, how old they are, the version, real-time
+protection (or the ClamAV service), and the result. The Overview's
+checklist has an **Antivirus definitions** line with the oldest date and
+any system that is out of date; each system's health list on the Systems
+page has its own date. All three link to the table (`#health/@av`).
 
 On Linux the same column shows **ClamAV**: the daily database version and
 when it was built (from `clamscan --version`), and whether its scanner
@@ -408,6 +415,17 @@ every event a detection points to, is always listed. All of them are in
 the original logs. Tables draw only the rows on screen, so a page with
 hundreds of thousands of events still scrolls smoothly.
 
-The folder of reports has an `index.html`: detections per week over the
-last twelve reports, and each report with its week, systems, events,
-detections and whether its audit trail is complete.
+The folder of reports has an `index.html`, **All reports**: detections per
+week over the last twelve reports, and each report with its period,
+systems, events, detections and whether its audit trail is complete. The
+newest is marked **Latest**; click a row to open it. In a report, the
+**All reports** button at the top of every page (and in the menu) opens
+it. The date range next to it only shows the report's period.
+
+**Clicking through.** The boxes at the top of each event page filter the
+table below them: for example **Accounts locked out** shows only the
+lockouts, **New devices** only the devices seen for the first time, and the
+first box shows everything again. Boxes about another page open it. On a
+person's page, each hour of **When they were active** can be clicked: a
+red hour shows only the detections in that hour; any other hour opens
+Search with that person's events in that hour of the week.

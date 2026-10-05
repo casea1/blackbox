@@ -550,7 +550,7 @@ func (r *Report) pageStats(p *EventPage, spec pageSpec, count map[string]int, us
 	if p.ID == "powershell" {
 		label = "Scripts logged"
 	}
-	total := EventCard{Icon: p.Icon, Label: label, Value: commas(p.Total), Note: r.normalRange(spec.metric)}
+	total := EventCard{Icon: p.Icon, Label: label, Value: commas(p.Total), Note: r.normalRange(spec.metric), Filter: "all"}
 	if spec.metric != "" && r.aboveNormal(spec.metric, p.Total) {
 		total.Level, total.Note = "warn", "above normal; "+total.Note
 	}
@@ -591,8 +591,8 @@ func (r *Report) pageStats(p *EventPage, spec pageSpec, count map[string]int, us
 		lockNote := r.normalRange(MLockouts)
 		return []EventCard{total,
 			{Icon: "triangle-alert", Label: "Password-guessing bursts", Href: "#detections", Value: commas(bursts), Note: short(who, 2), Level: level(bursts, "bad")},
-			{Icon: "lock", Label: "Accounts locked out", Value: commas(locked), Note: lockNote, Level: level(locked, "warn")},
-			{Icon: "server", Label: "Sources", Value: commas(len(sources)), Note: "addresses and consoles"}}
+			{Icon: "lock", Label: "Accounts locked out", Filter: cardFilter("kind", "Locked out"), Value: commas(locked), Note: lockNote, Level: level(locked, "warn")},
+			{Icon: "server", Label: "Sources", Href: searchLink("page", "failed", "sort", "src"), Value: commas(len(sources)), Note: "addresses and consoles"}}
 	case "privileged":
 		after, who := match(func(e *event.Event) bool { return r.outsideHours(e) })
 		admins, aw := 0, map[string]bool{}
@@ -614,8 +614,8 @@ func (r *Report) pageStats(p *EventPage, spec pageSpec, count map[string]int, us
 			nd[k] = true
 		}
 		return []EventCard{total,
-			{Icon: "usb", Label: "New devices", Value: commas(len(r.NewDevices)), Note: short(nd, 1), Level: level(len(r.NewDevices), "warn")},
-			{Icon: "hard-drive-download", Label: "Files copied to USB", Value: commas(files), Note: fmt.Sprintf("%d blocked", blocked), Level: level(files, "warn")},
+			{Icon: "usb", Label: "New devices", Filter: cardFilter("flag", "New device"), Value: commas(len(r.NewDevices)), Note: short(nd, 1), Level: level(len(r.NewDevices), "warn")},
+			{Icon: "hard-drive-download", Label: "Files copied to USB", Filter: cardFilter("kind", "Files copied|Blocked"), Value: commas(files), Note: fmt.Sprintf("%d blocked", blocked), Level: level(files, "warn")},
 			systems}
 	case "accounts":
 		created := count["Created"]
@@ -629,16 +629,16 @@ func (r *Report) pageStats(p *EventPage, spec pageSpec, count map[string]int, us
 		off := count["Disabled"]
 		return []EventCard{total,
 			{Icon: "user-plus", Label: "New admins", Href: searchLink("page", "accounts", "text", "privileged group"), Value: commas(added), Note: short(aw, 2), Level: level(added, "bad")},
-			{Icon: "user-check", Label: "Accounts created", Value: commas(created), Note: "", Level: level(created, "warn")},
-			{Icon: "user-x", Label: "Disabled or deleted", Value: commas(off), Note: ""}}
+			{Icon: "user-check", Label: "Accounts created", Filter: cardFilter("kind", "Created"), Value: commas(created), Note: "", Level: level(created, "warn")},
+			{Icon: "user-x", Label: "Disabled or deleted", Filter: cardFilter("kind", "Disabled"), Value: commas(off), Note: ""}}
 	case "integrity":
 		cleared, cw := match(func(e *event.Event) bool { return spec.kindOf(e) == "Log cleared" })
 		pol := count["Audit policy changed"]
 		stopped := count["Logging stopped"]
 		return []EventCard{
-			{Icon: "eraser", Label: "Logs cleared", Href: searchLink("page", "integrity", "text", "cleared"), Value: commas(cleared), Note: short(cw, 2), Level: level(cleared, "bad")},
-			{Icon: "settings", Label: "Audit policy changes", Value: commas(pol), Level: level(pol, "warn")},
-			{Icon: "circle-x", Label: "Logging stopped", Value: commas(stopped), Level: level(stopped, "warn")},
+			{Icon: "eraser", Label: "Logs cleared", Filter: cardFilter("kind", "Log cleared"), Value: commas(cleared), Note: short(cw, 2), Level: level(cleared, "bad")},
+			{Icon: "settings", Label: "Audit policy changes", Filter: cardFilter("kind", "Audit policy changed"), Value: commas(pol), Level: level(pol, "warn")},
+			{Icon: "circle-x", Label: "Logging stopped", Filter: cardFilter("kind", "Logging stopped"), Value: commas(stopped), Level: level(stopped, "warn")},
 			systems}
 	case "powershell":
 		sus := count["Suspicious"]
@@ -652,21 +652,21 @@ func (r *Report) pageStats(p *EventPage, spec pageSpec, count map[string]int, us
 			}
 		}
 		return []EventCard{total,
-			{Icon: "triangle-alert", Label: "Suspicious", Href: searchLink("page", "powershell", "text", "suspicious"), Value: commas(sus), Level: level(sus, "bad")},
+			{Icon: "triangle-alert", Label: "Suspicious", Filter: cardFilter("kind", "Suspicious"), Value: commas(sus), Level: level(sus, "bad")},
 			systems,
-			{Icon: "circle-x", Label: "Logging off", Value: commas(off), Note: "systems not logging scripts", Level: level(off, "warn")}}
+			{Icon: "circle-x", Label: "Logging off", Href: "#health", Value: commas(off), Note: "systems not logging scripts", Level: level(off, "warn")}}
 	case "other":
 		mal := count["Malware and antivirus"]
 		svc := count["Services and tasks"]
 		return []EventCard{total,
-			{Icon: "shield-alert", Label: "Malware and antivirus", Value: commas(mal), Level: level(mal, "bad")},
-			{Icon: "server-cog", Label: "New services and tasks", Value: commas(svc), Level: level(svc, "warn")},
+			{Icon: "shield-alert", Label: "Malware and antivirus", Filter: cardFilter("kind", "Malware and antivirus"), Value: commas(mal), Level: level(mal, "bad")},
+			{Icon: "server-cog", Label: "New services and tasks", Filter: cardFilter("kind", "Services and tasks"), Value: commas(svc), Level: level(svc, "warn")},
 			systems}
 	case "logons":
 		after, who := match(func(e *event.Event) bool { return r.outsideHours(e) })
 		remote := count["Remote Desktop"] + count["SSH"]
 		return []EventCard{total, people,
-			{Icon: "monitor-smartphone", Label: "Remote", Value: commas(remote), Note: "Remote Desktop and SSH"},
+			{Icon: "monitor-smartphone", Label: "Remote", Filter: cardFilter("kind", "Remote Desktop|SSH"), Value: commas(remote), Note: "Remote Desktop and SSH"},
 			{Icon: "moon", Label: "Outside working hours", Href: searchLink("page", "logons", "when", "@after"), Value: commas(after), Note: short(who, 2), Level: level(after, "warn")}}
 	}
 	return []EventCard{total, people, systems}

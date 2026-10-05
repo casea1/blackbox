@@ -99,6 +99,7 @@ type HealthPage struct {
 	Checked int
 	Other   []OtherRow // Security-log events Blackbox doesn't translate
 	Scap    []ScapRow  // STIG compliance from SCAP scans
+	AV      []AVRow    // antivirus definitions and protection, by system
 }
 
 // OtherRow is one Security-log event ID Blackbox has no translation for,
@@ -151,7 +152,7 @@ func (r *Report) healthPage() *HealthPage {
 			return nil
 		}
 	}
-	hp := &HealthPage{Cols: healthCols, Other: r.otherEvents(), Scap: r.scapTable}
+	hp := &HealthPage{Cols: healthCols, Other: r.otherEvents(), Scap: r.scapTable, AV: r.avRows()}
 	cleared := map[string][]*Row{}
 	for _, row := range r.rows {
 		if row.Action == "log_cleared" {
@@ -461,11 +462,11 @@ func (r *Report) healthPage() *HealthPage {
 		return ""
 	}
 	hp.Stats = []EventCard{
-		{Icon: "shield-check", Label: "Systems matching STIG", Value: fmt.Sprintf("%d / %d", matching, total),
+		{Icon: "shield-check", Label: "Systems matching STIG", Scroll: "h-matrix", Value: fmt.Sprintf("%d / %d", matching, total),
 			Note: plural(gaps, "gap") + " · " + plural(warns, "warning"), Level: lvl(matching < total, "bad")},
 		{Icon: "eraser", Label: "Logs cleared", Href: searchLink("page", "integrity", "text", "cleared"), Value: commas(clearedN), Note: short(set(clearedWho), 2), Level: lvl(clearedN > 0, "bad")},
-		{Icon: "circle-check", Label: "Events lost to rollover", Value: commas(int(totalLost)), Note: plural(r.Health.Runs, "run"), Level: lvl(totalLost > 0, "bad")},
-		{Icon: "hard-drive", Label: "Logs too small", Value: commas(small), Note: short(set(smallWho), 1), Level: lvl(small > 0, "warn")},
+		{Icon: "circle-check", Label: "Events lost to rollover", Scroll: "h-gaps", Value: commas(int(totalLost)), Note: plural(r.Health.Runs, "run"), Level: lvl(totalLost > 0, "bad")},
+		{Icon: "hard-drive", Label: "Logs too small", Scroll: "h-gaps", Value: commas(small), Note: short(set(smallWho), 1), Level: lvl(small > 0, "warn")},
 	}
 	return hp
 }

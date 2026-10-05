@@ -23,6 +23,11 @@ type EventCard struct {
 	Icon, Label, Value, Note string
 	Level                    string // "bad", "warn", "" or "zero"
 	Href                     string
+	// Filter, on an event page, filters the table below instead of going
+	// elsewhere: a query string of kind, sev, host, user, day, text or
+	// flag ("all" clears the filters). Scroll goes to an element on the
+	// same page.
+	Filter, Scroll string
 }
 
 // CheckLine is one line of a health checklist.
@@ -54,7 +59,8 @@ type DetectionCard struct {
 	Day                           string
 	Severity, Title, Detail, Host string
 	Time                          string
-	Index                         int // position in Findings, for links
+	Index                         int    // position in Findings, for links
+	Slots                         string // on a person's page: the weekday-hour slots (heatmap) it involved them
 }
 
 // SmallTrend is one of the Overview's twelve-week charts.
@@ -383,6 +389,9 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string]int) []CheckL
 		lines = append(lines, CheckLine{Level: "ok", Icon: "circle-check", Title: "No events lost to log rollover", What: fmt.Sprintf("%s collection runs", commas(r.Health.Runs)), Count: frac(0)})
 	}
 
+	if l, ok := r.avCheckLine(r.avRows()); ok {
+		lines = append(lines, l)
+	}
 	if l, ok := r.scapCheckLine(); ok {
 		lines = append(lines, l)
 	}

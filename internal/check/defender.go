@@ -90,6 +90,7 @@ func EvaluateDefender(jsonText string, err error, now time.Time) []Result {
 		defs.Have += " · creation date unknown"
 	default:
 		age := now.Sub(created)
+		defs.Dated = created
 		defs.Have += fmt.Sprintf(" · version created on %s (%s)", created.Local().Format("2 Jan 2006 15:04"), ageText(age))
 		defs.Status = Pass
 		if age > DefenderMaxAge {
