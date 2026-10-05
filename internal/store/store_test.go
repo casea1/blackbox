@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/casea1/blackbox/internal/event"
+	"github.com/casea1/blackbox/internal/inventory"
 )
 
 func TestSpoolAndState(t *testing.T) {
@@ -78,5 +79,25 @@ func TestWaitLock(t *testing.T) {
 	u()
 	if !waited {
 		t.Error("waiting callback was not called")
+	}
+}
+
+// The inventory read with a settings check is kept with it, and an older
+// record without one still reads.
+func TestCheckRecordInventory(t *testing.T) {
+	st, _ := Open(t.TempDir())
+	at := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	inv := &inventory.Inventory{Model: "OptiPlex 7090", Serial: "7XK2PQ3", Drives: []inventory.Drive{{Serial: "S5GX"}},
+		Accounts: []inventory.Account{{Name: "localadmin", ID: "…1001", Enabled: true, Admin: true}}}
+	if err := st.AppendChecks(&CheckRecord{Time: at, Host: "WS-07", Inventory: inv}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendChecks(&CheckRecord{Time: at, Host: "OLD-PC"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LatestChecks(time.Time{}, at.Add(time.Hour))
+	if err != nil || got["WS-07"] == nil || got["WS-07"].Inventory == nil || got["WS-07"].Inventory.Serial != "7XK2PQ3" ||
+		got["WS-07"].Inventory.Accounts[0].ID != "…1001" || got["OLD-PC"] == nil || got["OLD-PC"].Inventory != nil {
+		t.Errorf("latest checks: %+v", got)
 	}
 }

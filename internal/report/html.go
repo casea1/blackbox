@@ -38,6 +38,7 @@ type pageData struct {
 	HealthPage  *HealthPage
 	TrendsPage  *TrendsPage
 	LogsPage    *LogsPage
+	Inventory   *InventoryPage
 	Verify      Verification
 	Print       PrintOut
 	Meta        template.JS // settings for app.js, as JSON
@@ -362,14 +363,16 @@ func (r *Report) WriteHTML(w io.Writer, pages []*EventPage) error {
 		meta["firstPerson"] = pp.Groups[0].People[0].Key
 	}
 	health, overview := r.healthPage(), r.overview(pages)
+	inv := r.inventoryPage()
 	meta["detcsv"], meta["healthcsv"], meta["sums"] = r.detectionsCSV(), r.healthCSV(health), r.dataSums
+	meta["invcsv"] = r.inventoryCSV(inv)
 	b, err := json.Marshal(meta)
 	if err != nil {
 		return err
 	}
 	return t.ExecuteTemplate(w, "layout", pageData{Report: r, Pages: pages, Overview: overview,
 		Detections: r.detectionViews(), SystemsPage: r.systemsPage(), PeoplePage: people, HealthPage: health, TrendsPage: r.trendsPage(),
-		LogsPage: r.logsPage(), Verify: r.verification(), Print: r.printOut(overview, health), Meta: template.JS(b)})
+		LogsPage: r.logsPage(), Inventory: inv, Verify: r.verification(), Print: r.printOut(overview, health), Meta: template.JS(b)})
 }
 
 func zoneName(t time.Time, loc *time.Location) string {

@@ -90,7 +90,9 @@ func (a *App) reportRange(st *store.Store, from, to time.Time) (string, error) {
 	}
 	var sets []report.CheckSet
 	for _, c := range latest {
-		sets = append(sets, report.NewCheckSet(c.Host, c.Time, c.Results))
+		cs := report.NewCheckSet(c.Host, c.Time, c.Results)
+		cs.Inventory = c.Inventory
+		sets = append(sets, cs)
 	}
 	sort.Slice(sets, func(i, j int) bool { return strings.ToLower(sets[i].Host) < strings.ToLower(sets[j].Host) })
 

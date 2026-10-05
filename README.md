@@ -116,6 +116,7 @@ local folder or a file share). Its pages:
 | **People** | Every account that did something, grouped Needs a look / Administrators / Service accounts / Users, with when they were active (click an hour for its events or detections) and their activity over time |
 | **Event pages** | Privileged activity, USB & removable, Failed logons, Accounts & groups, Audit integrity, PowerShell, Other security and Logon activity: stat cards, events per day, top six, what was flagged, and every event of that kind, filterable, with the full original event one click away |
 | **Audit health** | Every system against every STIG audit check, the antivirus on each (Defender or ClamAV) with its definitions date, the gaps and where to fix them in Group Policy, and each system's settings (Blackbox only reports these; it never changes them) |
+| **Inventory** | Each system's make, model and serial number, its drives with their serial numbers, and its user accounts (last four digits of the SID), as a page and a CSV |
 | **Trends** | This week against the last twelve, detections per system by week, and privileged actions per person by week |
 | **Original logs** | The raw logs the report was made from, one zip per system, with hashes |
 

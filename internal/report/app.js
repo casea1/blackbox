@@ -144,7 +144,12 @@
     }
     var to = null;
     if (id === 'health' || id === 'logs') to = showHealth(view, decodeURIComponent(location.hash.split('/').slice(1).join('/')));
-    else if (view.querySelector('[data-pick]')) showPick(view, decodeURIComponent(location.hash.split('/').slice(1).join('/')));
+    else if (view.querySelector('[data-pick]')) {
+      var pk = decodeURIComponent(location.hash.split('/').slice(1).join('/'));
+      showPick(view, pk);
+      // Inventory: a system named in the link scrolls to its details.
+      if (id === 'inventory' && pk) to = view.querySelector('[data-pane]:not([hidden])');
+    }
     if (to) to.scrollIntoView();
     else window.scrollTo(0, 0);
   }
@@ -692,6 +697,7 @@
       var act = a.getAttribute('data-act');
       if (act === 'print') window.print();
       if (act === 'detcsv') save('detections' + (stamp ? '-' + stamp : '') + '.csv', meta.detcsv || '');
+      if (act === 'invcsv') save('inventory' + (stamp ? '-' + stamp : '') + '.csv', meta.invcsv || '');
       if (act === 'healthcsv') save('audit-health' + (stamp ? '-' + stamp : '') + '.csv', meta.healthcsv || '');
     });
   });

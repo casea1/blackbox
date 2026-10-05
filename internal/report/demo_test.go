@@ -9,12 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/casea1/blackbox/internal/check"
 	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/event"
+	"github.com/casea1/blackbox/internal/inventory"
 	"github.com/casea1/blackbox/internal/store"
 )
 
@@ -76,6 +78,7 @@ func TestDemoReport(t *testing.T) {
 		res := demoChecks(s.os, s.baseline, s.name)
 		cs := NewCheckSet(s.name, end.Add(-time.Hour), res)
 		cs.Baseline = s.baseline
+		cs.Inventory = demoInventory(s.name, s.os, len(checks), users)
 		checks = append(checks, cs)
 		n := 1500 + rnd.Intn(2500)
 		if s.silent {
@@ -271,4 +274,38 @@ func demoChecks(os, baseline, name string) []check.Result {
 	}
 	return append(res, check.Result{Area: "Audit service", Item: "auditd running", Want: "active", Have: "active", Status: check.Pass},
 		check.Result{Area: "auditd settings", Item: "Audit log space", Want: "a week", Have: "12 days", Status: check.Pass})
+}
+
+// demoInventory is a plausible inventory for a demo system.
+func demoInventory(name, osName string, i int, users []string) *inventory.Inventory {
+	inv := &inventory.Inventory{Memory: uint64(16+16*(i%2)) << 30}
+	server := strings.HasPrefix(name, "SRV") || strings.HasPrefix(name, "alma")
+	switch {
+	case strings.Contains(name, "VM") || strings.Contains(name, "vm"):
+		inv.Manufacturer, inv.Model, inv.Serial = "innotek GmbH", "VirtualBox", fmt.Sprintf("VirtualBox-%04x", 0x3a1f+i)
+	case server:
+		inv.Manufacturer, inv.Model, inv.Serial = "Dell Inc.", "PowerEdge R650", fmt.Sprintf("8%dQ2RT3", i)
+	default:
+		inv.Manufacturer, inv.Model, inv.Serial = "Dell Inc.", "OptiPlex 7090", fmt.Sprintf("7X%02dPQ3", i)
+	}
+	if osName == "windows" {
+		inv.OS, inv.CPU, inv.Domain = "Microsoft Windows 11 Enterprise 10.0.26100", "11th Gen Intel(R) Core(TM) i7-11700 @ 2.50GHz", "lab3.example.mil"
+		if server {
+			inv.OS = "Microsoft Windows Server 2025 Standard 10.0.26100"
+		}
+		inv.Drives = []inventory.Drive{{Model: "Samsung SSD 980 PRO 1TB", Serial: fmt.Sprintf("S5GXNX0T%06dA", 100000+i*731), Size: 1000202273280, Interface: "SCSI", Media: "SSD"}}
+		inv.Accounts = []inventory.Account{{Name: "Administrator", ID: "…500", Admin: true, Kind: "Local"}, {Name: "localadmin", ID: "…1001", Enabled: true, Admin: true, Kind: "Local"}}
+		for j, u := range users[i%3 : i%3+3] {
+			inv.Accounts = append(inv.Accounts, inventory.Account{Name: `LAB3\` + u, ID: fmt.Sprintf("…%d", 1104+j*37), Enabled: true, Admin: u == "admin_jd", Kind: "Domain (profile)"})
+		}
+	} else {
+		inv.OS, inv.CPU = "Ubuntu 24.04.1 LTS", "Intel(R) Core(TM) i5-1145G7 @ 2.60GHz"
+		if strings.HasPrefix(name, "alma") {
+			inv.OS = "AlmaLinux 8.10 (Cerulean Leopard)"
+		}
+		inv.Drives = []inventory.Drive{{Model: "SAMSUNG MZVL2512HCJQ", Serial: fmt.Sprintf("S64KNX0R%06d", 700000+i*13), Size: 512110190592, Interface: "NVMe", Media: "SSD"}}
+		inv.Accounts = []inventory.Account{{Name: "root", ID: "uid 0", Enabled: true, Admin: true, Kind: "Local", Note: "password locked"},
+			{Name: users[i%len(users)], ID: "uid 1000", Enabled: true, Admin: true, Kind: "Local"}}
+	}
+	return inv
 }
