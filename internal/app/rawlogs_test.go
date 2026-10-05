@@ -29,7 +29,11 @@ func auditFixture(t *testing.T, base string, times ...time.Time) string {
 	t.Cleanup(func(a string, s, au []string) func() {
 		return func() { collect.AuditLog, collect.SystemLogs, collect.AuthLogs = a, s, au }
 	}(collect.AuditLog, collect.SystemLogs, collect.AuthLogs))
-	collect.AuditLog, collect.SystemLogs, collect.AuthLogs = audit, []string{filepath.Join(base, "none")}, nil
+	// An empty system log, so the export never falls back to this
+	// machine's own systemd journal.
+	syslog := filepath.Join(base, "syslog")
+	os.WriteFile(syslog, nil, 0o644)
+	collect.AuditLog, collect.SystemLogs, collect.AuthLogs = audit, []string{syslog}, nil
 	writeAudit(t, audit, times...)
 	return audit
 }
