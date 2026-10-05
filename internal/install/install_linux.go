@@ -105,7 +105,9 @@ func Uninstall(logf func(string, ...any)) error {
 	}
 	recordRemoval(logf)
 	exec.Command("systemctl", "disable", "--now", "blackbox.timer").Run()
-	exec.Command("systemctl", "disable", "blackbox-shutdown.service").Run()
+	if _, err := os.Stat(shutdownFile); err == nil {
+		removeShutdownUnit(shutdownFile)
+	}
 	for _, f := range []string{timerFile, serviceFile, shutdownFile, sendFile} {
 		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
 			return err
@@ -159,8 +161,7 @@ func writeUnits(exe string, cfg *config.Config) error {
 	}
 	if cfg.SendTo == "" {
 		if _, err := os.Stat(shutdownFile); err == nil {
-			exec.Command("systemctl", "disable", "--now", "blackbox-shutdown.service").Run()
-			os.Remove(shutdownFile)
+			removeShutdownUnit(shutdownFile)
 		}
 		return nil
 	}
@@ -172,6 +173,20 @@ func writeUnits(exe string, cfg *config.Config) error {
 		return fmt.Errorf("enable blackbox-shutdown.service: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// systemctl runs systemctl, ignoring failures (tests replace it).
+var systemctl = func(args ...string) { exec.Command("systemctl", args...).Run() }
+
+// removeShutdownUnit removes the unit that sends before shutdown, when a
+// sender no longer sends (S15). Stopping it runs its send, which fails
+// once send_to is gone, so systemd would keep it as "not-found failed":
+// its failed state is cleared once the file is removed.
+func removeShutdownUnit(path string) {
+	systemctl("disable", "--now", "blackbox-shutdown.service")
+	os.Remove(path)
+	systemctl("daemon-reload")
+	systemctl("reset-failed", "blackbox-shutdown.service")
 }
 
 // separateSend reports whether delivery runs in its own unit: for a

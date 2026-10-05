@@ -274,6 +274,7 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 
 	sort.SliceStable(events, func(i, j int) bool { return events[i].Time.Before(events[j].Time) })
 	formerNames(events, opt.Systems)
+	formerRuns(runs, opt.Systems)
 	events = r.exclude(events)
 	events = sshAttempts(events)
 	unknownNames(events)

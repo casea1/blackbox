@@ -3,6 +3,8 @@
 package install
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -58,5 +60,23 @@ func TestLinuxLANUnits(t *testing.T) {
 	}
 	if strings.Contains(sd, "TimeoutStartSec") {
 		t.Error("the shutdown unit must not carry the collection run's start timeout")
+	}
+}
+
+// S15: a sender that stops sending removes its shutdown unit and clears
+// its failed state, so systemctl --failed does not list it.
+func TestShutdownUnitRemoved(t *testing.T) {
+	var calls []string
+	defer func(f func(...string)) { systemctl = f }(systemctl)
+	systemctl = func(args ...string) { calls = append(calls, strings.Join(args, " ")) }
+	unit := filepath.Join(t.TempDir(), "blackbox-shutdown.service")
+	os.WriteFile(unit, []byte("[Unit]\n"), 0o644)
+	removeShutdownUnit(unit)
+	if _, err := os.Stat(unit); err == nil {
+		t.Error("unit file left")
+	}
+	want := "disable --now blackbox-shutdown.service|daemon-reload|reset-failed blackbox-shutdown.service"
+	if got := strings.Join(calls, "|"); got != want {
+		t.Errorf("systemctl calls: %s", got)
 	}
 }

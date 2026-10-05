@@ -92,6 +92,10 @@ type State struct {
 	// the last scheduled report, which lists them (A9).
 	RemovedReports []string `json:"removed_reports,omitempty"`
 
+	// OwnNames are the names this computer has collected under, so a
+	// renamed computer's earlier data is known to be its own (W1b).
+	OwnNames []string `json:"own_names,omitempty"`
+
 	// ScapSent are the SCAP result files (by SHA-256) a sender has queued
 	// for its collector, so each goes once.
 	ScapSent map[string]time.Time `json:"scap_sent,omitempty"`

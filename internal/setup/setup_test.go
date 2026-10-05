@@ -1,9 +1,15 @@
 package setup
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/casea1/blackbox/internal/app"
+	"github.com/casea1/blackbox/internal/store"
 )
 
 // S1: the reports folder exists after setup, even when no report is made
@@ -18,5 +24,27 @@ func TestEnsureDir(t *testing.T) {
 	}
 	if err := ensureDir(d); err != nil {
 		t.Errorf("an existing folder: %v", err)
+	}
+}
+
+// S14: setup run while the scheduled run holds the lock is not a
+// connection problem.
+func TestSentLinesBusy(t *testing.T) {
+	busy := fmt.Errorf("%w (lock file x)", store.ErrBusy)
+	got := strings.Join(sentLines(app.SendResult{}, busy, `\\C\inbox`), "\n")
+	if !strings.Contains(got, "A collection was already running, so this computer's events go to the collector at the next run") || strings.Contains(got, "could not be reached") {
+		t.Errorf("busy: %s", got)
+	}
+	got = strings.Join(sentLines(app.SendResult{Waiting: 2}, errors.New("no inbox"), `\\C\inbox`), "\n")
+	if !strings.Contains(got, "could not be reached yet: no inbox") || !strings.Contains(got, "2 batches waiting") {
+		t.Errorf("unreachable: %s", got)
+	}
+}
+
+// AR3: setup says when a final report was made before sending.
+func TestSentLinesFinalReport(t *testing.T) {
+	got := strings.Join(sentLines(app.SendResult{FinalReport: "/r/2026-10-05_final", Delivered: 1}, nil, "x"), "\n")
+	if !strings.Contains(got, "Its final report") || !strings.Contains(got, "/r/2026-10-05_final") || !strings.Contains(got, "Sent 1 batch to x") {
+		t.Errorf("%s", got)
 	}
 }

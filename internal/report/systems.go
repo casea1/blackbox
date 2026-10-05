@@ -22,6 +22,7 @@ type SystemInfo struct {
 	FirstSeen    time.Time
 	LastRun      time.Time
 	LastReceived time.Time
+	Former       []string // names it had before (W1b)
 }
 
 // CheckSet is the latest audit settings check of one computer.
