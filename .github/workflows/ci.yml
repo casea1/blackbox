@@ -90,6 +90,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "could not create the test account" }
           ./blackbox.exe install --yes --site CI --report-dir $r1 --inbox C:\BlackboxInbox --share-inbox --inbox-writer bbsend --no-first-report
           if ($LASTEXITCODE -ne 0) { throw "install failed" }
+          # The collection task's trigger starts in the past (T1), so Windows
+          # runs it once as soon as it is registered, and that run makes the
+          # first report in the old folder. Let it finish, then start from no
+          # data (settings kept), so the run below is due to make the first
+          # report, in the new folder.
+          $deadline = (Get-Date).AddSeconds(90)
+          do {
+            Start-Sleep 3
+            $ti = Get-ScheduledTaskInfo -TaskName "Blackbox Audit Collection"
+            $st = (Get-ScheduledTask -TaskName "Blackbox Audit Collection").State
+          } until (($ti.LastRunTime -gt (Get-Date).AddMinutes(-10) -and $st -ne "Running") -or (Get-Date) -gt $deadline)
+          Write-Host "First run at registration: $($ti.LastRunTime) ($st)"
+          Get-ChildItem C:\ProgramData\Blackbox -Exclude blackbox.conf | Remove-Item -Recurse -Force
+          Get-ChildItem $r1 -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
           if (-not (Test-Path C:\BlackboxInbox\BLACKBOX-INBOX.txt)) { throw "inbox not prepared" }
           net share BlackboxInbox | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "inbox not shared" }
