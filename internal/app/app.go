@@ -319,17 +319,28 @@ func (a *App) bundleLogs(end time.Time) (refs []report.ArchiveRef, used []string
 }
 
 // open opens the data folder and takes the lock.
-func (a *App) open() (*store.Store, func(), error) {
+func (a *App) open() (*store.Store, func(), error) { return a.openWait(0) }
+
+// openWait is open, waiting up to wait for a run in progress to finish.
+// A scheduled run and a send started next to each other (the timer and
+// blackbox-send.service, or the task and setup) then follow one another
+// instead of the second failing; each run now also exports the original
+// logs, so runs take longer.
+func (a *App) openWait(wait time.Duration) (*store.Store, func(), error) {
 	st, err := store.Open(a.Cfg.DataDir)
 	if err != nil {
 		return nil, nil, err
 	}
-	unlock, err := st.Lock()
+	unlock, err := st.WaitLock(wait, func() { a.logf("waiting for the run in progress to finish") })
 	if err != nil {
 		return nil, nil, err
 	}
 	return st, unlock, nil
 }
+
+// runWait and sendWait are how long a scheduled run, and a send, wait
+// for a run in progress.
+var runWait, sendWait = 10 * time.Minute, 2 * time.Minute
 
 // gather does what every run does before reporting: collect this
 // system's logs, check its audit settings (daily, or now if force), and
@@ -571,7 +582,7 @@ func sentText(r SendResult) string {
 // collector), then send to the collector or produce a report if one is
 // due. It returns the report folder ("" if none).
 func (a *App) Scheduled() (string, error) {
-	st, unlock, err := a.open()
+	st, unlock, err := a.openWait(runWait)
 	if err != nil {
 		return "", err
 	}
@@ -613,7 +624,7 @@ func (a *App) SendNow() (SendResult, error) {
 	if a.Cfg.SendTo == "" {
 		return SendResult{}, fmt.Errorf("this computer is not set to send to a collector (send_to is empty)")
 	}
-	st, unlock, err := a.open()
+	st, unlock, err := a.openWait(sendWait)
 	if err != nil {
 		return SendResult{}, err
 	}
