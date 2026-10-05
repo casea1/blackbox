@@ -132,10 +132,16 @@ func listOutbox(st *store.Store, ext string) ([]string, error) {
 // not connected, or not a Blackbox inbox.
 var ErrNoInbox = errors.New("collector inbox not available")
 
+// SentDir is where delivered batches are kept for keep_sent_days, so they
+// can be sent again (L11). It is inside the data folder: root/SYSTEM only,
+// and watched like the rest of it.
+func SentDir(st *store.Store) string { return filepath.Join(OutboxDir(st), "sent") }
+
 // Deliver copies waiting batches, oldest first, into the collector's inbox
-// and removes each from the outbox once it is safely there. It stops at the
-// first failure; what is left is retried at the next run.
-func Deliver(st *store.Store, inbox, host string) (int, error) {
+// and removes each from the outbox once it is safely there, or moves it to
+// SentDir when keep is set. It stops at the first failure; what is left is
+// retried at the next run.
+func Deliver(st *store.Store, inbox, host string, keep bool) (int, error) {
 	if !IsInbox(inbox) {
 		return 0, fmt.Errorf("%w: %s (is the shared folder connected or mounted? on the collector, the folder must be set as its inbox)", ErrNoInbox, inbox)
 	}
@@ -154,12 +160,112 @@ func Deliver(st *store.Store, inbox, host string) (int, error) {
 		if err := copyInto(src, inbox, final); err != nil {
 			return sent, fmt.Errorf("copy batch %d to %s: %w", seq, inbox, err)
 		}
-		if err := os.Remove(src); err != nil {
+		if err := retire(st, src, name, keep); err != nil {
 			return sent, err
 		}
 		sent++
 	}
 	return sent, nil
+}
+
+// retire removes a delivered batch from the outbox, or keeps it in SentDir,
+// dated now so PruneSent counts its days from delivery.
+func retire(st *store.Store, src, name string, keep bool) error {
+	if !keep {
+		return os.Remove(src)
+	}
+	if err := os.MkdirAll(SentDir(st), 0o750); err != nil {
+		return err
+	}
+	dst := filepath.Join(SentDir(st), name)
+	if err := os.Rename(src, dst); err != nil {
+		return err
+	}
+	now := time.Now()
+	return os.Chtimes(dst, now, now)
+}
+
+// PruneSent removes kept batches delivered more than days ago; with days
+// 0, all of them. Undelivered batches are never touched.
+func PruneSent(st *store.Store, days int, now time.Time) (int, error) {
+	entries, err := os.ReadDir(SentDir(st))
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	cutoff := now.AddDate(0, 0, -days)
+	removed := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), batchExt) {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil || (days > 0 && fi.ModTime().After(cutoff)) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(SentDir(st), e.Name())); err != nil {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
+}
+
+// Kept lists the sequence numbers of the batches kept after delivery,
+// lowest first.
+func Kept(st *store.Store) []uint64 {
+	entries, _ := os.ReadDir(SentDir(st))
+	var out []uint64
+	for _, e := range entries {
+		if n, err := strconv.ParseUint(strings.TrimSuffix(e.Name(), batchExt), 10, 64); err == nil && strings.HasSuffix(e.Name(), batchExt) {
+			out = append(out, n)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// ParseRange reads "214-219" or "214".
+func ParseRange(s string) (from, to uint64, err error) {
+	a, b, found := strings.Cut(strings.TrimSpace(s), "-")
+	from, err = strconv.ParseUint(strings.TrimSpace(a), 10, 64)
+	to = from
+	if err == nil && found {
+		to, err = strconv.ParseUint(strings.TrimSpace(b), 10, 64)
+	}
+	if err != nil || from == 0 || to < from {
+		return 0, 0, fmt.Errorf("%q is not a batch range: give the numbers the collector reports, like 214-219 or 214", s)
+	}
+	return from, to, nil
+}
+
+// Resend copies the kept batches from..to into the collector's inbox
+// again (L11). The collector imports those that fill a gap and ignores
+// the rest. It returns the batches sent and those no longer kept.
+func Resend(st *store.Store, inbox, host string, from, to uint64) (sent []uint64, missing []uint64, err error) {
+	if !IsInbox(inbox) {
+		return nil, nil, fmt.Errorf("%w: %s", ErrNoInbox, inbox)
+	}
+	if st.State.Send == nil {
+		return nil, nil, errors.New("this computer has not sent any batches yet")
+	}
+	for seq := from; seq <= to; seq++ {
+		src := filepath.Join(SentDir(st), outboxName(seq))
+		if _, err := os.Stat(src); err != nil {
+			// Still waiting in the outbox goes with the next delivery.
+			if _, werr := os.Stat(filepath.Join(OutboxDir(st), outboxName(seq))); werr != nil {
+				missing = append(missing, seq)
+			}
+			continue
+		}
+		if err := copyInto(src, inbox, InboxName(host, st.State.Send.ID, seq)); err != nil {
+			return sent, missing, fmt.Errorf("copy batch %d to %s: %w", seq, inbox, err)
+		}
+		sent = append(sent, seq)
+	}
+	return sent, missing, nil
 }
 
 // Archives are zips of the original logs (see package archive), queued in

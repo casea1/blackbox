@@ -115,6 +115,10 @@ func (a *App) Status(w io.Writer) error {
 			}
 			p("Waiting to send:", "%d batch%s%s", waiting, es(waiting), oldest)
 		}
+		if kept := lan.Kept(st); len(kept) > 0 {
+			p("Kept after delivery:", "%d batch%s (%d to %d), for %d days; if the collector reports some missing: %s",
+				len(kept), es(len(kept)), kept[0], kept[len(kept)-1], a.Cfg.KeepSentDays, ResendCommand(kept[0], kept[len(kept)-1]))
+		}
 		if !since.IsZero() && now.Sub(since) > SendStaleAfter {
 			attention = append(attention, "data has waited more than a day to be sent")
 			p("NOT SENT:", "data has been waiting to be sent for %s. It is kept here, never deleted; check that the collector can be reached (see Last attempt), then run: blackbox send", ago(now.Sub(since)))
@@ -150,8 +154,15 @@ func (a *App) Status(w io.Writer) error {
 		if runtime.GOOS == "windows" && install.InboxShared() {
 			if open, err := share.SMBAllowedIn(); err == nil && !open {
 				attention = append(attention, "the firewall blocks delivery")
-				p("FIREWALL:", "Windows Firewall does not allow file sharing (SMB, TCP 445) in: other computers cannot deliver. "+
-					"To allow it: Enable-NetFirewallRule -DisplayGroup \"File and Printer Sharing\" (or a rule for the senders' addresses only).")
+				for i, l := range share.FirewallAdvice(share.SMBPort) {
+					p(map[bool]string{true: "FIREWALL:"}[i == 0], "%s", l)
+				}
+			}
+			if installed, open, err := share.SSHAllowedIn(); err == nil && installed && !open {
+				attention = append(attention, "the firewall blocks SFTP delivery")
+				for i, l := range share.FirewallAdvice(share.SSHPort) {
+					p(map[bool]string{true: "FIREWALL:"}[i == 0], "%s", l)
+				}
 			}
 		}
 		bad := lan.Unreadable(a.Cfg.Inbox)
@@ -242,7 +253,8 @@ func (a *App) writeSystems(w io.Writer, st *store.Store, now time.Time) {
 	}
 	for _, snd := range st.State.Senders {
 		for _, g := range snd.Missing {
-			fmt.Fprintf(w, "  Missing: batches %d-%d from %s never arrived (noticed %s)\n", g.From, g.To, snd.Host, stampLocal(g.Noted, a.loc()))
+			fmt.Fprintf(w, "  Missing: batches %d-%d from %s never arrived (noticed %s). To send them again, run on %s: %s\n",
+				g.From, g.To, snd.Host, stampLocal(g.Noted, a.loc()), snd.Host, ResendCommand(g.From, g.To))
 		}
 	}
 }

@@ -82,7 +82,7 @@ func TestLANEndToEnd(t *testing.T) {
 	if _, err := lan.Export(vm, "ubu-ws12", "test", end.Add(-2*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := lan.Deliver(vm, inbox, "ubu-ws12"); err != nil {
+	if _, err := lan.Deliver(vm, inbox, "ubu-ws12", false); err != nil {
 		t.Fatal(err)
 	}
 	a.Now = func() time.Time { return end.Add(time.Hour) }
@@ -296,4 +296,52 @@ func pendingLogs(t *testing.T, a *App, host string, to time.Time) string {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// L11: "blackbox send --resend" copies kept batches again and records
+// that it did, like a setting change; the collector's warning names the
+// command.
+func TestResendIsRecorded(t *testing.T) {
+	base := t.TempDir()
+	inbox := filepath.Join(base, "inbox")
+	if err := lan.PrepareInbox(inbox, "COLLECTOR"); err != nil {
+		t.Fatal(err)
+	}
+	ws, _ := store.Open(filepath.Join(base, "ws"))
+	at := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	ws.AppendEvents(at, []*event.Event{{Time: at, Collected: at, Host: "WS-01", Category: event.CatLogon, Severity: event.SevInfo, Action: "logon", Summary: "logon"}})
+	ws.Save()
+	a := &App{Cfg: &config.Config{DataDir: ws.Dir, SendTo: inbox, KeepSentDays: 14}, Version: "test", Loc: time.UTC, QuietSend: true}
+	a.Now = func() time.Time { return at }
+	var recorded []event.SelfChange
+	a.RecordSelf = func(dir string, c event.SelfChange, now time.Time) error {
+		recorded = append(recorded, c)
+		return nil
+	}
+	if r := a.send(ws); r.Err != nil || r.Delivered != 1 {
+		t.Fatalf("send: %+v", r)
+	}
+	if k := lan.Kept(ws); len(k) != 1 {
+		t.Fatalf("not kept after delivery: %v", k)
+	}
+	r, err := a.Resend(1, 2)
+	if err != nil || len(r.Sent) != 1 || len(r.Missing) != 1 {
+		t.Fatalf("resend: %+v %v", r, err)
+	}
+	if len(recorded) != 1 || recorded[0].Kind != "resent" || recorded[0].New != "1" || recorded[0].Old != inbox {
+		t.Errorf("not recorded: %+v", recorded)
+	}
+
+	col, _ := store.Open(filepath.Join(base, "col"))
+	col.State.Senders = map[string]*store.SenderState{"x": {Host: "WS-01", Missing: []store.SeqGap{{From: 214, To: 219, Noted: at}}}}
+	w := lanWarnings(col, at.Add(-time.Hour), at.Add(time.Hour), time.UTC)
+	if len(w) != 1 || !strings.Contains(w[0], "run on WS-01: blackbox send --resend 214-219") {
+		t.Errorf("gap warning: %v", w)
+	}
+}
+
+func TestSeqRange(t *testing.T) {
+	if got := seqRange([]uint64{214, 215, 216, 219}); got != "214-216,219" {
+		t.Errorf("got %q", got)
+	}
 }

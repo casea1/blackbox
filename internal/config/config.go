@@ -37,6 +37,10 @@ type Config struct {
 	SendTo    string
 	Inbox     string
 	ShareUser string // account for the SendTo share, when one is needed
+	// KeepSentDays is how long a sender keeps batches after delivering
+	// them, so "blackbox send --resend" can fill a gap the collector
+	// reports (L11). 0 = not kept.
+	KeepSentDays int
 
 	// SCAP scan results to show with the report (docs/design.md 13a):
 	// ScapResults is the folder to read ("" = scap in the data folder,
@@ -56,6 +60,7 @@ func Default() *Config {
 		DataDir:        DefaultDataDir(),
 		CollectEvery:   15 * time.Minute, // C6: an hour lets a busy STIG-audited Security log roll over
 		ScapMaxAgeDays: 30,
+		KeepSentDays:   14,
 	}
 }
 
@@ -222,6 +227,12 @@ func (c *Config) set(k, v string) error {
 			return fmt.Errorf("scap_max_age_days must be a positive number of days")
 		}
 		c.ScapMaxAgeDays = n
+	case "keep_sent_days":
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return fmt.Errorf("keep_sent_days must be 0 or a positive number of days")
+		}
+		c.KeepSentDays = n
 	case "send_to":
 		c.SendTo = v
 	case "inbox":
@@ -340,7 +351,7 @@ func RawValues(path string) map[string]string {
 }
 
 // Settable lists the settings `blackbox config set` may change.
-var Settable = []string{"site_name", "report_every", "report_at", "report_dir", "retention_days", "exclude_users", "exclude_processes", "working_hours", "send_to", "inbox", "share_user", "scap_results", "scap_max_age_days"}
+var Settable = []string{"site_name", "report_every", "report_at", "report_dir", "retention_days", "exclude_users", "exclude_processes", "working_hours", "send_to", "inbox", "share_user", "keep_sent_days", "scap_results", "scap_max_age_days"}
 
 // SetValue changes one user-settable setting in the config file (see
 // Settable), keeping its comments and line endings.
@@ -500,6 +511,11 @@ collect_every = {{COLLECT_EVERY}}
 send_to = {{SEND_TO}}
 share_user = {{SHARE_USER}}
 inbox = {{INBOX}}
+
+# Days a sender keeps batches after delivering them, so they can be sent
+# again with "blackbox send --resend FROM-TO" if the collector reports a
+# gap. 0 = delete them once delivered.
+keep_sent_days = 14
 
 # Days to keep reports and collected events. 0 = keep forever.
 retention_days = 0

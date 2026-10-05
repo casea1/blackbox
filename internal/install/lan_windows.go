@@ -99,9 +99,10 @@ func prepareInbox(opt Options, logf func(string, ...any)) error {
 		logf("Network share:       \\\\%s\\%s (members of %q may deliver; encrypted; no offline copies)", host, ShareName, SendersGroup)
 		// The firewall is reported, never changed (N2).
 		if open, err := share.SMBAllowedIn(); err == nil && !open {
-			logf("FIREWALL:            Windows Firewall does not allow file sharing (SMB, TCP 445) in, so other computers can NOT deliver yet.")
-			logf("                     To allow it (an administrator's decision; Blackbox does not change the firewall):")
-			logf("                     Enable-NetFirewallRule -DisplayGroup \"File and Printer Sharing\" (or a rule limited to the senders' addresses).")
+			firewallAdvice(logf, share.SMBPort)
+		}
+		if installed, open, err := share.SSHAllowedIn(); err == nil && installed && !open {
+			firewallAdvice(logf, share.SSHPort)
 		}
 	case shared:
 		hidden.Command("net.exe", "share", ShareName, "/delete", "/y").Run()
@@ -175,3 +176,14 @@ func readPassword(r *bufio.Reader) (string, error) {
 
 // InboxShared reports whether the collector's inbox is shared on the network.
 func InboxShared() bool { return hidden.Command("net.exe", "share", ShareName).Run() == nil }
+
+// firewallAdvice prints share.FirewallAdvice in setup's layout.
+func firewallAdvice(logf func(string, ...any), port int) {
+	for i, l := range share.FirewallAdvice(port) {
+		label := ""
+		if i == 0 {
+			label = "FIREWALL:"
+		}
+		logf("%-20s %s", label, l)
+	}
+}

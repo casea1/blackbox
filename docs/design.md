@@ -340,6 +340,7 @@ blackbox run                  # generate a report now (the scheduler runs this)
 blackbox check                # check the audit configuration against the STIG baseline
 blackbox status               # role, last collection, what is waiting to be sent or imported
 blackbox send                 # collect and send to the collector now (e.g. before a VM shuts down)
+blackbox send --resend 214-219  # send kept batches again to fill a gap the collector reports
 blackbox systems              # the computers a collector reports on (remove NAME to retire one)
 blackbox verify <report-dir>  # check the SHA-256 manifest
 blackbox uninstall            # remove the task/timer; reports are kept
@@ -497,7 +498,10 @@ third-party scanner from a SYSTEM task needs its own security review.
 
 ## 13b. Proposals for the owner (v0.10.4 re-test)
 
-*Written 5 Oct 2026. Not implemented; each needs the owner's decision.*
+*Written 5 Oct 2026. Decided 5 Oct 2026: L11 approved and implemented in
+0.12.0 as below. `send --resend` is self-recorded like a setting change,
+and kept copies have the outbox's protection. N2 not approved: setup and
+`status` print the rule instead (see docs/lan.md).*
 
 **L11: keep delivered batches so a sender can resend them.** Today a
 sender deletes a batch from its outbox once it is copied into the inbox.
@@ -526,6 +530,10 @@ file sharing from these addresses only", creating one inbound rule for
 TCP 445 limited to the senders' addresses and the Private/Domain
 profiles, and removing it on uninstall. Recommended only if sites ask.
 Otherwise the documented command stays the way to do it.
+**Not approved:** setup must not open the firewall. When SMB (or, for an
+SFTP collector, the OpenSSH server on TCP 22) is blocked, setup and
+`status` print the exact `New-NetFirewallRule` command for that one rule
+and the Group Policy path to create it.
 
 ## 14. M1 implementation status
 

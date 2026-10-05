@@ -66,7 +66,8 @@ type SelfChange struct {
 	Old     string
 	New     string
 	Version string // the version installed (install and upgrade)
-	Kind    string // "setting", "installed", "upgraded", "removed"
+	Kind    string // "setting", "installed", "upgraded", "removed", "resent"
+	// For "resent": the batches (New, "214-219") and where to (Old).
 }
 
 // selfHigh are the settings whose change can hide events or evidence.
@@ -86,6 +87,8 @@ func (c SelfChange) Message() string {
 		return fmt.Sprintf("Blackbox was upgraded from %s to %s by %s (%s).", orUnknownVersion(c.Old), c.Version, who, c.Program)
 	case "removed":
 		return fmt.Sprintf("Blackbox was removed by %s (%s).", who, c.Program)
+	case "resent":
+		return fmt.Sprintf("Blackbox batches %s were sent again to %s by %s (%s).", c.New, c.Old, who, c.Program)
 	}
 	return fmt.Sprintf("Blackbox setting %s changed from %q to %q by %s (%s).", c.Setting, c.Old, c.New, who, c.Program)
 }
@@ -102,6 +105,7 @@ var (
 	selfInstallRE = regexp.MustCompile(`^Blackbox (\S+) was installed by (.+) \(([^()]+)\)\.$`)
 	selfUpgradeRE = regexp.MustCompile(`^Blackbox was upgraded from (.+) to (\S+) by (.+) \(([^()]+)\)\.$`)
 	selfRemoveRE  = regexp.MustCompile(`^Blackbox was removed by (.+) \(([^()]+)\)\.$`)
+	selfResendRE  = regexp.MustCompile(`^Blackbox batches (\S+) were sent again to (.+) by (.+) \(([^()]+)\)\.$`)
 )
 
 // ParseSelfChange reads a Message back, as found in the operating system's log.
@@ -127,6 +131,9 @@ func ParseSelfChange(msg string) (SelfChange, bool) {
 	}
 	if m := selfRemoveRE.FindStringSubmatch(msg); m != nil {
 		return SelfChange{Kind: "removed", Who: m[1], Program: m[2]}, true
+	}
+	if m := selfResendRE.FindStringSubmatch(msg); m != nil {
+		return SelfChange{Kind: "resent", New: m[1], Old: m[2], Who: m[3], Program: m[4]}, true
 	}
 	return SelfChange{}, false
 }
@@ -154,6 +161,14 @@ func (c SelfChange) Event() *Event {
 	case "removed":
 		e.Action, e.Severity = "blackbox_uninstalled", SevHigh
 		e.Summary = fmt.Sprintf("%s removed Blackbox (%s).", who, c.Program)
+	case "resent":
+		// L11: recorded like a setting change. Resending only fills a gap
+		// on the collector, but it is a person moving audit data.
+		e.Action, e.Severity = "blackbox_batches_resent", SevMedium
+		e.Summary = fmt.Sprintf("%s sent Blackbox batches %s to the collector again (%s).", who, c.New, c.Old)
+		e.Target = c.Old
+		e.AddDetail("Batches", c.New)
+		e.AddDetail("Sent to", c.Old)
 	default:
 		e.Action, e.Severity = "blackbox_config_changed", SevMedium
 		if selfHigh[c.Setting] {

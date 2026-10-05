@@ -141,16 +141,29 @@ func Destination(cfg *config.Config) (string, error) {
 	return cfg.SendTo, Connect(cfg.SendTo, cfg.ShareUser, pw)
 }
 
-// smbInQuery says whether an enabled inbound firewall rule allows TCP 445
-// (Windows file sharing).
-const smbInQuery = `$r = Get-NetFirewallPortFilter -Protocol TCP -ErrorAction SilentlyContinue | Where-Object { @($_.LocalPort) -contains '445' } | Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' }; if ($r) { 'open' } else { 'closed' }`
+// portInQuery says whether an enabled inbound firewall rule allows the TCP
+// port: 445 for Windows file sharing, 22 for the OpenSSH server.
+const portInQuery = `$r = Get-NetFirewallPortFilter -Protocol TCP -ErrorAction SilentlyContinue | Where-Object { @($_.LocalPort) -contains '%d' } | Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' }; if ($r) { 'open' } else { 'closed' }`
 
 // SMBAllowedIn reports whether Windows Firewall lets other computers reach
 // this computer's file shares (N2). Server 2025 ships "File and Printer
 // Sharing (SMB-In)" turned off. Blackbox only reports it; it never changes
 // the firewall.
-func SMBAllowedIn() (bool, error) {
-	out, err := hidden.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", smbInQuery).Output()
+func SMBAllowedIn() (bool, error) { return portAllowedIn(SMBPort) }
+
+// SSHAllowedIn is the same for the OpenSSH server (SFTP senders), and
+// false with no error when no OpenSSH server is installed: then nothing
+// is to be said about it.
+func SSHAllowedIn() (installed, open bool, err error) {
+	if hidden.Command("sc.exe", "query", "sshd").Run() != nil {
+		return false, false, nil
+	}
+	open, err = portAllowedIn(SSHPort)
+	return true, open, err
+}
+
+func portAllowedIn(port int) (bool, error) {
+	out, err := hidden.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", fmt.Sprintf(portInQuery, port)).Output()
 	if err != nil {
 		return false, err
 	}

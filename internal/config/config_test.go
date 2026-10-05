@@ -195,6 +195,7 @@ func TestEverySettingRoundTrips(t *testing.T) {
 		{"share_user", "bbsend", func(c *Config) string { return c.ShareUser }},
 		{"scap_results", abs("SCC #1"), func(c *Config) string { return c.ScapResults }},
 		{"scap_max_age_days", "45", func(c *Config) string { return strconv.Itoa(c.ScapMaxAgeDays) }},
+		{"keep_sent_days", "30", func(c *Config) string { return strconv.Itoa(c.KeepSentDays) }},
 	}
 	seen := map[string]bool{}
 	for _, tc := range cases {
