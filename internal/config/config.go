@@ -27,6 +27,7 @@ type Config struct {
 	ExcludeProcesses []string // program names/paths to leave out
 	DataDir          string   // state and collected events
 	ReportDir        string   // where reports go ("" = DataDir/reports)
+	ArchiveDir       string   // where original logs wait for the next report ("" = DataDir/archives)
 	CollectEvery     time.Duration
 	WorkingHours     WorkingHours // when administrator activity is expected
 
@@ -82,6 +83,16 @@ func (c *Config) ReportsDir() string {
 		return c.ReportDir
 	}
 	return filepath.Join(c.DataDir, "reports")
+}
+
+// ArchivesDir is where the original logs (see package archive) wait until
+// the next scheduled report moves them into its folder: this computer's
+// and, on a collector, every sender's.
+func (c *Config) ArchivesDir() string {
+	if c.ArchiveDir != "" {
+		return c.ArchiveDir
+	}
+	return filepath.Join(c.DataDir, "archives")
 }
 
 // DefaultDataDir is where state and collected events live (and reports,
@@ -219,6 +230,8 @@ func (c *Config) set(k, v string) error {
 		}
 	case "report_dir":
 		c.ReportDir = v
+	case "archive_dir":
+		c.ArchiveDir = v
 	case "scap_results":
 		c.ScapResults = v
 	case "scap_max_age_days":
@@ -262,6 +275,9 @@ func (c *Config) Validate() error {
 	}
 	if c.ReportDir != "" && !IsAbs(c.ReportDir) {
 		return fmt.Errorf("report_dir must be a full path, e.g. %s (got %q)", exampleDir(), c.ReportDir)
+	}
+	if c.ArchiveDir != "" && !IsAbs(c.ArchiveDir) {
+		return fmt.Errorf("archive_dir must be a full path, e.g. %s (got %q)", exampleDir(), c.ArchiveDir)
 	}
 	if c.Inbox != "" && !IsAbs(c.Inbox) {
 		return fmt.Errorf("inbox must be a full path, e.g. %s (got %q)", exampleInbox(), c.Inbox)
@@ -351,7 +367,7 @@ func RawValues(path string) map[string]string {
 }
 
 // Settable lists the settings `blackbox config set` may change.
-var Settable = []string{"site_name", "report_every", "report_at", "report_dir", "retention_days", "exclude_users", "exclude_processes", "working_hours", "send_to", "inbox", "share_user", "keep_sent_days", "scap_results", "scap_max_age_days"}
+var Settable = []string{"site_name", "report_every", "report_at", "report_dir", "archive_dir", "retention_days", "exclude_users", "exclude_processes", "working_hours", "send_to", "inbox", "share_user", "keep_sent_days", "scap_results", "scap_max_age_days"}
 
 // SetValue changes one user-settable setting in the config file (see
 // Settable), keeping its comments and line endings.
@@ -457,7 +473,8 @@ var keyIntro = func() map[string][]string {
 		return out
 	}
 	lan := block("# LAN:")
-	return map[string][]string{"send_to": lan, "inbox": lan, "share_user": lan, "report_at": block("# When each report period")}
+	return map[string][]string{"send_to": lan, "inbox": lan, "share_user": lan, "report_at": block("# When each report period"),
+		"archive_dir": block("# Folder where the original logs")}
 }()
 
 // Template is the commented config written by `blackbox install`.
@@ -489,8 +506,16 @@ report_at = {{REPORT_AT}}
 # Existing reports stay where they are.
 report_dir = {{REPORT_DIR}}
 
+# Folder where the original logs (Windows .evtx, Linux audit and system
+# logs) of this computer and, on a collector, of every sender wait until
+# the next scheduled report moves them into its folder. Allow a few MB a
+# day per computer. Leave blank for the archives folder in the data folder.
+# To move it later, run (as administrator/root):
+#   blackbox config set archive_dir <folder>
+archive_dir =
+
 # How often events are collected (the scheduled task/timer). To change it,
-# run the installer again; it offers the current settings as defaults.
+# run: blackbox config set collect_every 15m (or the installer again).
 collect_every = {{COLLECT_EVERY}}
 
 # LAN: sending to, or collecting from, other computers. See docs/lan.md.

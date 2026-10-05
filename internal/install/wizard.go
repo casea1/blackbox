@@ -28,6 +28,7 @@ type Answers struct {
 	ReportEvery  string          // daily | weekly | monthly
 	ReportAt     config.ReportAt // when each report period ends
 	ReportDir    string          // "" = the default reports folder
+	ArchiveDir   string          // "" = the archives folder in the data folder
 	CollectEvery time.Duration   // how often the schedule runs
 
 	SendTo        string // collector inbox (sender)
@@ -189,6 +190,9 @@ func (w *wizard) run(cur Answers, defaultReports string, reinstall bool) (Answer
 		if err := w.askReports(&a, defaultReports); err != nil {
 			return a, err
 		}
+		if err := w.askArchiveDir(&a); err != nil {
+			return a, err
+		}
 	}
 	if a.Role == RoleCollector {
 		if err := w.askInbox(&a); err != nil {
@@ -321,6 +325,39 @@ func (w *wizard) askReports(a *Answers, defaultReports string) error {
 		}
 		if ok {
 			a.ReportDir = s
+			return nil
+		}
+	}
+}
+
+// askArchiveDir asks where the original logs wait for the next report.
+func (w *wizard) askArchiveDir(a *Answers) error {
+	w.question(QArchiveDir)
+	w.note(NoteArchive)
+	def := DefaultArchiveDir()
+	for {
+		show := a.ArchiveDir
+		if show == "" {
+			show = def
+		}
+		s, err := w.ask(show)
+		if err != nil {
+			return err
+		}
+		if s == def {
+			a.ArchiveDir = ""
+			return nil
+		}
+		if err := ReportDirError(s); err != nil {
+			w.note(err.Error())
+			continue
+		}
+		ok, err := w.checkFolder(s, "Create it (administrators only)?")
+		if err != nil {
+			return err
+		}
+		if ok {
+			a.ArchiveDir = s
 			return nil
 		}
 	}

@@ -210,7 +210,7 @@ func Current() (a install.Answers, defaultReports string, reinstall bool, err er
 		return a, "", false, fmt.Errorf("%w\n(fix or remove the file, then run setup again)", err)
 	}
 	_, statErr := os.Stat(config.DefaultPath())
-	a = install.Answers{Site: cur.SiteName, ReportEvery: cur.ReportEvery, ReportAt: cur.ReportAt, ReportDir: cur.ReportDir,
+	a = install.Answers{Site: cur.SiteName, ReportEvery: cur.ReportEvery, ReportAt: cur.ReportAt, ReportDir: cur.ReportDir, ArchiveDir: cur.ArchiveDir,
 		CollectEvery: cur.CollectEvery, SendTo: cur.SendTo, ShareUser: cur.ShareUser, Inbox: cur.Inbox,
 		ShareInbox: install.InboxShared(), Tray: install.TrayWanted()}
 	return a, filepath.Join(config.DefaultDataDir(), "reports"), statErr == nil, nil

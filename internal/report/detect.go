@@ -48,7 +48,7 @@ func setupAction(r *Row) bool {
 
 // deliverySettings are the settings setup changes to send to or receive
 // from other computers, or to say where reports go.
-var deliverySettings = map[string]bool{"inbox": true, "send_to": true, "share_user": true, "report_dir": true, "scap_results": true}
+var deliverySettings = map[string]bool{"inbox": true, "send_to": true, "share_user": true, "report_dir": true, "archive_dir": true, "scap_results": true}
 
 // tamperAction hides activity: logs cleared or altered, auditing or
 // anti-malware stopped or changed, by a person. Changes the system makes

@@ -66,6 +66,11 @@ func Install(opt Options) error {
 			return err
 		}
 	}
+	if opt.ArchiveDir != "" {
+		if err := PrepareArchiveDir(opt.ArchiveDir, logf); err != nil {
+			return err
+		}
+	}
 
 	// Config: created, or updated with these settings on a re-install.
 	cfgPath := config.DefaultPath()
@@ -212,7 +217,7 @@ func shutdownFor(exe string, cfg *config.Config) string {
 // may write to. The collector's folder is not one of them (L8): the run
 // unit does not deliver to it.
 func unitPaths(cfg *config.Config) (mount string, writable []string) {
-	writable = []string{cfg.DataDir, cfg.ReportsDir()}
+	writable = []string{cfg.DataDir, cfg.ReportsDir(), cfg.ArchivesDir()}
 	if config.IsShare(cfg.SendTo) {
 		mount = mountUnitName() // mounted inside the data folder
 	}

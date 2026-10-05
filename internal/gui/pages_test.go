@@ -11,8 +11,8 @@ import (
 // The window asks what the console asks, in the same order.
 func TestPagesFor(t *testing.T) {
 	for role, want := range map[string][]page{
-		install.RoleStandalone: {pWelcome, pRole, pReports, pCollect, pSummary, pInstall},
-		install.RoleCollector:  {pWelcome, pRole, pReports, pInbox, pCollect, pSummary, pInstall},
+		install.RoleStandalone: {pWelcome, pRole, pReports, pArchive, pCollect, pSummary, pInstall},
+		install.RoleCollector:  {pWelcome, pRole, pReports, pArchive, pInbox, pCollect, pSummary, pInstall},
 		install.RoleSender:     {pWelcome, pRole, pSendTo, pCollect, pSummary, pInstall},
 	} {
 		if got := pagesFor(role); !reflect.DeepEqual(got, want) {

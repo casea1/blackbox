@@ -262,3 +262,33 @@ func TestOriginalLogsAfterClockMovedBack(t *testing.T) {
 		t.Error("the Original logs page does not explain the clock change")
 	}
 }
+
+// With archive_dir set (a larger volume), the exports and the archives
+// waiting for the next report go there; those already waiting in the data
+// folder still go into the next report.
+func TestArchiveDirElsewhere(t *testing.T) {
+	base := t.TempDir()
+	day := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	auditFixture(t, base, day.Add(11*time.Hour), day.Add(11*time.Hour+30*time.Minute))
+	st, _ := store.Open(filepath.Join(base, "data"))
+	now := day.Add(12 * time.Hour)
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportEvery: "weekly", CollectEvery: 15 * time.Minute}, Loc: time.UTC,
+		Now: func() time.Time { return now }, LogStates: func() []archive.LogState { return nil }}
+	// Waiting from before archive_dir was set.
+	pendingLogs(t, a, "OLD-HOST", now.Add(-time.Hour))
+
+	a.Cfg.ArchiveDir = filepath.Join(base, "bigdisk", "logs")
+	a.saveLogPiece(st, auditRun(now, 2, 0, day.Add(11*time.Hour)), time.Time{})
+	if p, _ := archive.Pieces(filepath.Join(a.Cfg.ArchiveDir, ".exports")); len(p) != 1 {
+		t.Fatalf("exports not in archive_dir: %d", len(p))
+	}
+	a.packLogs(st, true)
+	list, _ := archive.List(a.Cfg.ArchiveDir)
+	if len(list) != 1 || list[0].Host != archive.SafeName(collect.LocalHost()) {
+		t.Fatalf("archives in archive_dir: %+v", list)
+	}
+	refs, used := a.bundleLogs(now)
+	if len(refs) != 2 || len(used) != 2 {
+		t.Errorf("bundled %d archives (%d used), want this computer's and the one left in the data folder", len(refs), len(used))
+	}
+}

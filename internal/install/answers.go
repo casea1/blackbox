@@ -2,6 +2,7 @@ package install
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ const (
 	QAtWeekly   = "Which day and time should each weekly report be ready?"
 	QAt         = "At what time should each report be ready?"
 	QReportDir  = "Where should reports be saved?"
+	QArchiveDir = "Where should the original logs wait for the next report?"
 	QInbox      = "Which folder should other computers deliver their events to (this computer's inbox)?"
 	QInboxReach = "How will the other computers reach this inbox?"
 	QSendTo     = "Where is the collector's inbox?"
@@ -28,6 +30,7 @@ const (
 
 	NoteAtWeekly = "The week ends then. \"Wednesday 00:00\" covers the week up to Tuesday night,\nso auditors have a fresh report on Wednesday morning."
 	NoteReport   = "Use a folder you have locked down if you like; Blackbox only needs to write to it."
+	NoteArchive  = "The raw logs (.evtx, audit logs) of this computer and every sender are kept here until each scheduled report moves them into its folder. Allow a few MB a day per computer; choose a larger drive for many computers."
 	NoteInbox    = "Blackbox imports what arrives there every time it collects."
 	NoteKeep     = "Use it anyway? The data waits here until the collector can be reached."
 )
@@ -178,6 +181,11 @@ func Summary(a Answers, defaultReports string, windows bool) []SummaryLine {
 		l = append(l, SummaryLine{"Site name", orNone(a.Site)},
 			SummaryLine{"Reports", a.ReportAt.Describe(a.ReportEvery)},
 			SummaryLine{"Saved in", dir})
+		logs := a.ArchiveDir
+		if logs == "" {
+			logs = DefaultArchiveDir()
+		}
+		l = append(l, SummaryLine{"Original logs", logs})
 	}
 	if a.Inbox != "" {
 		extra := ""
@@ -212,3 +220,7 @@ func SplitList(s string) []string {
 	}
 	return out
 }
+
+// DefaultArchiveDir is where the original logs wait when archive_dir is
+// not set: the archives folder in the data folder.
+func DefaultArchiveDir() string { return filepath.Join(config.DefaultDataDir(), "archives") }

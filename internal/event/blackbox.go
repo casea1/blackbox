@@ -72,7 +72,7 @@ type SelfChange struct {
 
 // selfHigh are the settings whose change can hide events or evidence.
 var selfHigh = map[string]bool{"exclude_users": true, "exclude_processes": true, "retention_days": true,
-	"send_to": true, "scap_results": true, "report_dir": true, "inbox": true}
+	"send_to": true, "scap_results": true, "report_dir": true, "archive_dir": true, "inbox": true}
 
 // Message is the sentence written to the operating system's log; ParseSelfChange reads it back.
 func (c SelfChange) Message() string {
