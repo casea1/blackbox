@@ -306,8 +306,11 @@ A sender keeps everything until the collector has it.
     the mount's own words, for example "nothing is mounted there; share
     bbsend@COLLECTOR:/C:/BlackboxInbox; last mount error: ssh: connect
     to host COLLECTOR port 22: No route to host".
-  - After 24 hours, status says **NOT SENT**, and `blackbox status` exits
-    with code 4, so monitoring can notice. It does the same when the data
+  - When deliveries keep failing, status says "sending has failed since"
+    the first failure.
+  - After 24 hours of data waiting, or of every delivery failing, status
+    says **NOT SENT**, and `blackbox status` exits with code 4, so
+    monitoring can notice. It does the same when the data
     folder's disk has less than 1 GB or 5% free.
 - **Sending now.** When the collector is back, the next scheduled run
   sends everything, oldest first. To send at once, run `blackbox send` as

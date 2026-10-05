@@ -107,6 +107,9 @@ func (a *App) Status(w io.Writer) error {
 		case snd == nil:
 			p("Sent:", "nothing yet (sends after the next collection)")
 		case snd.LastError != "":
+			if !snd.FailingSince.IsZero() {
+				p("SENDING FAILED:", "sending has failed since %s (%s), at every attempt", stampLocal(snd.FailingSince, a.loc()), ago(now.Sub(snd.FailingSince)))
+			}
 			p("Last attempt:", "%s — FAILED: %s", stampLocal(snd.LastAttempt, a.loc()), snd.LastError)
 			p("Waiting to send:", "%d batch%s%s (kept safely here; sent when the collector can be reached, or now with: blackbox send)", waiting, es(waiting), oldest)
 		default:
@@ -119,9 +122,14 @@ func (a *App) Status(w io.Writer) error {
 			p("Kept after delivery:", "%d batch%s (%d to %d), for %d days; if the collector reports some missing: %s",
 				len(kept), es(len(kept)), kept[0], kept[len(kept)-1], a.Cfg.KeepSentDays, ResendCommand(kept[0], kept[len(kept)-1]))
 		}
-		if !since.IsZero() && now.Sub(since) > SendStaleAfter {
+		switch snd := s.Send; {
+		case !since.IsZero() && now.Sub(since) > SendStaleAfter:
 			attention = append(attention, "data has waited more than a day to be sent")
 			p("NOT SENT:", "data has been waiting to be sent for %s. It is kept here, never deleted; check that the collector can be reached (see Last attempt), then run: blackbox send", ago(now.Sub(since)))
+		case snd != nil && snd.LastError != "" && !snd.FailingSince.IsZero() && now.Sub(snd.FailingSince) > SendStaleAfter:
+			// Failing for a day even with nothing new to send (L12).
+			attention = append(attention, "sending has failed for more than a day")
+			p("NOT SENT:", "sending has failed since %s. Check that the collector can be reached (see Last attempt), then run: blackbox send", stampLocal(snd.FailingSince, a.loc()))
 		}
 	}
 	if low := lowSpace(a.Cfg.DataDir); low != "" {

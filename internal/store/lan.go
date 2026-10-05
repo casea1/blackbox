@@ -21,6 +21,9 @@ type SendState struct {
 	LastAttempt   time.Time `json:"last_attempt,omitzero"`
 	LastDelivered time.Time `json:"last_delivered,omitzero"`
 	LastError     string    `json:"last_error,omitempty"`
+	// FailingSince is the first of the deliveries failing in a row, zero
+	// once one succeeds (L12).
+	FailingSince time.Time `json:"failing_since,omitzero"`
 
 	// ID identifies this sender's stream of batches. It is created once and
 	// never changes, so the collector can tell a re-installed or renamed
