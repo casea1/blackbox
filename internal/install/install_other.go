@@ -78,3 +78,5 @@ func VirtualBoxInstalled() bool { return false }
 // RefreshSchedule has nothing to do here: systemd timers follow the clock
 // when it changes (T1).
 func RefreshSchedule(time.Duration) error { return nil }
+
+func applySchedule(time.Duration) error { return nil }

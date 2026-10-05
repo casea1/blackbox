@@ -275,6 +275,27 @@ func InstalledVersion() string { return "" }
 // VirtualBoxInstalled is only asked on Windows (the collector's host).
 func VirtualBoxInstalled() bool { return false }
 
+// applySchedule rewrites blackbox.timer for a new interval, if installed.
+func applySchedule(every time.Duration) error {
+	if _, err := os.Stat(timerFile); err != nil {
+		return nil
+	}
+	timer, err := systemdTimer(every)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(timerFile, []byte(timer), 0o644); err != nil {
+		return err
+	}
+	if out, err := exec.Command("systemctl", "daemon-reload").CombinedOutput(); err != nil {
+		return fmt.Errorf("systemctl daemon-reload: %v: %s", err, strings.TrimSpace(string(out)))
+	}
+	if out, err := exec.Command("systemctl", "restart", "blackbox.timer").CombinedOutput(); err != nil {
+		return fmt.Errorf("systemctl restart blackbox.timer: %v: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 // RefreshSchedule has nothing to do here: systemd timers follow the clock
 // when it changes (T1).
 func RefreshSchedule(time.Duration) error { return nil }

@@ -193,6 +193,9 @@ func (r *Report) systemsPage() *SystemsPage {
 		last := "—"
 		if !s.LastRun.IsZero() {
 			last = s.LastRun.In(r.Location).Format("2 Jan 15:04")
+			if s.LastRunAhead {
+				last += " (clock was ahead)"
+			}
 		}
 		v.Facts = []Fact{
 			{Label: "Events", Value: commas(s.Events), Href: searchLink("host", s.Name)},

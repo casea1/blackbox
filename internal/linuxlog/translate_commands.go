@@ -134,6 +134,22 @@ func (t *Translator) motdPID(r *Record) bool {
 	return true
 }
 
+// inLoginMessage says whether a process (by its ID, or its parent's) is
+// part of the login message scripts seen in the last few minutes, so what
+// it does (an AppArmor denial, a file change) is folded into their row
+// (U4c).
+func (t *Translator) inLoginMessage(host, pid, ppid string, at time.Time) bool {
+	for _, p := range []string{pid, ppid} {
+		if p == "" {
+			continue
+		}
+		if seen, ok := t.motdPIDs[host+"|"+p]; ok && at.Sub(seen) <= 5*time.Minute {
+			return true
+		}
+	}
+	return false
+}
+
 // endStartup marks a session's own scripts finished: the session has
 // started, or the person ran sudo or su.
 func (t *Translator) endStartup(host, ses string) {

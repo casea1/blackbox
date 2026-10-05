@@ -265,8 +265,8 @@ func notices(m trayMemory, h app.Health, v trayView, version string, now time.Ti
 		period := h.PeriodStart.String()
 		if m.Lost != period && !first {
 			l := h.Lost[0]
-			text := fmt.Sprintf("Events are being lost: the %s log on %s overwrote %s events before they could be collected. Collect every 15 minutes, or make the log larger.",
-				l.Channel, l.Host, commaNum(l.Count))
+			text := fmt.Sprintf("Events are being lost: the %s log on %s overwrote %s events before they could be collected. Collect every 15 minutes (blackbox config set collect_every 15m on %s), or make the log larger.",
+				l.Channel, l.Host, commaNum(l.Count), l.Host)
 			if len(h.Lost) > 1 {
 				text += fmt.Sprintf(" (%s in all.)", plural(len(h.Lost), "log"))
 			}

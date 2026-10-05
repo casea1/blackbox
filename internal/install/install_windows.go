@@ -265,6 +265,9 @@ func registerTask(exe, data string, every time.Duration) error {
 // RefreshSchedule registers the collection task again, so its next run
 // follows the clock as it is now (T1). A run calls it when it finds the
 // clock was moved back. Nothing is done if Blackbox is not installed.
+// applySchedule registers the collection task again with a new interval.
+func applySchedule(every time.Duration) error { return RefreshSchedule(every) }
+
 func RefreshSchedule(every time.Duration) error {
 	if _, err := os.Stat(ProgramPath()); err != nil {
 		return nil

@@ -154,3 +154,54 @@ func TestClockBackReschedules(t *testing.T) {
 		t.Errorf("after the change: %d calls, %+v", calls, st.State.ClockBack)
 	}
 }
+
+// T3b: an interim report has everything collected so far, even events
+// stamped a little after the moment it is made (here, after a clock
+// correction, the log clear collected at 06:44:14 was stamped 06:45:06,
+// and the interim report ran at 06:44:44).
+func TestInterimHasEverythingCollected(t *testing.T) {
+	base := t.TempDir()
+	st, _ := store.Open(filepath.Join(base, "data"))
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportDir: filepath.Join(base, "reports"), ReportEvery: "daily", ReportAt: config.DefaultReportAt},
+		Version: "test", Loc: time.UTC}
+	collected := time.Date(2026, 10, 5, 6, 44, 14, 0, time.UTC)
+	st.AppendEvents(collected, []*event.Event{{Time: collected.Add(52 * time.Second), Collected: collected, Host: "WIN11-TEST", OS: "windows",
+		Category: event.CatIntegrity, Severity: event.SevHigh, Action: "log_cleared", User: "claude", Summary: "The Security log was cleared by claude."}})
+	st.State.ReportedTo = map[string]int64{} // the positional chain, as on a live install
+	st.State.LastWindowEnd = collected.Add(-time.Hour)
+	st.State.LastGenerated = collected.Add(-time.Hour)
+	a.Now = func() time.Time { return collected.Add(30 * time.Second) }
+	dir, err := a.report(st, a.now(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum := summaryOf(t, dir); sum.LogClears != 1 {
+		t.Errorf("interim report: %d log clears, want the one collected before it", sum.LogClears)
+	}
+}
+
+// T1b: after the clock was moved back, the latest collection is the one
+// made since, not the one recorded by the fast clock; a time still in the
+// future is marked.
+func TestLastCollectionAfterClockBack(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	fast := time.Date(2026, 10, 6, 0, 2, 0, 0, time.UTC)
+	back := time.Date(2026, 10, 5, 6, 44, 0, 0, time.UTC)
+	st.NoteSystem("WIN11-TEST", "windows", "test", "", fast, time.Time{}, fast)
+	st.NoteSystem("WIN11-TEST", "windows", "test", "", back, time.Time{}, back)
+	if got := st.State.Systems["WIN11-TEST"].LastRun; !got.Equal(back) {
+		t.Errorf("last collection %v, want %v", got, back)
+	}
+
+	// Only a fast-clock collection known: the report marks it.
+	runs := []*store.Run{{Time: fast, Host: "WIN11-TEST", OS: "windows"}}
+	r := report.Build(nil, runs, report.Options{WindowStart: back.Add(-time.Hour), WindowEnd: back, Generated: back, Location: time.UTC})
+	if len(r.SystemRows) != 1 || !r.SystemRows[0].LastRunAhead {
+		t.Fatalf("systems: %+v", r.SystemRows)
+	}
+	runs = append(runs, &store.Run{Time: back.Add(-time.Minute), Host: "WIN11-TEST", OS: "windows"})
+	r = report.Build(nil, runs, report.Options{WindowStart: back.Add(-time.Hour), WindowEnd: back, Generated: back, Location: time.UTC})
+	if s := r.SystemRows[0]; s.LastRunAhead || !s.LastRun.Equal(back.Add(-time.Minute)) {
+		t.Errorf("latest collection %v (ahead %v), want the one after the clock change", s.LastRun, s.LastRunAhead)
+	}
+}

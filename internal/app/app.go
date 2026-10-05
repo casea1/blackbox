@@ -389,6 +389,9 @@ func noteOwnName(st *store.Store, host, osName string) {
 	st.State.OwnNames = append(st.State.OwnNames, host)
 }
 
+// farFuture is a period end no event time reaches.
+var farFuture = time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+
 // clockSlack is how far a stored time may be ahead of the clock before the
 // clock counts as moved back (or an event as recorded with a clock ahead).
 const clockSlack = 5 * time.Minute
@@ -487,6 +490,10 @@ func (a *App) receive(st *store.Store) {
 	}
 	if res.Batches > 0 {
 		a.logf("received %d batch%s (%d records) from other systems", res.Batches, map[bool]string{true: "es"}[res.Batches != 1], res.Records)
+	}
+	if res.Already > 0 {
+		// L11b: a batch sent again that was not missing.
+		a.logf("%d batch%s already imported (sent again); nothing new in %s", res.Already, map[bool]string{true: "es"}[res.Already != 1], map[bool]string{true: "them", false: "it"}[res.Already != 1])
 	}
 	if res.Scap > 0 {
 		a.logf("received %d SCAP scan result(s) from other systems", res.Scap)
@@ -853,11 +860,18 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 	if err != nil {
 		return "", err
 	}
+	// An interim report shows everything collected so far, whatever its
+	// time says (T3b): after a clock correction, events can be stamped a
+	// little after the moment the report is made.
+	selEnd := end
+	if !advance {
+		selEnd = farFuture
+	}
 	var events []*event.Event
 	if positional {
-		events = SelectByCollection(all, prevEnd, prevGen, end, generated)
+		events = SelectByCollection(all, prevEnd, prevGen, selEnd, generated)
 	} else {
-		events = SelectWindow(all, prevEnd, prevGen, end, generated)
+		events = SelectWindow(all, prevEnd, prevGen, selEnd, generated)
 	}
 	// Never a period that starts after it ends (T3): after the clock was
 	// moved back, the previous period ended in what is now the future.

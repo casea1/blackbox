@@ -46,6 +46,10 @@ func setupAction(r *Row) bool {
 	return false
 }
 
+// deliverySettings are the settings setup changes to send to or receive
+// from other computers, or to say where reports go.
+var deliverySettings = map[string]bool{"inbox": true, "send_to": true, "share_user": true, "report_dir": true, "scap_results": true}
+
 // tamperAction hides activity: logs cleared or altered, auditing or
 // anti-malware stopped or changed, by a person. Changes the system makes
 // itself (Group Policy refreshes, rules loaded at boot) do not count.
@@ -61,6 +65,12 @@ func tamperAction(r *Row) bool {
 	case "blackbox_stopped", "blackbox_uninstalled", "blackbox_files_removed", "blackbox_files_changed", "object_audit_changed":
 		return person(r.User)
 	case "blackbox_config_changed":
+		// Blackbox's own record of setting up delivery (A17b): creating
+		// the delivery account and then running setup is how a collector
+		// or sender is set up, not someone hiding what they did.
+		if r.Fields[event.SelfFlag] != "" && deliverySettings[r.Fields["setting"]] {
+			return false
+		}
 		return person(r.User) && r.Severity == event.SevHigh
 	case "audit_stopped":
 		return r.Severity == event.SevHigh // stopped by a person, not at shutdown

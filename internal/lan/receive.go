@@ -58,6 +58,7 @@ those events; the collector notices the gap and reports it.
 type ImportResult struct {
 	Batches  int
 	Records  int
+	Already  int      // batches delivered again that were already imported (L11b)
 	Archives int      // log archives filed
 	Scap     int      // SCAP scan results filed
 	Rejected []string // files that could not be used, and why
@@ -148,12 +149,16 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 			res.Rejected = append(res.Rejected, reject(inbox, it.name, err.Error()))
 			continue
 		}
-		n, err := importBatch(st, b, now)
+		n, dup, err := importBatch(st, b, now)
 		if err != nil {
 			return res, fmt.Errorf("import %s: %w", it.name, err)
 		}
 		if err := os.Remove(path); err != nil {
 			logf("imported %s but could not remove it: %v (it will be skipped as a duplicate)", it.name, err)
+		}
+		if dup {
+			res.Already++
+			continue
 		}
 		res.Batches++
 		res.Records += n
@@ -246,7 +251,7 @@ func Unreadable(inbox string) []string {
 }
 
 // importBatch appends one verified batch to the spool.
-func importBatch(st *store.Store, b *Batch, now time.Time) (int, error) {
+func importBatch(st *store.Store, b *Batch, now time.Time) (int, bool, error) {
 	snd := st.State.Senders[b.SenderID]
 	if snd == nil {
 		snd = &store.SenderState{Host: b.Sender, FirstSeen: now}
@@ -270,7 +275,7 @@ func importBatch(st *store.Store, b *Batch, now time.Time) (int, error) {
 	}
 	late := b.Seq <= snd.LastSeq
 	if late && !inGap(snd.Missing, b.Seq) {
-		return 0, nil // already imported (delivered twice)
+		return 0, true, nil // already imported (delivered twice)
 	}
 
 	// Received events count as collected now: that is when they became
@@ -280,7 +285,7 @@ func importBatch(st *store.Store, b *Batch, now time.Time) (int, error) {
 	for _, raw := range b.Events {
 		var e event.Event
 		if err := json.Unmarshal(raw, &e); err != nil {
-			return 0, fmt.Errorf("event: %w", err)
+			return 0, false, fmt.Errorf("event: %w", err)
 		}
 		if e.Host == "" {
 			e.Host = b.Sender
@@ -289,7 +294,7 @@ func importBatch(st *store.Store, b *Batch, now time.Time) (int, error) {
 		e.Late = false
 		out, err := marshal(&e)
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
 		events = append(events, out)
 	}
@@ -298,7 +303,7 @@ func importBatch(st *store.Store, b *Batch, now time.Time) (int, error) {
 	for _, raw := range b.Runs {
 		var r store.Run
 		if err := json.Unmarshal(raw, &r); err != nil {
-			return 0, fmt.Errorf("run: %w", err)
+			return 0, false, fmt.Errorf("run: %w", err)
 		}
 		if r.Host == "" {
 			r.Host = b.Sender
@@ -308,7 +313,7 @@ func importBatch(st *store.Store, b *Batch, now time.Time) (int, error) {
 		}
 		out, err := marshal(&r)
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
 		runs = append(runs, out)
 		runList = append(runList, r)
@@ -317,7 +322,7 @@ func importBatch(st *store.Store, b *Batch, now time.Time) (int, error) {
 	for _, raw := range b.Checks {
 		var c store.CheckRecord
 		if err := json.Unmarshal(raw, &c); err != nil {
-			return 0, fmt.Errorf("checks: %w", err)
+			return 0, false, fmt.Errorf("checks: %w", err)
 		}
 		checks = append(checks, raw)
 	}
@@ -332,11 +337,11 @@ func importBatch(st *store.Store, b *Batch, now time.Time) (int, error) {
 	}
 	sort.Strings(names)
 	if err := st.BeginImport(names); err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	for _, n := range names {
 		if err := st.AppendRaw(n, files[n]); err != nil {
-			return 0, err
+			return 0, false, err
 		}
 	}
 
@@ -372,9 +377,9 @@ func importBatch(st *store.Store, b *Batch, now time.Time) (int, error) {
 	// not a separate computer that has gone silent.
 	st.EndImport()
 	if err := st.Save(); err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	return b.Records(), nil
+	return b.Records(), false, nil
 }
 
 // dropBelow removes the missing batches numbered below first.

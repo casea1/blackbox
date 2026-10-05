@@ -56,6 +56,10 @@ type SystemRow struct {
 	resets   []time.Time          // runs that found a log cleared or recreated
 	holds    map[string]time.Time // oldest event still in each log, at the last run
 	holdsAt  time.Time
+	// lastAhead is the latest collection recorded by a clock that was
+	// ahead (T1b); LastRunAhead says LastRun is one.
+	lastAhead    time.Time
+	LastRunAhead bool
 }
 
 // OSName is a readable operating system name.
@@ -91,12 +95,19 @@ func (r *Report) buildSystems(runs []*store.Run, events []*event.Event) {
 		idx[k] = s
 		return s
 	}
+	// A collection time ahead of when the report was made was recorded
+	// by a clock that was ahead (T1b): the latest collection is the latest
+	// one that is not, and only if there is none is it shown, marked.
+	ahead := func(t time.Time) bool { return !r.Generated.IsZero() && t.After(r.Generated.Add(5*time.Minute)) }
 	for _, info := range r.Systems {
-		if !info.FirstSeen.IsZero() && info.FirstSeen.After(r.WindowEnd) && info.LastRun.After(r.WindowEnd) {
+		if !info.FirstSeen.IsZero() && info.FirstSeen.After(r.WindowEnd) && info.LastRun.After(r.WindowEnd) && !ahead(info.LastRun) {
 			continue // first seen after this period
 		}
 		s := get(info.Name)
 		s.SystemInfo = info
+		if ahead(info.LastRun) {
+			s.lastAhead, s.LastRun = info.LastRun, time.Time{}
+		}
 	}
 	for _, run := range runs {
 		s := get(run.Host)
@@ -104,7 +115,12 @@ func (r *Report) buildSystems(runs []*store.Run, events []*event.Event) {
 		if s.OS == "" {
 			s.OS = run.OS
 		}
-		if run.Time.After(s.LastRun) {
+		switch {
+		case ahead(run.Time):
+			if run.Time.After(s.lastAhead) {
+				s.lastAhead = run.Time
+			}
+		case run.Time.After(s.LastRun):
 			s.LastRun = run.Time
 		}
 		if !run.Time.Before(r.WindowStart) && !run.Time.After(r.WindowEnd) {
@@ -129,6 +145,11 @@ func (r *Report) buildSystems(runs []*store.Run, events []*event.Event) {
 				}
 				s.holds[c.Channel] = c.OldestTime
 			}
+		}
+	}
+	for _, s := range idx {
+		if s.LastRun.IsZero() && !s.lastAhead.IsZero() {
+			s.LastRun, s.LastRunAhead = s.lastAhead, true
 		}
 	}
 	// Events and checks count towards a computer that collects. An event

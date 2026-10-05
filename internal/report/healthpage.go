@@ -308,7 +308,7 @@ func (r *Report) healthPage() *HealthPage {
 		if lost[h] > 0 {
 			totalLost += lost[h]
 			addGap("lost", GapCard{Title: "Events lost to log rollover", Level: "bad",
-				Explain: "The log filled up and overwrote events before Blackbox read them. A larger log, or collecting more often, prevents this."}, s.Name)
+				Explain: "The log filled up and overwrote events before Blackbox read them. A larger log, or collecting every 15 minutes (blackbox config set collect_every 15m on that computer), prevents this."}, s.Name)
 		}
 		if s.Checks != nil {
 			for _, res := range s.Checks.Results {

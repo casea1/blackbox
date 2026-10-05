@@ -335,7 +335,7 @@ func cmdConfig(args []string) error {
 		fmt.Printf("  report_every       %s\n", cfg.ReportEvery)
 		fmt.Printf("  report_at          %s   (%s)\n", cfg.ReportAt, cfg.ReportAt.Describe(cfg.ReportEvery))
 		fmt.Printf("  report_dir         %s\n", dir)
-		fmt.Printf("  collect_every      %s   (change by running the installer again)\n", config.FormatDuration(cfg.CollectEvery))
+		fmt.Printf("  collect_every      %s\n", config.FormatDuration(cfg.CollectEvery))
 		fmt.Printf("  retention_days     %d%s\n", cfg.RetentionDays, map[bool]string{true: "   (keep forever)"}[cfg.RetentionDays == 0])
 		fmt.Printf("  exclude_users      %s\n", strings.Join(cfg.ExcludeUsers, ", "))
 		fmt.Printf("  exclude_processes  %s\n", strings.Join(cfg.ExcludeProcesses, ", "))
@@ -347,7 +347,7 @@ func cmdConfig(args []string) error {
 		return nil
 	}
 	if args[0] != "set" || len(args) < 2 {
-		return fmt.Errorf("usage: blackbox config                     (show settings)\n       blackbox config set <setting> <value>\nsettings: %s", strings.Join(config.Settable, ", "))
+		return fmt.Errorf("usage: blackbox config                     (show settings)\n       blackbox config set <setting> <value>\nsettings: collect_every, %s", strings.Join(config.Settable, ", "))
 	}
 	yes := false
 	var rest []string
@@ -380,6 +380,17 @@ func cmdConfig(args []string) error {
 		}
 	}
 	before := config.RawValues(path)
+	if key == "collect_every" {
+		d, err := time.ParseDuration(value)
+		if err != nil || d < 5*time.Minute {
+			return fmt.Errorf("collect_every must be a duration of at least 5m, e.g. 15m or 1h")
+		}
+		if err := install.SetCollectEvery(path, d, printf); err != nil {
+			return err
+		}
+		recordChanges(path, before, "blackbox config set")
+		return nil
+	}
 	if key == "report_dir" {
 		if value == "default" || value == filepath.Join(config.DefaultDataDir(), "reports") {
 			value = ""
@@ -511,24 +522,41 @@ func cmdSend(args []string) error {
 	return nil
 }
 
-// resendBatches is "blackbox send --resend 214-219" (L11).
+// resendBatches is "blackbox send --resend 214-219" (L11). It fails when
+// nothing could be sent again (L11b), so a script notices.
 func resendBatches(cfg *config.Config, logf func(string, ...any), arg string) error {
 	from, to, err := lan.ParseRange(arg)
 	if err != nil {
 		return err
 	}
 	r, err := newApp(cfg, logf).Resend(from, to)
+	lines, rerr := resendOutcome(r, err, cfg.SendTo, cfg.KeepSentDays)
+	for _, l := range lines {
+		fmt.Println(l)
+	}
+	return rerr
+}
+
+// resendOutcome says what a resend did, and is an error when nothing was
+// sent again.
+func resendOutcome(r app.ResendResult, err error, sendTo string, keepDays int) ([]string, error) {
+	var out []string
 	if n := len(r.Sent); n > 0 {
-		fmt.Printf("Sent %d batch%s again to %s. The collector imports those it is missing at its next run.\n", n, map[bool]string{true: "es"}[n != 1], cfg.SendTo)
+		out = append(out, fmt.Sprintf("Sent %d batch%s again to %s. The collector imports those it is missing at its next run.", n, map[bool]string{true: "es"}[n != 1], sendTo))
 	}
 	if len(r.Missing) > 0 {
-		fmt.Printf("Not kept on this computer: %s. Batches are kept for keep_sent_days (%d) after delivery; the events in these cannot be sent again.\n",
-			joinSeqs(r.Missing), cfg.KeepSentDays)
+		out = append(out, fmt.Sprintf("Not kept on this computer: %s. Batches are kept for keep_sent_days (%d) after delivery; the events in these cannot be sent again.",
+			joinSeqs(r.Missing), keepDays))
 	}
-	if err == nil && len(r.Sent) == 0 && len(r.Missing) == 0 {
-		fmt.Println("Those batches have not been delivered yet; they go with the next delivery.")
+	switch {
+	case err != nil:
+		return out, err
+	case len(r.Sent) == 0 && len(r.Missing) > 0:
+		return out, errors.New("nothing was sent again")
+	case len(r.Sent) == 0:
+		out = append(out, "Those batches have not been delivered yet; they go with the next delivery.")
 	}
-	return err
+	return out, nil
 }
 
 func joinSeqs(s []uint64) string {

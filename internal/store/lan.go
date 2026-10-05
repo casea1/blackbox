@@ -130,7 +130,9 @@ func (s *Store) NoteSystem(host, osName, version, via string, lastRun, received,
 	} else if !sys.Direct {
 		sys.Via = via
 	}
-	if lastRun.After(sys.LastRun) {
+	// The latest collection, by when it happened (T1b): one recorded by a
+	// clock that was ahead and since corrected is replaced by the next.
+	if lastRun.After(sys.LastRun) || (!lastRun.IsZero() && sys.LastRun.After(now.Add(5*time.Minute))) {
 		sys.LastRun = lastRun
 	}
 	if received.After(sys.LastReceived) {

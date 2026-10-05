@@ -133,3 +133,24 @@ func TestViaOnlyWhenRelayedOnly(t *testing.T) {
 		t.Errorf("former names: %+v", sys)
 	}
 }
+
+// L11b: a batch sent again that was already imported is counted as such,
+// not as a received batch with no records.
+func TestResentDuplicateCounted(t *testing.T) {
+	ws := system(t, "WS-01", "windows", 2, t0)
+	in := inboxOf(t, "COL")
+	Export(ws, "WS-01", "test", t0)
+	if _, err := Deliver(ws, in, "WS-01", true); err != nil {
+		t.Fatal(err)
+	}
+	col, _ := store.Open(t.TempDir())
+	if res, _ := Import(col, in, Dirs{}, t0, nil); res.Batches != 1 || res.Already != 0 {
+		t.Fatalf("first import: %+v", res)
+	}
+	if sent, _, err := Resend(ws, in, "WS-01", 1, 1); err != nil || len(sent) != 1 {
+		t.Fatalf("resend: %v %v", sent, err)
+	}
+	if res, _ := Import(col, in, Dirs{}, t0.Add(time.Hour), nil); res.Batches != 0 || res.Already != 1 || res.Records != 0 {
+		t.Errorf("resent duplicate: %+v", res)
+	}
+}
