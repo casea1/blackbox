@@ -255,3 +255,45 @@ func TestGroupCreateIsNotMembership(t *testing.T) {
 		}
 	}
 }
+
+// execRecPID is execRec with its own process and parent IDs.
+func execRecPID(serial, sec, auid, ses, pid, ppid int, cmd string) []string {
+	l := execRec(serial, sec, auid, ses, cmd)
+	l[0] = strings.Replace(l[0], fmt.Sprintf("ppid=100 pid=%d", 5000+serial), fmt.Sprintf("ppid=%d pid=%d", ppid, pid), 1)
+	return l
+}
+
+// U4b: Ubuntu 26.04 (OpenSSH 10's sshd-session) starts the login message
+// through "sh -c -- /usr/bin/env -i PATH=… run-parts …", recorded cut at
+// 128 bytes; the scripts and what they run are still one line, also after
+// 30 seconds (by parent process), and also when only a script is seen.
+func TestLoginScriptsCollapse2604(t *testing.T) {
+	long := "sh -c -- /usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin run-parts --lsbsysinit /etc/update-motd.d > /run/motd.dynamic.new"
+	var lines []string
+	add := func(l []string) { lines = append(lines, l...) }
+	add(execRecPID(1, 0, 1001, 7, 6001, 6000, long[:128]))
+	add(execRecPID(2, 0, 1001, 7, 6002, 6001, "/usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin run-parts --lsbsysinit /etc/update-motd.d"))
+	add(execRecPID(3, 0, 1001, 7, 6002, 6001, "run-parts --lsbsysinit /etc/update-motd.d"))
+	add(execRecPID(4, 0, 1001, 7, 6003, 6002, "/bin/sh /etc/update-motd.d/50-landscape-sysinfo"))
+	add(execRecPID(5, 0, 1001, 7, 6004, 6003, "uname -o"))
+	add(execRecPID(6, 40, 1001, 7, 6005, 6003, "cat /var/cache/motd-news")) // slow landscape-sysinfo
+	add(execRecPID(7, 50, 1001, 7, 6100, 6099, "cat /etc/shadow"))          // the person, later
+	// Only a script seen (no run-parts record), in another session.
+	add(execRecPID(8, 60, 1001, 8, 6203, 6202, "/bin/sh /etc/update-motd.d/00-header"))
+	add(execRecPID(9, 60, 1001, 8, 6204, 6203, "uname -o"))
+	evs := translateLines(t, Users{1001: "claude"}, lines...)
+	var got []string
+	for _, e := range evs {
+		if e.Action == "root_command" || e.Action == "login_scripts" {
+			got = append(got, e.Action+": "+e.Command)
+		}
+	}
+	want := []string{
+		"login_scripts: " + long[:128],
+		"root_command: cat /etc/shadow",
+		"login_scripts: /bin/sh /etc/update-motd.d/00-header",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("got:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}

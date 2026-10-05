@@ -2,11 +2,13 @@ package linuxlog
 
 import (
 	"fmt"
-	"github.com/casea1/blackbox/internal/event"
 	"path"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/casea1/blackbox/internal/event"
 )
 
 // Translator turns Linux log entries into normalized events. One
@@ -31,6 +33,7 @@ type Translator struct {
 	groupPID map[string]string     // host|pid → group just created by useradd
 	tried    []triedName           // account names in recent failed SSH password checks
 	starting map[string]startup    // host|session → login scripts running in it
+	motdPIDs map[string]time.Time  // host|pid → a login message process, when seen
 }
 
 // NewTranslator returns a ready Translator.

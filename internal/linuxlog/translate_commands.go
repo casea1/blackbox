@@ -42,8 +42,17 @@ func (t *Translator) startup(r *Record, actor, cmd string) (e *event.Event, skip
 	}
 	k := t.hostOf(r) + "|" + r.Get("ses")
 	f := strings.Fields(cmd)
+	// A program the login message scripts started (by its parent process):
+	// part of them however long they take (U4b).
+	if t.motdPID(r) {
+		return nil, true
+	}
 	switch {
-	case len(f) > 0 && base(f[0]) == "run-parts" && strings.Contains(cmd, "/etc/update-motd.d"):
+	case loginMessage(f, cmd):
+		t.notePID(r)
+		if s, ok := t.starting[k]; ok && s.motd && r.Time.Sub(s.t) <= 30*time.Second {
+			return nil, true // the same scripts, one more step of the chain
+		}
 		t.starting[k] = startup{r.Time, true}
 		return &event.Event{Category: event.CatPrivileged, Severity: event.SevInfo, Action: "login_scripts", User: actor,
 			Process: r.Get("exe"), Command: cmd, DedupeKey: "motd|" + actor,
@@ -62,6 +71,7 @@ func (t *Translator) startup(r *Record, actor, cmd string) (e *event.Event, skip
 	case s.motd && r.Time.Sub(s.t) <= 30*time.Second:
 		// Everything run as root before the session itself starts is the
 		// login message.
+		t.notePID(r)
 		return nil, true
 	case !s.motd && r.Time.Sub(s.t) <= 3*time.Second && len(f) > 0:
 		p := base(f[0])
@@ -73,6 +83,55 @@ func (t *Translator) startup(r *Record, actor, cmd string) (e *event.Event, skip
 	}
 	delete(t.starting, k)
 	return nil, false
+}
+
+// loginMessage says whether a root command starts the login message:
+// pam_motd's "run-parts --lsbsysinit /etc/update-motd.d", directly or, on
+// Ubuntu 26.04, through "sh -c -- /usr/bin/env -i PATH=… run-parts …",
+// whose recorded command line is cut at 128 bytes (U4b), or one of the
+// scripts in /etc/update-motd.d run by itself.
+func loginMessage(f []string, cmd string) bool {
+	if len(f) == 0 {
+		return false
+	}
+	if strings.Contains(cmd, "run-parts") && strings.Contains(cmd, "/etc/update-mo") {
+		switch base(f[0]) {
+		case "run-parts", "sh", "dash", "bash", "env":
+			return true
+		}
+	}
+	for _, a := range f[:min(len(f), 2)] {
+		if strings.HasPrefix(a, "/etc/update-motd.d/") {
+			return true
+		}
+	}
+	return false
+}
+
+// notePID remembers a login message process, so the programs it starts
+// are folded with it (by their parent process ID).
+func (t *Translator) notePID(r *Record) {
+	if pid := r.Get("pid"); pid != "" {
+		if t.motdPIDs == nil {
+			t.motdPIDs = map[string]time.Time{}
+		}
+		t.motdPIDs[t.hostOf(r)+"|"+pid] = r.Time
+	}
+}
+
+// motdPID says whether the record's parent is a login message process
+// seen in the last few minutes; if so it is one too.
+func (t *Translator) motdPID(r *Record) bool {
+	at, ok := t.motdPIDs[t.hostOf(r)+"|"+r.Get("ppid")]
+	if !ok || r.Get("ppid") == "" {
+		return false
+	}
+	if r.Time.Sub(at) > 5*time.Minute {
+		delete(t.motdPIDs, t.hostOf(r)+"|"+r.Get("ppid"))
+		return false
+	}
+	t.notePID(r)
+	return true
 }
 
 // endStartup marks a session's own scripts finished: the session has

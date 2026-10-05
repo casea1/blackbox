@@ -280,6 +280,7 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	events = r.defenderState(events)
 	events = r.windowsSetup(events)
 	attributeDevices(events)
+	auditStoppedBy(events)
 	shutdownStops(events)
 
 	rows := make([]*Row, len(events))

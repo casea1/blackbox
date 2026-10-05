@@ -76,3 +76,34 @@ func TestVersionAtLeast(t *testing.T) {
 		}
 	}
 }
+
+// U8b: with sudo-rs the "systemctl stop auditd" is only in the journal,
+// and systemd's DAEMON_END says root; the stop is still the person's.
+func TestAuditdStopNamesSudoRsUser(t *testing.T) {
+	evs := journalEvents(t)
+	tr := linuxlog.NewTranslator("ubuntu-server", nil)
+	end := `type=DAEMON_END msg=audit(1791158240.000:900): op=terminate auid=0 uid=0 ses=4294967295 pid=1 subj=unconfined res=success`
+	if _, err := linuxlog.ParseAuditStream(strings.NewReader(end+"\n"), func(ev *linuxlog.Event) error {
+		if e := tr.Audit(ev); e != nil {
+			e.OS = "linux"
+			evs = append(evs, e)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range evs {
+		e.OS = "linux"
+	}
+	at := time.Date(2026, 10, 4, 23, 57, 20, 0, time.UTC)
+	r := Build(evs, nil, Options{Location: time.UTC, WindowEnd: at.Add(time.Hour)})
+	var stop *event.Event
+	for _, e := range r.Events {
+		if e.Action == "audit_stopped" {
+			stop = e
+		}
+	}
+	if stop == nil || stop.User != "claude" || stop.Severity != event.SevHigh || !strings.Contains(stop.Summary, "stopped by claude (/usr/bin/systemctl stop auditd)") {
+		t.Fatalf("stop: %+v", stop)
+	}
+}

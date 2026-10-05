@@ -216,15 +216,20 @@ For a folder like this, collection and delivery are separate (L8):
 - `blackbox.service` collects and queues, and does not name the folder.
   A collector that is down, or a dead mount ("Transport endpoint is not
   connected"), never stops collection.
-- `blackbox-send.service` delivers after each run. It runs `mount` for
-  the folder first, so a mount that failed at boot, or dropped, is tried
-  again at every run, as Blackbox does for an SMB share.
+- `blackbox-send.service` delivers after each run. It first asks systemd
+  to start the folder's mount unit (`systemctl start
+  mnt-blackbox\x2dinbox.mount`, the unit systemd makes from the
+  `/etc/fstab` line), so a mount that failed at boot, or dropped, is tried
+  again at every run, as Blackbox does for an SMB share. systemd mounts it
+  outside the service's sandbox, which has no network of its own, and the
+  mount stays after the send. The folder needs its `/etc/fstab` line.
 - If delivery fails, the data waits; see
   [When the collector can't be reached](#when-the-collector-cant-be-reached).
 
-The installer and CI test VirtualBox shared folders, SMB shares and a
-folder sender. An SFTP mount goes through the same checks, but its setup
-is yours.
+The installer and CI test VirtualBox shared folders, SMB shares, a
+folder sender, and an sshfs mount that is down when the send runs (CI
+mounts it again from the send service). An SFTP mount goes through the
+same checks, but its setup is yours.
 
 **FIPS mode.** SMB from Linux fails under FIPS (see above), so SFTP is
 the route there:

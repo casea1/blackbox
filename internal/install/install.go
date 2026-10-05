@@ -4,6 +4,7 @@ package install
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -280,6 +281,12 @@ const sendUnitName = "blackbox-send.service"
 // system (ProtectSystem=full) instead. Before sending it asks for the
 // folder to be mounted from /etc/fstab, so a mount that failed at boot is
 // tried again at every run (L7), as Blackbox does for an SMB share.
+//
+// The folder is mounted by asking systemd to start its mount unit (from
+// /etc/fstab), not by running mount here (L12): this unit has no network
+// of its own (PrivateNetwork), which "+" does not lift, so an sshfs mount
+// started from it can't reach the collector, and would end with the unit.
+// PID 1 mounts it outside the sandbox, and the mount stays.
 func systemdSendService(exe, sendTo string) string {
 	return fmt.Sprintf(`[Unit]
 Description=Deliver Blackbox audit events to the collector
@@ -288,11 +295,34 @@ After=blackbox.service network-online.target remote-fs.target
 
 [Service]
 Type=oneshot
-ExecStartPre=-+/bin/mount %s
+ExecStartPre=-+/usr/bin/systemctl start %s
 ExecStart=%s send
 Nice=10
 TimeoutStartSec=30min
-`, systemdQuote(sendTo), exe) + sandboxFull()
+`, systemdQuote(MountUnitFor(sendTo)), exe) + sandboxFull()
+}
+
+// MountUnitFor is the name of the systemd mount unit for a folder, as
+// systemd-escape --path --suffix=mount gives it: /mnt/blackbox-inbox is
+// mnt-blackbox\x2dinbox.mount.
+func MountUnitFor(dir string) string {
+	p := strings.Trim(path.Clean("/"+dir), "/")
+	if p == "" {
+		return "-.mount"
+	}
+	var b strings.Builder
+	for i := 0; i < len(p); i++ {
+		c := p[i]
+		switch {
+		case c == '/':
+			b.WriteByte('-')
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == ':', c == '_', c == '.' && i > 0:
+			b.WriteByte(c)
+		default:
+			fmt.Fprintf(&b, `\x%02x`, c)
+		}
+	}
+	return b.String() + ".mount"
 }
 
 // systemdQuote quotes a path for a unit file command line.
