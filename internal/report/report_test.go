@@ -526,3 +526,25 @@ func TestVerifyInterim(t *testing.T) {
 		t.Errorf("an interim report should verify: %+v", v.Lines)
 	}
 }
+
+// Report folders are named after the site (network) when it has a name,
+// else the one computer, else the computer that made the report: never
+// "4-systems".
+func TestDirName(t *testing.T) {
+	end := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	cases := []struct {
+		site  string
+		hosts []string
+		want  string
+	}{
+		{"Lab 3 / LAN", []string{"WS-01", "WS-02"}, "2026-10-05_0000_Lab-3-LAN"},
+		{"", []string{"ubuntu-server"}, "2026-10-05_0000_ubuntu-server"},
+		{"", []string{"WIN11-COL", "ubuntu-server", "WIN-498EC8UMUEL"}, "2026-10-05_0000_WIN11-COL"},
+		{"  ", nil, "2026-10-05_0000"},
+	}
+	for _, c := range cases {
+		if got := DirName(end, c.site, c.hosts, "WIN11-COL", time.UTC); got != c.want {
+			t.Errorf("%q %v: %s, want %s", c.site, c.hosts, got, c.want)
+		}
+	}
+}

@@ -30,13 +30,13 @@ table.rx tbody tr{cursor:pointer}table.rx tbody tr:hover td{background:rgba(11,9
 <main>
 <div class="head"><div><div class="crumb"><span data-folder>Reports folder</span>{{if .Schedule}} · {{.Schedule}}{{end}}</div><h1>All reports</h1></div>
 <div class="tools"><label class="btn find">{{icon "search" 15}}<input type="search" placeholder="Find a report" data-findreport></label>{{with .Latest}}<a class="btn primary" href="{{.}}/report.html">Open the latest report</a>{{end}}</div></div>
-<p class="intro">Every report in this folder, newest first. Each one covers one period; click a row to open it. Reports marked <b>Interim</b> were made by hand between scheduled reports.</p>
+<p class="intro">Every report in this folder, newest first. Each one covers one period; click a row to open it. Reports marked <b>Manual</b> were made by hand between scheduled reports.</p>
 {{if .Entries}}
 {{if .Chart}}<div class="panel" style="margin-bottom:12px"><div class="row" style="grid-template-columns:260px 1fr;margin:0;align-items:center"><div><div class="ph" style="margin-bottom:6px"><h2>{{icon "trending-up" 17}}Detections per week</h2></div><p class="pm" style="margin:0 0 10px">Last {{.Weeks}} reports</p>
 <div class="legend"><span><i style="background:#D12C2C"></i>High</span><span><i style="background:#E08A00"></i>Medium</span><span>Faded = earlier weeks</span></div></div><div>{{.Chart}}</div></div></div>{{end}}
 <div class="panel"><div class="toolbar"><h2>{{icon "scroll-text" 17}}Reports · newest first</h2><div class="chips" data-chips><span class="on" data-show="">All<i>{{len .Entries}}</i></span><span data-show="bad">Incomplete<i>{{.Incomplete}}</i></span></div></div>
 <table class="rx"><thead><tr><th>Period</th><th class="n">Systems</th><th class="n">Events</th><th class="n">High</th><th class="n">Medium</th><th>Audit trail</th><th></th></tr></thead><tbody>
-{{range $i, $r := .Rows}}<tr data-row="{{.Search}}" data-href="{{.Dir}}/report.html"{{if .Incomplete}} data-bad{{end}}><td><b>{{.Week}}</b>{{if eq $i 0}}<span class="latest">Latest</span>{{end}}{{if .Interim}}<span class="int">Interim</span>{{end}}</td><td class="n">{{.Systems}}</td><td class="n">{{commas .Events}}</td>
+{{range $i, $r := .Rows}}<tr data-row="{{.Search}}" data-href="{{.Dir}}/report.html"{{if .Incomplete}} data-bad{{end}}><td><b>{{.Week}}</b>{{if eq $i 0}}<span class="latest">Latest</span>{{end}}{{if .Interim}}<span class="int">Manual</span>{{end}}</td><td class="n">{{.Systems}}</td><td class="n">{{commas .Events}}</td>
 <td class="n {{if .High}}hi{{else}}z{{end}}">{{.High}}</td><td class="n {{if .Medium}}md{{else}}z{{end}}">{{.Medium}}</td><td><span class="trail {{.TrailClass}}">{{.Trail}}</span></td>
 <td><a class="open" href="{{.Dir}}/report.html">Open {{icon "chevron-right" 14}}</a></td></tr>{{end}}
 </tbody></table></div>

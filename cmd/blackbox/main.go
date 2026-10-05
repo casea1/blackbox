@@ -685,7 +685,7 @@ func cmdReport(args []string) error {
 	fs.StringVar(&in.Host, "host", "", "Linux: host name to show, if the logs do not include it")
 	fs.StringVar(&in.Passwd, "passwd", "", "Linux: copy of /etc/passwd, to show names instead of user IDs")
 	out := fs.String("out", "", "output folder for reports from files (default: ./blackbox-report-<time>)")
-	fs.Bool("preview", false, "no effect; kept for older scripts (a report run by hand is always an interim report)")
+	fs.Bool("preview", false, "no effect; kept for older scripts (a report run by hand is always a manual report)")
 	fromS := fs.String("from", "", "report on a chosen period from this date (YYYY-MM-DD, or YYYY-MM-DD HH:MM), as far back as the events go")
 	toS := fs.String("to", "", "with --from: end of the period (default: now; a date alone means the end of that day)")
 	days := fs.Int("days", 0, "report on the last N days")
@@ -730,7 +730,7 @@ func cmdReport(args []string) error {
 		fmt.Println("This report covers the period you chose; the schedule is unchanged.")
 	} else if in.Empty() {
 		if _, next, err := a.NextScheduled(); err == nil {
-			fmt.Printf("This is an interim report; the schedule is unchanged. Next scheduled report: %s\n", app.NextText(next))
+			fmt.Printf("This is a manual report; the schedule is unchanged. Next scheduled report: %s\n", app.NextText(next))
 		}
 	}
 	return nil

@@ -27,7 +27,7 @@ const (
 	msgTray     = wmApp + 10 // from the notification area
 	msgHealth   = wmApp + 11 // a fresh status is ready
 	msgQuit     = wmApp + 12 // uninstall, or the icon was turned off
-	msgReport   = wmApp + 13 // an interim report finished
+	msgReport   = wmApp + 13 // a manual report finished
 	timerPoll   = 1
 	timerAdd    = 2
 	timerExit   = 3
@@ -309,10 +309,10 @@ func (t *tray) app(m uint32, wp, lp uintptr) {
 		made, err := t.made, t.madeErr
 		t.mu.Unlock()
 		if err != nil {
-			messageBox(0, "The interim report could not be made:\n"+err.Error(), "Blackbox", mbOK|mbIconError)
+			messageBox(0, "The manual report could not be made:\n"+err.Error(), "Blackbox", mbOK|mbIconError)
 			return
 		}
-		t.notify(notice{Title: "Blackbox", Text: "Interim report ready. Click to open it.", Open: made})
+		t.notify(notice{Title: "Blackbox", Text: "Manual report ready. Click to open it.", Open: made})
 		t.refresh()
 	}
 }
@@ -343,7 +343,7 @@ func (t *tray) menu() uintptr {
 	if t.view.Reports == "" || t.making {
 		interim |= mfGrayed
 	}
-	add(interim, cmdInterim, "Make an interim report…")
+	add(interim, cmdInterim, "Make a manual report…")
 	add(mfString, cmdCollect, "Collect now")
 	add(mfString, cmdStatus, "Status details…")
 	add(mfString, cmdSettings, "Change settings…")
@@ -393,9 +393,9 @@ func (t *tray) showMenu() {
 	}
 }
 
-// interimDialog asks which period, then makes the report in the background.
+// interimDialog (a manual report) asks which period, then makes the report in the background.
 func (t *tray) interimDialog() {
-	d := newWindow("Make an interim report", 380, 250, 0)
+	d := newWindow("Make a manual report", 380, 250, 0)
 	d.onPaint = func(hdc uintptr, _ rect) {
 		d.fill(hdc, barBrush, 0, 190, 380, 60)
 		d.fill(hdc, lineBrush, 0, 190, 380, 1)

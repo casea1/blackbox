@@ -96,7 +96,7 @@ func Run(o Options) (Result, error) {
 		logf("")
 		logf("Done. No report was produced now, so the schedule is unchanged (reports %s).", cfg.ReportAt.Describe(cfg.ReportEvery))
 		logf("Next scheduled report: %s", app.NextText(next))
-		logf("For an interim report now, run: blackbox report")
+		logf("For a manual report now, run: blackbox report")
 	default:
 		logf("")
 		logf("Collecting events and producing the first report (the first run reads the whole log and can take a few minutes)...")
