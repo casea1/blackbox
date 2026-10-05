@@ -80,3 +80,17 @@ func TestShutdownUnitRemoved(t *testing.T) {
 		t.Errorf("systemctl calls: %s", got)
 	}
 }
+
+// archive_dir is writable from the sandbox only when set; the default is
+// inside the data folder, and a nested path that does not exist yet (the
+// data folder was just emptied) made the sandbox read-only.
+func TestArchiveDirInSandbox(t *testing.T) {
+	cfg := config.Default()
+	if svc := serviceFor("/usr/local/bin/blackbox", cfg); strings.Contains(svc, "/archives") {
+		t.Errorf("default archive folder listed:\n%s", svc)
+	}
+	cfg.ArchiveDir = "/srv/logs"
+	if svc := serviceFor("/usr/local/bin/blackbox", cfg); !strings.Contains(svc, " -/srv/logs") {
+		t.Errorf("archive_dir not writable:\n%s", svc)
+	}
+}
