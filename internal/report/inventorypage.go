@@ -101,10 +101,10 @@ func (r *Report) inventoryPage() *InventoryPage {
 		lvl = "warn"
 	}
 	ip.Stats = []EventCard{
-		{Icon: "server", Label: "Systems inventoried", Value: fmt.Sprintf("%d / %d", len(ip.Rows), len(ip.Rows)+len(ip.Missing)), Note: strings.Join(ip.Missing, ", "), Level: lvl, Scroll: "inv-systems"},
-		{Icon: "hard-drive", Label: "Drives", Value: commas(drives), Note: "with serial numbers", Scroll: "inv-systems"},
-		{Icon: "users", Label: "Accounts", Value: commas(accounts), Note: "local, and domain accounts with a profile", Scroll: "inv-systems"},
-		{Icon: "key-round", Label: "Administrators", Value: commas(admins), Note: "accounts with administrator rights", Scroll: "inv-systems"},
+		{Icon: "server", Label: "Systems inventoried", Value: fmt.Sprintf("%d / %d", len(ip.Rows), len(ip.Rows)+len(ip.Missing)), Note: missingNote(ip.Missing), Level: lvl, Scroll: "inv-systems"},
+		{Icon: "hard-drive", Label: "Drives", Value: commas(drives), Note: "with serials", Scroll: "inv-systems"},
+		{Icon: "users", Label: "Accounts", Value: commas(accounts), Note: "local and domain", Scroll: "inv-systems"},
+		{Icon: "key-round", Label: "Administrators", Value: commas(admins), Note: "admin rights", Scroll: "inv-systems"},
 	}
 	return ip
 }
@@ -157,4 +157,11 @@ func driveSize(b uint64) string {
 		return fmt.Sprintf("%.0f GB", float64(b)/1e9)
 	}
 	return fmt.Sprintf("%.0f MB", float64(b)/1e6)
+}
+
+func missingNote(missing []string) string {
+	if len(missing) == 0 {
+		return ""
+	}
+	return "none yet: " + short(set(missing), 2)
 }
