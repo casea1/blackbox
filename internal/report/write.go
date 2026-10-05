@@ -584,7 +584,11 @@ func WriteIndex(reportsDir, site, schedule string, loc *time.Location) error {
 		}
 		chart = stackedBars(labels, []Series{hi, md}, nil, true, 820, 100)
 	}
-	err = t.Execute(&buf, map[string]any{"Site": site, "Entries": entries, "Rows": rows, "Incomplete": incomplete,
+	latest := ""
+	if len(rows) > 0 {
+		latest = rows[0].Dir
+	}
+	err = t.Execute(&buf, map[string]any{"Site": site, "Entries": entries, "Rows": rows, "Incomplete": incomplete, "Latest": latest,
 		"Chart": chart, "Weeks": len(weekly), "Schedule": schedule})
 	if err != nil {
 		return err

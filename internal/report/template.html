@@ -31,6 +31,10 @@
     <a href="#trends" data-nav="trends">{{icon "trending-up" 17}}<span>Trends</span></a>
     <a href="#logs" data-nav="logs">{{icon "scroll-text" 17}}<span>Original logs</span></a>
   </nav>
+  {{if .InReportsDir}}<div class="grp">Reports</div>
+  <nav>
+    <a href="../index.html">{{icon "history" 17}}<span>All reports</span></a>
+  </nav>{{end}}
 </aside>
 <main>
 {{if .Range}}<div class="alertbar interim">{{icon "clock-alert" 18}}<b>Report for a chosen period.</b><span>Run by hand {{stamp .Generated}} {{zone .Generated}}. {{.Range}} It does not change the schedule.</span></div>{{else if .Interim}}<div class="alertbar interim">{{icon "clock-alert" 18}}<b>Interim report.</b><span>Run by hand {{stamp .Generated}} {{zone .Generated}}, between scheduled reports. It does not change the schedule: the next scheduled report covers this time again, and that report's folder holds the original logs.</span></div>{{end}}
@@ -65,7 +69,7 @@
 {{end}}
 
 {{define "head"}}<div class="head"><div><div class="crumb">{{.Crumb}}</div><h1>{{.Title}}</h1></div>
-<div class="tools">{{if .Index}}<a class="btn" href="../index.html" title="All reports">{{icon "calendar-range" 16}}{{.Range}}</a>{{else}}<span class="btn">{{icon "calendar-range" 16}}{{.Range}}</span>{{end}}<button class="btn verified" data-open="verified">{{icon "fingerprint" 16}}<span>Verified</span></button><button class="btn primary" data-open="export">Export</button></div></div>{{end}}
+<div class="tools"><span class="btn static" title="The period this report covers">{{icon "calendar-range" 16}}{{.Range}}</span>{{if .Index}}<a class="btn" href="../index.html" title="Every report in this folder, newest first">{{icon "history" 16}}All reports</a>{{end}}<button class="btn verified" data-open="verified">{{icon "fingerprint" 16}}<span>Verified</span></button><button class="btn primary" data-open="export">Export</button></div></div>{{end}}
 
 {{define "soon"}}<div class="panel"><p class="pm" style="margin:0">{{.}}</p></div>{{end}}
 
@@ -92,9 +96,9 @@
 <div class="facts4">{{range .Facts}}{{template "fact" .}}{{end}}</div></div>
 <div class="row" style="grid-template-columns:1.2fr 1fr;margin-bottom:12px">
 <div class="panel"><div class="ph"><h2>{{icon "triangle-alert" 17}}Notable actions</h2><span class="pm">{{.NotableCount}} this period</span></div>{{if .Notable}}{{range .Notable}}{{template "ck" .}}{{end}}{{else}}<p class="pm" style="margin:0">Nothing out of the ordinary.</p>{{end}}</div>
-<div style="display:grid;gap:12px;align-content:start"><div class="panel"><div class="ph"><h2>{{icon "activity" 17}}When they were active</h2><span class="pm">Red = detection</span></div>{{.Heat}}</div>
+<div style="display:grid;gap:12px;align-content:start"><div class="panel"><div class="ph"><h2>{{icon "activity" 17}}When they were active</h2><span class="pm">Red = detection · click an hour</span></div>{{.Heat}}</div>
 <div class="panel" id="pused-{{.Key}}"><div class="ph"><h2>{{icon "server" 17}}Systems used</h2><span class="pm">Events</span></div><div class="mini">{{range .Used}}<div><a class="link" style="color:inherit" href="#systems/{{.Label}}">{{.Label}}</a><s style="width:{{.Pct}}%"></s><b>{{commas .N}}</b></div>{{end}}</div></div></div></div>
-<div class="panel" id="pdet-{{.Key}}"><div class="ph"><h2>{{icon "shield-alert" 17}}Detections involving {{.Name}}</h2><span class="pm">{{len .Detections}} this period</span></div>{{if .Detections}}<div class="dl">{{range .Detections}}<a class="dc {{.Severity}}" href="#detections/{{.Index}}"><div class="b"><b>{{.Title}}</b><span>{{.Detail}}</span></div><div class="m2">{{.Host}}<small>{{.Day}} {{.Time}}</small></div></a>{{end}}</div>{{else}}<p class="pm" style="margin:0">None.</p>{{end}}</div>
+<div class="panel" id="pdet-{{.Key}}"><div class="ph"><h2>{{icon "shield-alert" 17}}Detections involving {{.Name}}</h2><span class="pm" data-slotnote>{{len .Detections}} this period</span></div>{{if .Detections}}<div class="dl">{{range .Detections}}<a class="dc {{.Severity}}" href="#detections/{{.Index}}"{{if .Slots}} data-slots="{{.Slots}}"{{end}}><div class="b"><b>{{.Title}}</b><span>{{.Detail}}</span></div><div class="m2">{{.Host}}<small>{{.Day}} {{.Time}}</small></div></a>{{end}}</div>{{else}}<p class="pm" style="margin:0">None.</p>{{end}}</div>
 </div>{{end}}{{end}}</div></div>{{end}}
 
 {{define "search"}}<div class="panel" style="margin-bottom:12px"><div class="builder" data-q>Show
@@ -115,9 +119,9 @@
 
 {{define "health"}}<div class="ev6" style="grid-template-columns:repeat(4,1fr)">{{range .Stats}}{{template "stat" .}}{{end}}</div>
 <div data-a1{{if .Single}} data-single="{{.Single}}"{{end}}><div class="row" style="grid-template-columns:1.45fr 1fr">
-<div class="panel" style="overflow-x:auto"><div class="ph"><h2>{{icon "layers" 17}}Every system, every check</h2><span class="pm"><span style="color:#147A3D">✓</span> matches STIG · <span style="color:#C22020">✕</span> gap · <span style="color:#A35A00">!</span> warning</span></div>
+<div class="panel" style="overflow-x:auto" id="h-matrix"><div class="ph"><h2>{{icon "layers" 17}}Every system, every check</h2><span class="pm"><span style="color:#147A3D">✓</span> matches STIG · <span style="color:#C22020">✕</span> gap · <span style="color:#A35A00">!</span> warning</span></div>
 <table class="mxs"><thead><tr><th>System</th>{{range .Cols}}<th>{{.}}</th>{{end}}</tr></thead><tbody>{{range .Groups}}<tr class="g"><td colspan="12">{{.Title}}</td></tr>{{range .Rows}}{{$n := .Name}}<tr><td class="nm"><a class="link" style="color:inherit" href="#health/{{.Name}}">{{.Name}}</a></td>{{range .Cells}}<td class="{{if eq .Class "ok"}}p{{else if eq .Class "bad"}}f{{else if eq .Class "warn"}}w{{else}}na{{end}}"{{if .Title}} title="{{.Title}}"{{end}}><a href="#health/{{$n}}" style="color:inherit;text-decoration:none;display:block">{{.Mark}}</a></td>{{end}}</tr>{{end}}{{end}}</tbody></table></div>
-<div class="panel" style="align-self:start"><div class="ph"><h2>{{icon "triangle-alert" 17}}Gaps · {{len .Gaps}}</h2><span class="pm">Click a system for its settings</span></div>{{if .Gaps}}<div class="dl">{{range $i, $g := .Gaps}}{{if eq $i 4}}</div><details class="more"><summary class="pm link">All {{len $.Gaps}} →</summary><div class="dl">{{end}}{{template "gapcard" $g}}{{end}}</div>{{if gt (len .Gaps) 4}}</details>{{end}}{{else}}<p class="pm" style="margin:0">No gaps: every system matches the STIG, and no logs were cleared or lost.</p>{{end}}</div></div>{{template "scap" .Scap}}{{template "other" .Other}}</div>
+<div class="panel" style="align-self:start" id="h-gaps"><div class="ph"><h2>{{icon "triangle-alert" 17}}Gaps · {{len .Gaps}}</h2><span class="pm">Click a system for its settings</span></div>{{if .Gaps}}<div class="dl">{{range $i, $g := .Gaps}}{{if eq $i 4}}</div><details class="more"><summary class="pm link">All {{len $.Gaps}} →</summary><div class="dl">{{end}}{{template "gapcard" $g}}{{end}}</div>{{if gt (len .Gaps) 4}}</details>{{end}}{{else}}<p class="pm" style="margin:0">No gaps: every system matches the STIG, and no logs were cleared or lost.</p>{{end}}</div></div>{{template "av" .AV}}{{template "scap" .Scap}}{{template "other" .Other}}</div>
 <div data-a3 hidden><div class="md2" style="grid-template-columns:280px 1fr"><div class="panel slist" data-picklist>
 <label class="search">{{icon "search" 14}}<input type="search" placeholder="Find a system" data-find></label>
 {{range .Groups}}<div class="grp2">{{.Title}} · {{len .Rows}}</div>{{range .Rows}}<a data-pick="{{.Name}}" href="#health/{{.Name}}"><i class="{{if .Level}}{{.Level}}{{else}}ok{{end}}"></i><span>{{.Name}}</span><small>{{.Note}}</small></a>{{end}}{{end}}
@@ -129,6 +133,9 @@
 {{$n := .Name}}{{range .Scap}}<div class="panel" style="margin-top:12px;overflow-x:auto" data-scapopen><div class="ph"><h2>{{icon "shield-check" 17}}Open STIG rules on {{$n}} · {{len .Rules}}</h2><span class="pm">{{.Benchmark}} · scanned {{.When}} · CAT I first</span></div>{{if .Rules}}
 <table class="stig"><thead><tr><th>CAT</th><th>STIG ID</th><th>Title</th><th>Rule ID</th></tr></thead><tbody>{{range .Rules}}<tr class="{{.Level}}"><td><span class="st {{.Level}}">{{.Cat}}</span></td><td class="mono">{{or .STIG "—"}}</td><td>{{.Title}}{{if .VulnID}}<div class="fixline">{{.VulnID}}</div>{{end}}</td><td class="mono mute">{{.RuleID}}</td></tr>{{end}}</tbody></table>{{else}}<p class="pm" style="margin:0">No open rules in the latest scan.</p>{{end}}</div>{{end}}
 </div>{{end}}{{end}}</div></div></div>{{end}}
+
+{{define "av"}}{{if .}}<div class="panel" id="h-av" style="margin-top:12px;overflow-x:auto"><div class="ph"><h2>{{icon "shield" 17}}Antivirus · {{len .}}</h2><span class="pm">Microsoft Defender and ClamAV, from each system's latest check · Blackbox never updates them</span></div>
+<table class="stig"><thead><tr><th>System</th><th>Antivirus</th><th>Definitions dated</th><th>Age</th><th>Version</th><th>Protection</th><th>Result</th></tr></thead><tbody>{{range .}}<tr class="{{.Level}}"><td><b><a class="link" style="color:inherit" href="#health/{{.Host}}">{{.Host}}</a></b><div class="fixline">checked {{.Checked}}</div></td><td>{{.Product}}</td><td><b>{{or .Dated "—"}}</b></td><td>{{or .Age "—"}}</td><td class="mono mute">{{or .Version "—"}}</td><td{{if .ProtectionBad}} class="bad"{{end}}>{{or .Protection "—"}}</td><td><span class="st {{.Level}}">{{.Status}}</span></td></tr>{{end}}</tbody></table></div>{{end}}{{end}}
 
 {{define "scap"}}{{if .}}<div class="panel" style="margin-top:12px;overflow-x:auto"><div class="ph"><h2>{{icon "shield-check" 17}}STIG compliance (SCAP)</h2><span class="pm">Latest scan of each system · read from scan results, never run by Blackbox</span></div>
 <table class="stig"><thead><tr><th>System</th><th>Benchmark</th><th>Scanned</th><th>Score</th><th>Pass</th><th>Fail</th><th>Open CAT I</th><th>CAT II</th><th>CAT III</th><th>Since the previous scan</th></tr></thead><tbody>{{range .}}<tr class="{{.Level}}">{{if .Missing}}<td><b>{{.Host}}</b></td><td colspan="9"><span class="st bad">No scan found</span> Put this system's SCC or OpenSCAP results in the scap_results folder.</td>{{else}}<td><b>{{.Host}}</b></td><td>{{.Benchmark}}{{if .Profile}}<div class="fixline">{{.Profile}}</div>{{end}}{{if .File}}<div class="fixline"><a class="link" href="{{.File}}">{{.File}}</a></div>{{end}}</td><td>{{.When}}<div class="fixline">{{.Age}}{{if .Stale}} · <span class="st warn">Stale</span>{{end}}</div></td><td>{{or .Score "—"}}</td><td>{{.Pass}}</td><td>{{.Fail}}</td><td>{{if gt (index .Cat 1) 0}}<a href="{{scapHref .Host}}" title="Open rules on {{.Host}}"><span class="st bad">{{index .Cat 1}}</span></a>{{else}}0{{end}}</td><td>{{if gt (index .Cat 2) 0}}<a class="link" href="{{scapHref .Host}}" title="Open rules on {{.Host}}">{{index .Cat 2}}</a>{{else}}0{{end}}</td><td>{{if gt (index .Cat 3) 0}}<a class="link" href="{{scapHref .Host}}" title="Open rules on {{.Host}}">{{index .Cat 3}}</a>{{else}}0{{end}}</td><td>{{.Change}}</td>{{end}}</tr>{{end}}</tbody></table></div>{{end}}{{end}}
@@ -187,7 +194,7 @@
 
 {{define "ck"}}{{if .Href}}<a class="ck2 {{.Level}}" href="{{.Href}}">{{else if .Ev}}<a class="ck2 {{.Level}}" href="#" data-ev="{{.Ev}}" title="Open this event">{{else}}<div class="ck2 {{.Level}}">{{end}}<div class="i">{{icon .Icon 14}}</div><div><b>{{.Title}}</b><span>{{if .Who}}<em>{{.Who}}</em>: {{end}}{{.What}}</span></div><div class="r">{{.Count}}</div>{{if or .Href .Ev}}</a>{{else}}</div>{{end}}{{end}}
 
-{{define "stat"}}{{if .Href}}<a class="panel ec {{.Level}}" href="{{.Href}}">{{else}}<div class="panel ec {{.Level}}">{{end}}<div class="l">{{icon .Icon 15}}{{.Label}}</div><div class="v">{{.Value}}</div><div class="d">{{.Note}}</div>{{if .Href}}</a>{{else}}</div>{{end}}{{end}}
+{{define "stat"}}{{if .Filter}}<a class="panel ec {{.Level}}" href="#" data-cardfilter="{{if ne .Filter "all"}}{{.Filter}}{{end}}" title="Show these below">{{else if .Href}}<a class="panel ec {{.Level}}" href="{{.Href}}">{{else if .Scroll}}<a class="panel ec {{.Level}}" href="#" data-scroll="{{.Scroll}}">{{else}}<div class="panel ec {{.Level}}">{{end}}<div class="l">{{icon .Icon 15}}{{.Label}}</div><div class="v">{{.Value}}</div><div class="d">{{.Note}}</div>{{if or .Filter .Href .Scroll}}</a>{{else}}</div>{{end}}{{end}}
 
 {{define "detections"}}{{if not .Detections}}<div class="panel"><div class="clean"><div class="ic">{{icon "shield-check" 22}}</div><div><b>Nothing unusual this {{lower (periodWord .)}}</b><span>No activity matched a detection rule. All {{commas (len .Events)}} events are still on the event pages and in Search.</span></div></div></div>{{else}}
 <div class="md2" style="grid-template-columns:300px 1fr"><div class="panel dlist" data-picklist style="padding:4px 0 10px"><div class="chips" data-detsev style="padding:12px 16px 0"><span class="on" data-sev="">All<i>{{len .Detections}}</i></span><span data-sev="high">High<i>{{sevCount .Detections "high"}}</i></span><span data-sev="medium">Medium<i>{{sevCount .Detections "medium"}}</i></span></div>
@@ -220,6 +227,7 @@
     <select class="dd" data-f="user"><option value="">Person: Any</option></select>
     {{if .KindLabel}}<select class="dd" data-f="kind"><option value="">{{.KindLabel}}: Any</option></select>{{end}}
     <select class="dd" data-f="day"><option value="">Day: All</option></select>
+    <span class="flagnote" data-flagnote hidden>Only: <b></b> <a href="#" class="link" data-flagclear title="Show all">×</a></span>
   </div>
   <div class="vt" tabindex="0" style="{{gridCols .Cols}}"><div class="vt-head">{{if .Cols}}{{range .Cols}}<span>{{.Label}}</span>{{end}}{{else}}<span>Time</span><span>System</span><span>Person</span><span>What happened</span><span>Severity</span>{{end}}</div><div class="vt-body"><div class="vt-msg">Loading events…</div></div></div>
   <div class="pager"><span data-count></span><span></span><span data-csv>Export CSV</span></div>

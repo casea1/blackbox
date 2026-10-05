@@ -1,0 +1,87 @@
+package report
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/casea1/blackbox/internal/check"
+	"github.com/casea1/blackbox/internal/event"
+	"github.com/casea1/blackbox/internal/store"
+)
+
+// The antivirus date is its own table on Audit health, a line on the
+// Overview and on each system, read from the check's date (or, for checks
+// made before it had one, from its text).
+func TestAntivirusTable(t *testing.T) {
+	end := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	evs := []*event.Event{
+		{Time: end.Add(-time.Hour), Host: "WS-07", OS: "windows", Category: event.CatLogon, Severity: event.SevInfo, Action: "logon", Summary: "x"},
+		{Time: end.Add(-time.Hour), Host: "ubu-01", OS: "linux", Category: event.CatLogon, Severity: event.SevInfo, Action: "logon", Summary: "x"},
+	}
+	sets := []CheckSet{
+		NewCheckSet("WS-07", end.Add(-2*time.Hour), []check.Result{
+			{Area: "Antivirus", Item: "Defender security intelligence", Status: check.Pass, Dated: end.Add(-72 * time.Hour),
+				Have: "1.419.123.0 · version created on 2 Oct 2026 12:00 (3 days ago) · engine 1.1.24"},
+			{Area: "Antivirus", Item: "Defender real-time protection", Status: check.Pass, Have: "On"}}),
+		NewCheckSet("ubu-01", end.Add(-time.Hour), []check.Result{ // made before the date had its own field
+			{Area: "Antivirus", Item: "ClamAV definitions", Status: check.Fail, Have: "daily 27001 · built on 1 Aug 2026 09:30 (65 days ago) · engine 1.0.7"},
+			{Area: "Antivirus", Item: "ClamAV scanner service", Status: check.Pass, Have: "Running"}}),
+	}
+	runs := []*store.Run{{Time: end.Add(-2 * time.Hour), Host: "WS-07", OS: "windows"}, {Time: end.Add(-time.Hour), Host: "ubu-01", OS: "linux"}}
+	r := Build(evs, runs, Options{WindowEnd: end, Location: time.UTC, CheckSets: sets})
+	rows := r.avRows()
+	if len(rows) != 2 || rows[0].Host != "ubu-01" || rows[0].Status != "Out of date" || rows[0].Dated != "1 Aug 2026 09:30" || rows[0].Version != "daily 27001" ||
+		rows[1].Product != "Microsoft Defender" || rows[1].Dated != "2 Oct 2026 12:00" || rows[1].Age != "3 days old" || rows[1].Protection != "On" {
+		t.Fatalf("rows: %+v", rows)
+	}
+	l, ok := r.avCheckLine(rows)
+	if !ok || l.Level != "bad" || l.Who != "ubu-01" || !strings.Contains(l.What, "oldest definitions dated 1 Aug 2026 09:30") || l.Href != "#health/@av" {
+		t.Errorf("overview line: %+v", l)
+	}
+	dir := filepath.Join(t.TempDir(), "rep")
+	if err := r.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
+	for _, want := range []string{`id="h-av"`, "Definitions dated", "<b>2 Oct 2026 12:00</b>", "Antivirus definitions", "Defender definitions dated 2 Oct 2026 12:00 (3 days old)"} {
+		if !strings.Contains(string(html), want) {
+			t.Errorf("report lacks %q", want)
+		}
+	}
+}
+
+// Stat cards above an event table filter it; the People heatmap links its
+// hours; the date range is not a link and All reports is its own button.
+func TestClickableCardsAndHeatmap(t *testing.T) {
+	end := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	at := time.Date(2026, 10, 5, 9, 30, 0, 0, time.UTC) // a Monday
+	evs := []*event.Event{
+		{Time: at, Host: "WS-07", OS: "windows", Category: event.CatFailedLogon, Severity: event.SevMedium, Action: "account_locked", User: "bob", Target: "bob", Summary: "bob was locked out"},
+		{Time: at, Host: "WS-07", OS: "windows", Category: event.CatPrivileged, Severity: event.SevLow, Action: "special_logon", User: "admin_jd", Summary: "admin"},
+	}
+	r := Build(evs, nil, Options{WindowEnd: end, Location: time.UTC, InReportsDir: true})
+	dir := filepath.Join(t.TempDir(), "rep")
+	if err := r.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "report.html"))
+	html := string(b)
+	for _, want := range []string{
+		`data-cardfilter="kind=Locked&#43;out"`, // Accounts locked out filters the Failed logons table
+		`data-cardfilter=""`,                    // the total card shows everything
+		`href="#search?page=failed&amp;sort=src"`,
+		`href="../index.html" title="Every report in this folder, newest first"`,
+		`<span class="btn static"`,
+		`href="#search?user=admin_jd&amp;when=%40slot%3A0-9"`, // a heatmap hour opens Search
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("report lacks %s", want)
+		}
+	}
+	if strings.Contains(html, `<a class="btn" href="../index.html" title="All reports">`) {
+		t.Error("the date range still opens the list of reports")
+	}
+}

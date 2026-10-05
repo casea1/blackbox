@@ -2,6 +2,7 @@ package report
 
 import (
 	"fmt"
+	"html"
 	"html/template"
 	"math"
 	"sort"
@@ -71,6 +72,7 @@ type personData struct {
 	created, admined bool
 	heat             [7][24]int
 	hot              [7][24]bool
+	slots            map[int][]string // detection → weekday-hour slots it involved this person
 	notable          []*Row
 	inFinding        bool
 }
@@ -81,7 +83,7 @@ func (r *Report) peoplePage() *PeoplePage {
 		k := personKey(u)
 		p := people[k]
 		if p == nil {
-			p = &personData{name: u, hosts: map[string]int{}}
+			p = &personData{name: u, hosts: map[string]int{}, slots: map[int][]string{}}
 			if i := strings.LastIndex(u, `\`); i >= 0 {
 				p.name = u[i+1:]
 			}
@@ -132,6 +134,7 @@ func (r *Report) peoplePage() *PeoplePage {
 				p.inFinding = true
 				for _, fi := range fis {
 					mark(personKey(e.User), fi)
+					p.slots[fi] = append(p.slots[fi], fmt.Sprintf("%d-%d", d, t.Hour()))
 				}
 			}
 			if notableRow(row, len(fis) > 0) {
@@ -230,11 +233,12 @@ func (r *Report) peoplePage() *PeoplePage {
 		}
 		for _, c := range cards {
 			if findingsOf[k][c.Index] {
+				c.Slots = strings.Join(p.slots[c.Index], " ")
 				v.Detections = append(v.Detections, c)
 			}
 		}
 		v.Notable, v.NotableCount = r.notable(p.notable)
-		v.Heat = heatmap(p.heat, p.hot)
+		v.Heat = heatmap(p.heat, p.hot, k)
 		type hc struct {
 			h string
 			n int
@@ -374,8 +378,9 @@ func actionIcon(a string) string {
 }
 
 // heatmap draws a week by hour of day, darker for more events and red
-// where a detection happened.
-func heatmap(heat [7][24]int, hot [7][24]bool) template.HTML {
+// where a detection happened. A red hour shows the person's detections in
+// it; any other hour with events opens them in Search.
+func heatmap(heat [7][24]int, hot [7][24]bool, person string) template.HTML {
 	const w = 360.0
 	cw := (w - 40) / 24
 	top := 1
@@ -396,7 +401,15 @@ func heatmap(heat [7][24]int, hot [7][24]bool) template.HTML {
 			if hot[d][h] {
 				col = colBad
 			}
-			fmt.Fprintf(&b, `<rect x="%.1f" y="%d" width="%.1f" height="15" fill="%s"><title>%s %02d:00 · %d</title></rect>`, 40+float64(h)*cw, d*18+13, cw-2, col, day, h, heat[d][h])
+			rect := fmt.Sprintf(`<rect x="%.1f" y="%d" width="%.1f" height="15" fill="%s"><title>%s %02d:00 · %d</title></rect>`, 40+float64(h)*cw, d*18+13, cw-2, col, day, h, heat[d][h])
+			switch slot := fmt.Sprintf("%d-%d", d, h); {
+			case hot[d][h]:
+				fmt.Fprintf(&b, `<a href="#" class="hs" data-hslot="%s" data-person="%s">%s</a>`, slot, html.EscapeString(person), rect)
+			case heat[d][h] > 0:
+				fmt.Fprintf(&b, `<a href="%s" class="hs">%s</a>`, html.EscapeString(searchLink("user", person, "when", "@slot:"+slot)), rect)
+			default:
+				b.WriteString(rect)
+			}
 		}
 	}
 	for h := 0; h < 24; h += 6 {

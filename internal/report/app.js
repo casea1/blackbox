@@ -67,6 +67,66 @@
   var SEV = { high: 'High', medium: 'Medium' };
   function sevCell(s) { return SEV[s] ? '<span class="sv ' + s + '">' + SEV[s] + '</span>' : '<span class="mute">—</span>'; }
 
+  // "0-17" (a People heatmap cell) as "Mondays 17:00–18:00".
+  function slotLabel(slot) {
+    var p = slot.split('-'), h = +p[1];
+    return ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'][+p[0]] + ' ' + pad(h) + ':00–' + pad((h + 1) % 24) + ':00';
+  }
+
+  // People heatmap: a red hour shows the person's detections in it.
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest && ev.target.closest('[data-hslot]');
+    if (!a) return;
+    ev.preventDefault();
+    var slot = a.getAttribute('data-hslot'), box = document.getElementById('pdet-' + a.getAttribute('data-person'));
+    if (!box) return;
+    var n = 0;
+    box.querySelectorAll('.dc').forEach(function (c) {
+      var on = (' ' + (c.getAttribute('data-slots') || '') + ' ').indexOf(' ' + slot + ' ') >= 0;
+      c.hidden = !on;
+      if (on) n++;
+    });
+    var note = box.querySelector('[data-slotnote]');
+    if (note) {
+      if (!note.hasAttribute('data-all')) note.setAttribute('data-all', note.textContent);
+      note.innerHTML = esc(n + ' at ' + slotLabel(slot)) + ' · <a href="#" class="link" data-slotall>Show all</a>';
+    }
+    box.scrollIntoView({ block: 'start' });
+  });
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest && ev.target.closest('[data-slotall]');
+    if (!a) return;
+    ev.preventDefault();
+    var box = a.closest('.panel'), note = box.querySelector('[data-slotnote]');
+    box.querySelectorAll('.dc').forEach(function (c) { c.hidden = false; });
+    note.textContent = note.getAttribute('data-all');
+  });
+
+  // A stat card above an event table filters it (data-cardfilter is a query
+  // string; empty shows everything).
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest && ev.target.closest('[data-cardfilter]');
+    if (!a) return;
+    var view = a.closest('.view'), t = view && tables[view.getAttribute('data-view')];
+    if (!t) return;
+    ev.preventDefault();
+    var f = {};
+    a.getAttribute('data-cardfilter').split('&').forEach(function (kv) {
+      var i = kv.indexOf('=');
+      if (i > 0) f[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1).replace(/\+/g, ' '));
+    });
+    t.apply(f);
+    t.el.scrollIntoView({ block: 'start' });
+  });
+
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest && ev.target.closest('[data-flagclear]');
+    if (!a) return;
+    ev.preventDefault();
+    var t = tables[a.closest('.view').getAttribute('data-view')];
+    if (t) { t.flag = ''; a.parentNode.hidden = true; t.filter(); }
+  });
+
   // ---- Pages ----
   var views = document.querySelectorAll('.view');
   function show() {
@@ -109,6 +169,8 @@
     if (!a1) return null;
     key = key || a1.getAttribute('data-single') || '';
     // "#health/HOST/scap" opens the system and goes to its open STIG rules (SC3).
+    // "#health/@av" goes to the Antivirus table.
+    if (key === '@av') { a1.hidden = false; a3.hidden = true; return document.getElementById('h-av'); }
     var scap = /\/scap$/.test(key);
     if (scap) key = key.replace(/\/scap$/, '');
     a1.hidden = !!key; a3.hidden = !key;
@@ -205,7 +267,7 @@
     loadRows(p, function (done, n) { self.message('Loading events… ' + done + ' of ' + n + ' days'); }).then(function (rows) {
       self.rows = rows;
       self.options();
-      self.filter();
+      if (self.want) self.setFilters(); else self.filter();
     }).catch(function (err) {
       self.loading = false;
       self.message('The events could not be read: ' + err.message + '. Open events.zip in this report\'s folder instead.');
@@ -234,17 +296,41 @@
     if (k) fill(k, 17);
   };
 
+  // apply sets the table's filters (from a stat card): kind, sev, host,
+  // user, day, text, and flag ("New device", "First time", …). Unnamed
+  // filters are cleared. It waits for the rows if they are still loading.
+  Table.prototype.apply = function (f) {
+    this.want = f;
+    if (this.rows) this.setFilters();
+  };
+  Table.prototype.setFilters = function () {
+    var f = this.want || {};
+    this.want = null;
+    this.el.querySelectorAll('[data-f]').forEach(function (x) {
+      var v = f[x.getAttribute('data-f')] || '';
+      if (x.tagName === 'SELECT' && v && !Array.prototype.some.call(x.options, function (o) { return o.value === v; })) {
+        var o = document.createElement('option'); o.value = v; o.textContent = v.split('|').join(' or '); x.appendChild(o);
+      }
+      x.value = v;
+    });
+    this.flag = f.flag || '';
+    var note = this.el.querySelector('[data-flagnote]');
+    if (note) { note.hidden = !this.flag; note.querySelector('b').textContent = this.flag; }
+    this.filter();
+  };
+
   Table.prototype.filter = function () {
     if (!this.rows) return;
-    var f = {};
+    var f = {}, flag = this.flag;
     this.el.querySelectorAll('[data-f]').forEach(function (x) { f[x.getAttribute('data-f')] = x.value; });
-    var text = (f.text || '').toLowerCase();
+    var text = (f.text || '').toLowerCase(), kinds = f.kind ? f.kind.split('|') : null;
     this.shown = this.rows.filter(function (r) {
       if (f.sev && r[3] !== f.sev) return false;
       if (f.host && r[2] !== f.host) return false;
       if (f.user && r[5] !== f.user) return false;
       if (f.day && r[15] !== f.day) return false;
-      if (f.kind && r[17] !== f.kind) return false;
+      if (kinds && kinds.indexOf(r[17]) < 0) return false;
+      if (flag && (',' + r[14] + ',').indexOf(',' + flag + ',') < 0) return false;
       if (text) {
         var hay = (r[8] + ' ' + r[2] + ' ' + r[5] + ' ' + r[6] + ' ' + r[7] + ' ' + r[9] + ' ' + r[11] + ' ' + r[12] + ' ' + r[17] + ' ' + r[18]).toLowerCase();
         if (hay.indexOf(text) < 0) return false;
@@ -434,6 +520,11 @@
       if (m >= h.start) return !h.days[wd];
       return !(m < h.end && h.days[(wd + 6) % 7]);
     }
+    // A weekday-hour of the People heatmap: "0-17" is Mondays 17:00-18:00.
+    function inSlot(r, slot) {
+      var d = new Date((r[1] + r[16]) * 1000), p = slot.split('-');
+      return (d.getUTCDay() + 6) % 7 === +p[0] && d.getUTCHours() === +p[1];
+    }
     function run() {
       if (tooOld) { st.message(TOO_OLD); return; }
       ran = true;
@@ -448,7 +539,7 @@
           rows.forEach(function (r) {
             if (user && key(r[5]) !== user) return;
             if (host && (host.charAt(0) === '@' ? kinds[r[2]] !== host.slice(1) : r[2] !== host)) return;
-            if (when && (when === '@after' ? !afterHours(r) : r[15] !== when)) return;
+            if (when && (when === '@after' ? !afterHours(r) : when.indexOf('@slot:') === 0 ? !inSlot(r, when.slice(6)) : r[15] !== when)) return;
             if (extra && !extra(r)) return;
             if (text) {
               var hay = (r[8] + ' ' + r[2] + ' ' + r[5] + ' ' + r[6] + ' ' + r[7] + ' ' + r[9] + ' ' + r[11] + ' ' + r[12] + ' ' + r[17] + ' ' + r[18]).toLowerCase();
@@ -543,11 +634,11 @@
         ['page', 'user', 'host', 'when', 'text'].forEach(function (k) {
           var el = q[k], v = params[k] || '';
           if (el.tagName === 'SELECT' && v && !Array.prototype.some.call(el.options, function (o) { return o.value === v; })) {
-            var o = document.createElement('option'); o.value = v; o.textContent = v; el.appendChild(o); // e.g. an account not on People
+            var o = document.createElement('option'); o.value = v; o.textContent = v.indexOf('@slot:') === 0 ? slotLabel(v.slice(6)) : v; el.appendChild(o); // e.g. an account not on People
           }
           el.value = v;
         });
-        extra = null; setSort('new'); run();
+        extra = null; setSort(params.sort || 'new'); run();
       },
       open: function (text) {
         if (text) {

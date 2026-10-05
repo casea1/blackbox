@@ -16,23 +16,27 @@ table.rx .hi{color:#C22020;font-weight:600}table.rx .md{color:#A35A00;font-weigh
 a.open{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border:1px solid rgba(0,30,98,.18);background:#fff;color:#0B1630;font-size:12.5px;font-weight:550;text-decoration:none}
 a.open:hover{border-color:#0B5FFF}.find{display:inline-flex;align-items:center;gap:8px}.find input{border:0;background:none;outline:0;font:inherit;width:150px}
 .chips span{cursor:pointer}
+table.rx tbody tr{cursor:pointer}table.rx tbody tr:hover td{background:rgba(11,95,255,.07)}
+.latest{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:1px 7px;border:1px solid #BFD3FF;background:#EAF1FF;color:#0B4FD6;margin-left:8px}
+.intro{margin:0 0 12px;color:#4A5675;font-size:13.5px;max-width:860px}
 </style>
 </head>
 <body>
 <aside>
   <div class="brand"><img src="{{logo}}" alt=""><div><b>Blackbox</b></div></div>
   {{if .Site}}<div class="site"><span>Network</span><b>{{.Site}}</b></div>{{end}}
-  <nav><a class="on" href="#">{{icon "scroll-text" 17}}<span>All reports</span><small>{{len .Entries}}</small></a></nav>
+  <nav><a class="on" href="#">{{icon "history" 17}}<span>All reports</span><small>{{len .Entries}}</small></a>{{with .Latest}}<a href="{{.}}/report.html">{{icon "layout-dashboard" 17}}<span>Latest report</span></a>{{end}}</nav>
 </aside>
 <main>
-<div class="head"><div><div class="crumb"><span data-folder>Reports folder</span>{{if .Schedule}} · {{.Schedule}}{{end}}</div><h1>Audit reports</h1></div>
-<div class="tools"><label class="btn find">{{icon "search" 15}}<input type="search" placeholder="Find a report" data-findreport></label></div></div>
+<div class="head"><div><div class="crumb"><span data-folder>Reports folder</span>{{if .Schedule}} · {{.Schedule}}{{end}}</div><h1>All reports</h1></div>
+<div class="tools"><label class="btn find">{{icon "search" 15}}<input type="search" placeholder="Find a report" data-findreport></label>{{with .Latest}}<a class="btn primary" href="{{.}}/report.html">Open the latest report</a>{{end}}</div></div>
+<p class="intro">Every report in this folder, newest first. Each one covers one period; click a row to open it. Reports marked <b>Interim</b> were made by hand between scheduled reports.</p>
 {{if .Entries}}
 {{if .Chart}}<div class="panel" style="margin-bottom:12px"><div class="row" style="grid-template-columns:260px 1fr;margin:0;align-items:center"><div><div class="ph" style="margin-bottom:6px"><h2>{{icon "trending-up" 17}}Detections per week</h2></div><p class="pm" style="margin:0 0 10px">Last {{.Weeks}} reports</p>
 <div class="legend"><span><i style="background:#D12C2C"></i>High</span><span><i style="background:#E08A00"></i>Medium</span><span>Faded = earlier weeks</span></div></div><div>{{.Chart}}</div></div></div>{{end}}
 <div class="panel"><div class="toolbar"><h2>{{icon "scroll-text" 17}}Reports · newest first</h2><div class="chips" data-chips><span class="on" data-show="">All<i>{{len .Entries}}</i></span><span data-show="bad">Incomplete<i>{{.Incomplete}}</i></span></div></div>
-<table class="rx"><thead><tr><th>Week</th><th class="n">Systems</th><th class="n">Events</th><th class="n">High</th><th class="n">Medium</th><th>Audit trail</th><th></th></tr></thead><tbody>
-{{range .Rows}}<tr data-row="{{.Search}}"{{if .Incomplete}} data-bad{{end}}><td><b>{{.Week}}</b>{{if .Interim}}<span class="int">Interim</span>{{end}}</td><td class="n">{{.Systems}}</td><td class="n">{{commas .Events}}</td>
+<table class="rx"><thead><tr><th>Period</th><th class="n">Systems</th><th class="n">Events</th><th class="n">High</th><th class="n">Medium</th><th>Audit trail</th><th></th></tr></thead><tbody>
+{{range $i, $r := .Rows}}<tr data-row="{{.Search}}" data-href="{{.Dir}}/report.html"{{if .Incomplete}} data-bad{{end}}><td><b>{{.Week}}</b>{{if eq $i 0}}<span class="latest">Latest</span>{{end}}{{if .Interim}}<span class="int">Interim</span>{{end}}</td><td class="n">{{.Systems}}</td><td class="n">{{commas .Events}}</td>
 <td class="n {{if .High}}hi{{else}}z{{end}}">{{.High}}</td><td class="n {{if .Medium}}md{{else}}z{{end}}">{{.Medium}}</td><td><span class="trail {{.TrailClass}}">{{.Trail}}</span></td>
 <td><a class="open" href="{{.Dir}}/report.html">Open {{icon "chevron-right" 14}}</a></td></tr>{{end}}
 </tbody></table></div>
@@ -58,6 +62,9 @@ a.open:hover{border-color:#0B5FFF}.find{display:inline-flex;align-items:center;g
       document.querySelectorAll('[data-chips] span').forEach(function (x) { x.classList.toggle('on', x === c); });
       apply();
     });
+  });
+  document.querySelectorAll('tr[data-href]').forEach(function (r) {
+    r.addEventListener('click', function (e) { if (!e.target.closest('a')) location.href = r.getAttribute('data-href'); });
   });
   var box = document.querySelector('[data-findreport]');
   if (box) box.addEventListener('input', function () { q = box.value.toLowerCase(); apply(); });

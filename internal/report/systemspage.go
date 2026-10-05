@@ -442,7 +442,11 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 			if lv == "" {
 				lv = "warn"
 			}
-			lines = append(lines, CheckLine{Level: lv, Icon: "shield", Title: "Antivirus definitions current", What: product + res.Have})
+			what := product + res.Have
+			if !res.Dated.IsZero() {
+				what = product + "definitions dated " + res.Dated.In(r.Location).Format("2 Jan 2006 15:04") + " (" + roughDuration(r.WindowEnd.Sub(res.Dated)) + " old)"
+			}
+			lines = append(lines, CheckLine{Level: lv, Icon: "shield", Title: "Antivirus definitions current", What: what, Href: "#health/@av"})
 		}
 	}
 

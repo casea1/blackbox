@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/casea1/blackbox/internal/winevt"
 )
@@ -33,6 +34,9 @@ type Result struct {
 	Affects string `json:"affects,omitempty"` // report section that is incomplete without it
 	Fix     string `json:"fix,omitempty"`
 	STIG    string `json:"stig,omitempty"` // STIG rule IDs, e.g. WN11-AU-000505
+	// Dated is when antivirus definitions were made (Defender's version
+	// creation time, ClamAV's build time), so the report can show it.
+	Dated time.Time `json:"dated,omitzero"`
 }
 
 // Summary counts results by status.
