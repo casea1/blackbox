@@ -45,6 +45,9 @@ type Info struct {
 	Created time.Time  `json:"created"`
 	Files   []FileInfo `json:"files"`
 	Notes   []string   `json:"notes,omitempty"` // logs that could not be exported, and why
+	// Gaps are the parts of the period a full log had already overwritten
+	// before this save: those events are not in it.
+	Gaps []Gap `json:"gaps,omitempty"`
 }
 
 // FileInfo is one log file in an archive.
@@ -108,7 +111,7 @@ type Source struct {
 // Create exports this computer's logs for [from, to) and writes the
 // archive to path. Logs that cannot be exported are noted in the archive
 // rather than failing it; an archive with no logs at all is an error.
-func Create(path, host, osName string, from, to, now time.Time) (Info, error) {
+func Create(path, host, osName string, from, to, now time.Time, gaps []Gap) (Info, error) {
 	tmp, err := os.MkdirTemp(filepath.Dir(path), ".archive-")
 	if err != nil {
 		return Info{}, err
@@ -121,7 +124,7 @@ func Create(path, host, osName string, from, to, now time.Time) (Info, error) {
 		}
 		return Info{}, fmt.Errorf("no logs could be exported: %s", strings.Join(notes, "; "))
 	}
-	return Write(path, Info{Host: host, OS: osName, From: from, To: to, Created: now, Notes: notes}, sources)
+	return Write(path, Info{Host: host, OS: osName, From: from, To: to, Created: now, Notes: notes, Gaps: gaps}, sources)
 }
 
 // Write zips the sources and a description of them, under a temporary
@@ -367,22 +370,24 @@ func Prune(dir string, days int, now time.Time) error {
 // each day's logs (and its archive.json) in a folder named for its period,
 // e.g. 20260929-1520Z_20260930-1520Z/Security.evtx. Every archive is
 // verified first. It returns the period covered and the bundle's SHA-256.
-func Bundle(dst string, list []Stored) (from, to time.Time, sum string, err error) {
+func Bundle(dst string, list []Stored) (from, to time.Time, sum string, gaps []Gap, err error) {
 	part := filepath.Join(filepath.Dir(dst), "."+filepath.Base(dst)+".partial")
 	f, err := os.OpenFile(part, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o640)
 	if err != nil {
-		return from, to, "", err
+		return from, to, "", nil, err
 	}
-	fail := func(e error) (time.Time, time.Time, string, error) {
+	fail := func(e error) (time.Time, time.Time, string, []Gap, error) {
 		f.Close()
 		os.Remove(part)
-		return from, to, "", e
+		return from, to, "", nil, e
 	}
 	zw := zip.NewWriter(f)
 	for _, s := range list {
-		if _, err := Verify(s.Path); err != nil {
+		info, err := Verify(s.Path)
+		if err != nil {
 			return fail(fmt.Errorf("%s: %w", filepath.Base(s.Path), err))
 		}
+		gaps = append(gaps, info.Gaps...)
 		if from.IsZero() || s.From.Before(from) {
 			from = s.From
 		}
@@ -402,13 +407,13 @@ func Bundle(dst string, list []Stored) (from, to time.Time, sum string, err erro
 	}
 	if err := f.Close(); err != nil {
 		os.Remove(part)
-		return from, to, "", err
+		return from, to, "", nil, err
 	}
 	if err := os.Rename(part, dst); err != nil {
-		return from, to, "", err
+		return from, to, "", nil, err
 	}
 	sum, err = FileSHA256(dst)
-	return from, to, sum, err
+	return from, to, sum, gaps, err
 }
 
 // copyEntries copies every file of the zip at src into zw under prefix,

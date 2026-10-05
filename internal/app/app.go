@@ -53,6 +53,9 @@ type App struct {
 	// RecordSelf records a change Blackbox makes on a person's request
 	// (nil: selfaudit.Record, the spool and the system log).
 	RecordSelf func(dataDir string, c event.SelfChange, now time.Time) error
+	// LogStates reads how far back each log reaches and whether it is full
+	// (nil: archive.LogStates); tests replace it.
+	LogStates func() []archive.LogState
 }
 
 func (a *App) now() time.Time {
@@ -115,12 +118,30 @@ func (a *App) legacyLogsDir() string { return filepath.Join(a.ReportsDir(), "arc
 // archiveLogs exports the original logs (see package archive) from the end
 // of the last archive until upTo: into the outbox on a sender, otherwise
 // into the pending folder for the next report. Unless force is set it
-// runs only once a day. If it fails, the same period is tried again.
+// runs once a day, or sooner when a full log could overwrite events not
+// yet saved before the next run. Parts a full log had already overwritten
+// are recorded in the archive and for status. If it fails, the same
+// period is tried again.
 func (a *App) archiveLogs(st *store.Store, upTo time.Time, force bool) {
 	from, due := archive.Due(st.State.ArchivedUntil, upTo)
-	if !(due || force) || !from.Before(upTo) {
+	if !from.Before(upTo) {
 		return
 	}
+	// The first save reaches back a week on purpose; what a log no
+	// longer holds from before Blackbox was installed is not a gap.
+	first := st.State.ArchivedUntil.IsZero()
+	var states []archive.LogState
+	if !first {
+		states = a.logStates()
+	}
+	if !(due || force) {
+		risk := archive.AtRisk(states, st.State.ArchivedUntil, a.saveMargin())
+		if len(risk) == 0 {
+			return
+		}
+		a.logf("saving the original logs early: %s is full and could overwrite events not yet saved before the next run", strings.Join(risk, ", "))
+	}
+	gaps := archive.GapsIn(states, from, upTo)
 	host := collect.LocalHost()
 	dir := filepath.Join(a.pendingLogsDir(), archive.SafeName(host))
 	if !a.Cfg.MakesReports() {
@@ -130,7 +151,7 @@ func (a *App) archiveLogs(st *store.Store, upTo time.Time, force bool) {
 		a.logf("archiving the logs: %v", err)
 		return
 	}
-	info, err := archive.Create(filepath.Join(dir, archive.FileName(host, from, upTo)), host, runtime.GOOS, from, upTo, a.now())
+	info, err := archive.Create(filepath.Join(dir, archive.FileName(host, from, upTo)), host, runtime.GOOS, from, upTo, a.now(), gaps)
 	if err != nil {
 		a.logf("archiving the logs: %v; will try again next run", err)
 		return
@@ -138,10 +159,43 @@ func (a *App) archiveLogs(st *store.Store, upTo time.Time, force bool) {
 	for _, n := range info.Notes {
 		a.logf("log archive: %s", n)
 	}
+	now := a.now()
+	var kept []store.LogGap
+	for _, g := range st.State.LogGaps {
+		if now.Sub(g.Noted) < logGapsKept {
+			kept = append(kept, g)
+		}
+	}
+	for _, g := range gaps {
+		a.logf("ORIGINAL LOGS INCOMPLETE: %s had already overwritten its events from %s to %s when it was saved", g.Source, g.From.In(a.loc()).Format("2006-01-02 15:04"), g.To.In(a.loc()).Format("2006-01-02 15:04"))
+		kept = append(kept, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: now})
+	}
+	st.State.LogGaps = kept
 	st.State.ArchivedUntil = upTo
 	if err := st.Save(); err != nil {
 		a.logf("saving state: %v", err)
 	}
+}
+
+// logGapsKept is how long status points out a gap in the saved original
+// logs.
+const logGapsKept = 14 * 24 * time.Hour
+
+// saveMargin is how close a full log may come to overwriting unsaved
+// events before they are saved early: two collection intervals.
+func (a *App) saveMargin() time.Duration {
+	every := a.Cfg.CollectEvery
+	if every <= 0 {
+		every = 15 * time.Minute
+	}
+	return 2 * every
+}
+
+func (a *App) logStates() []archive.LogState {
+	if a.LogStates != nil {
+		return a.LogStates()
+	}
+	return archive.LogStates()
 }
 
 // bundleLogs combines, for each computer, the pending daily archives that
@@ -173,7 +227,7 @@ func (a *App) bundleLogs(end time.Time) (refs []report.ArchiveRef, used []string
 		days := byHost[k]
 		name := "logs-" + archive.SafeName(days[0].Host) + ".zip"
 		tmp := filepath.Join(a.pendingLogsDir(), "."+name)
-		from, to, sum, err := archive.Bundle(tmp, days)
+		from, to, sum, gaps, err := archive.Bundle(tmp, days)
 		if err != nil {
 			a.logf("original logs of %s: %v; they stay pending", days[0].Host, err)
 			os.Remove(tmp)
@@ -184,7 +238,7 @@ func (a *App) bundleLogs(end time.Time) (refs []report.ArchiveRef, used []string
 		if fi != nil {
 			size = uint64(fi.Size())
 		}
-		refs = append(refs, report.ArchiveRef{Host: days[0].Host, From: from, To: to, Name: name, Path: tmp, Bytes: size, SHA256: sum})
+		refs = append(refs, report.ArchiveRef{Host: days[0].Host, From: from, To: to, Name: name, Path: tmp, Bytes: size, SHA256: sum, Gaps: gaps})
 		for _, d := range days {
 			used = append(used, d.Path)
 		}

@@ -58,6 +58,9 @@ type State struct {
 	// back (a stored collection time in the future), until a scheduled
 	// report has shown them.
 	ClockBack []ClockJump `json:"clock_back,omitempty"`
+	// LogGaps are parts of this computer's logs that were overwritten
+	// before Blackbox saved the original logs (kept 14 days, for status).
+	LogGaps []LogGap `json:"log_gaps,omitempty"`
 
 	// Removable devices seen before, so new ones can be flagged.
 	KnownDevices map[string]time.Time `json:"known_devices"`
@@ -544,4 +547,12 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 	}
 	os.Chmod(name, perm)
 	return os.Rename(name, path)
+}
+
+// LogGap is a part of one log missing from the saved original logs.
+type LogGap struct {
+	Source string    `json:"source"`
+	From   time.Time `json:"from"`
+	To     time.Time `json:"to"`
+	Noted  time.Time `json:"noted"`
 }

@@ -43,3 +43,23 @@ func wevtutil() string {
 	}
 	return "wevtutil.exe"
 }
+
+// LogStates reads, for each log Blackbox saves, how far back it reaches and
+// whether it is full and overwriting (not set to keep events or to archive
+// itself when full).
+func LogStates() []LogState {
+	var out []LogState
+	for _, ch := range winevt.Channels {
+		s, err := winevt.GetLogSettings(ch)
+		if err != nil || !s.Enabled {
+			continue
+		}
+		h, err := winevt.GetLogHistory(ch)
+		if err != nil || h.Oldest.IsZero() {
+			continue
+		}
+		wraps := !s.Retention && s.MaxSize > 0 && float64(h.FileSize) >= 0.9*float64(s.MaxSize)
+		out = append(out, LogState{Source: ch, Oldest: h.Oldest, Wraps: wraps})
+	}
+	return out
+}

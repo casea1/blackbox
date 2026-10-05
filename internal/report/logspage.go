@@ -93,6 +93,7 @@ func (r *Report) logsPage() *LogsPage {
 			hash      string
 			days      int
 			notes     []string
+			gaps      []string
 		}
 		logs := map[string]*agg{}
 		var order []string
@@ -113,6 +114,13 @@ func (r *Report) logsPage() *LogsPage {
 				g.bytes += f.Bytes
 				g.days++
 				g.hash = f.SHA256
+			}
+			for _, gp := range info.Gaps {
+				for _, g := range logs {
+					if strings.EqualFold(g.log, gp.Source) {
+						g.gaps = append(g.gaps, gp.From.In(r.Location).Format("2 Jan 15:04")+" – "+gp.To.In(r.Location).Format("2 Jan 15:04"))
+					}
+				}
 			}
 			for _, n := range info.Notes {
 				for _, g := range logs {
@@ -140,6 +148,8 @@ func (r *Report) logsPage() *LogsPage {
 			}
 			isSec := strings.EqualFold(g.log, "Security") || strings.Contains(strings.ToLower(g.log), "audit")
 			switch {
+			case len(g.gaps) > 0:
+				lf.Note, lf.NoteBad = "Missing "+strings.Join(g.gaps, ", ")+": overwritten before it was saved", true
 			case lost[h+"|"+strings.ToLower(g.log)] > 0:
 				lf.Note, lf.NoteBad = plural(int(lost[h+"|"+strings.ToLower(g.log)]), "event")+" overwritten before export", true
 			case isSec && len(cleared[h]) > 0:

@@ -59,6 +59,8 @@ type ArchiveJSON struct {
 	File   string    `json:"file"`
 	Bytes  uint64    `json:"bytes"`
 	SHA256 string    `json:"sha256"`
+	// Gaps are parts a full log had overwritten before it was saved.
+	Gaps []archive.Gap `json:"gaps,omitempty"`
 }
 
 // Detection is one detection in summary.json.
@@ -90,7 +92,7 @@ func (r *Report) summary() Summary {
 	}
 	s.High = len(r.HighRows)
 	for _, a := range r.Archives {
-		s.Archives = append(s.Archives, ArchiveJSON{Host: a.Host, From: a.From, To: a.To, File: a.Name, Bytes: a.Bytes, SHA256: a.SHA256})
+		s.Archives = append(s.Archives, ArchiveJSON{Host: a.Host, From: a.From, To: a.To, File: a.Name, Bytes: a.Bytes, SHA256: a.SHA256, Gaps: a.Gaps})
 	}
 	for _, f := range r.Findings {
 		s.Detections = append(s.Detections, Detection{Severity: string(f.Severity), Time: f.Time, Host: f.Host, Title: f.Title, Detail: f.Detail})
