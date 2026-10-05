@@ -551,7 +551,7 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 
 // LogGap is a part of one log missing from the saved original logs.
 type LogGap struct {
-	Source   string    `json:"source"`
+	Source string    `json:"source"`
 	From   time.Time `json:"from"`
 	To     time.Time `json:"to"`
 	Noted  time.Time `json:"noted"`
