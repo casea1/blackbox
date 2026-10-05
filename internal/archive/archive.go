@@ -1,8 +1,9 @@
-// Package archive keeps the original logs. Once a day each computer
-// exports the raw logs Blackbox reads, covering the time since its last
-// archive, into one zip: Windows event logs as .evtx files (open them in
-// Event Viewer), Linux audit records in audit.log format (read them with
-// ausearch -if) and system log lines as text.
+// Package archive keeps the original logs. At every collection each
+// computer exports the raw logs Blackbox reads, covering the time since
+// its last export (see SavePiece), and once a day packs those exports into
+// one zip: Windows event logs as .evtx files (open them in Event Viewer),
+// Linux audit records in audit.log format (read them with ausearch -if)
+// and system log lines as text.
 //
 // Reports show what Blackbox found in the logs; the archives are the logs
 // themselves, unaltered, for an assessor or an investigation. A sender
@@ -48,6 +49,9 @@ type Info struct {
 	// Gaps are the parts of the period a full log had already overwritten
 	// before this save: those events are not in it.
 	Gaps []Gap `json:"gaps,omitempty"`
+	// Logs is, for each log, the part of the period it actually covers
+	// and the events it overwrote before they could be saved (AR2).
+	Logs []LogCover `json:"logs,omitempty"`
 }
 
 // FileInfo is one log file in an archive.
@@ -117,7 +121,7 @@ func Create(path, host, osName string, from, to, now time.Time, gaps []Gap) (Inf
 		return Info{}, err
 	}
 	defer os.RemoveAll(tmp)
-	sources, notes := export(tmp, from, to)
+	sources, notes := export(tmp, from, to, nil)
 	if len(sources) == 0 {
 		if len(notes) == 0 {
 			notes = []string{"no logs found"}
@@ -366,33 +370,47 @@ func Prune(dir string, days int, now time.Time) error {
 	return nil
 }
 
+// Bundled describes a bundle: the period it covers, its SHA-256, and
+// what its daily archives say about gaps and coverage.
+type Bundled struct {
+	From, To time.Time
+	SHA256   string
+	Gaps     []Gap
+	Logs     []LogCover
+	Notes    []string
+}
+
 // Bundle combines one computer's daily archives into a single zip at dst,
 // each day's logs (and its archive.json) in a folder named for its period,
 // e.g. 20260929-1520Z_20260930-1520Z/Security.evtx. Every archive is
-// verified first. It returns the period covered and the bundle's SHA-256.
-func Bundle(dst string, list []Stored) (from, to time.Time, sum string, gaps []Gap, err error) {
+// verified first.
+func Bundle(dst string, list []Stored) (Bundled, error) {
+	var b Bundled
 	part := filepath.Join(filepath.Dir(dst), "."+filepath.Base(dst)+".partial")
 	f, err := os.OpenFile(part, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o640)
 	if err != nil {
-		return from, to, "", nil, err
+		return b, err
 	}
-	fail := func(e error) (time.Time, time.Time, string, []Gap, error) {
+	fail := func(e error) (Bundled, error) {
 		f.Close()
 		os.Remove(part)
-		return from, to, "", nil, e
+		return Bundled{}, e
 	}
 	zw := zip.NewWriter(f)
+	var covers [][]LogCover
 	for _, s := range list {
 		info, err := Verify(s.Path)
 		if err != nil {
 			return fail(fmt.Errorf("%s: %w", filepath.Base(s.Path), err))
 		}
-		gaps = append(gaps, info.Gaps...)
-		if from.IsZero() || s.From.Before(from) {
-			from = s.From
+		b.Gaps = append(b.Gaps, info.Gaps...)
+		covers = append(covers, info.Logs)
+		b.Notes = append(b.Notes, info.Notes...)
+		if b.From.IsZero() || s.From.Before(b.From) {
+			b.From = s.From
 		}
-		if s.To.After(to) {
-			to = s.To
+		if s.To.After(b.To) {
+			b.To = s.To
 		}
 		folder := s.From.UTC().Format(stampFormat) + "_" + s.To.UTC().Format(stampFormat) + "/"
 		if err := copyEntries(zw, s.Path, folder); err != nil {
@@ -407,13 +425,14 @@ func Bundle(dst string, list []Stored) (from, to time.Time, sum string, gaps []G
 	}
 	if err := f.Close(); err != nil {
 		os.Remove(part)
-		return from, to, "", nil, err
+		return Bundled{}, err
 	}
 	if err := os.Rename(part, dst); err != nil {
-		return from, to, "", nil, err
+		return Bundled{}, err
 	}
-	sum, err = FileSHA256(dst)
-	return from, to, sum, gaps, err
+	b.Logs = MergeCover(covers...)
+	b.SHA256, err = FileSHA256(dst)
+	return b, err
 }
 
 // copyEntries copies every file of the zip at src into zw under prefix,
@@ -485,5 +504,5 @@ func Contents(path string) ([]Info, error) {
 // audit and system log lines. It returns the files and notes on any log
 // that could not be saved.
 func Export(dir string, from, to time.Time) ([]Source, []string) {
-	return export(dir, from, to)
+	return export(dir, from, to, nil)
 }

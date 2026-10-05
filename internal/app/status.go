@@ -56,7 +56,7 @@ func (a *App) Status(w io.Writer) error {
 		p("Settings checked:", "%s", stampLocal(s.LastCheck, a.loc()))
 	}
 	if s.ArchivedUntil.IsZero() {
-		p("Log archive:", "none yet (the original logs are saved once a day)")
+		p("Log archive:", "none yet (the original logs are exported at every collection and archived once a day)")
 	} else {
 		where := "they go into the next report's folder"
 		if !a.Cfg.MakesReports() {
@@ -65,7 +65,7 @@ func (a *App) Status(w io.Writer) error {
 				where = fmt.Sprintf("%d waiting to be sent to the collector", n)
 			}
 		}
-		p("Log archive:", "original logs saved up to %s (%s)", stampLocal(s.ArchivedUntil, a.loc()), where)
+		p("Log archive:", "original logs exported up to %s, archived once a day (%s)", stampLocal(s.ArchivedUntil, a.loc()), where)
 	}
 
 	for _, g := range s.LogGaps {

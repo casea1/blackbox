@@ -22,11 +22,15 @@ import (
 // export copies the lines of the logs Blackbox reads that fall in
 // [from, to), unchanged: the audit log (readable with ausearch -if), and
 // the system and authentication logs, or the systemd journal when there
-// are no log files.
-func export(tmp string, from, to time.Time) ([]Source, []string) {
+// are no log files. Logs skip says have nothing new are left out, and so
+// are logs with no lines in the period.
+func export(tmp string, from, to time.Time, skip func(string) bool) ([]Source, []string) {
 	var sources []Source
 	var notes []string
 	add := func(name, source string, write func(io.Writer) error) {
+		if skip != nil && skip(source) {
+			return
+		}
 		path := filepath.Join(tmp, name)
 		f, err := os.Create(path)
 		if err == nil {
@@ -41,6 +45,10 @@ func export(tmp string, from, to time.Time) ([]Source, []string) {
 		}
 		if err != nil {
 			notes = append(notes, fmt.Sprintf("%s: could not be exported: %v", source, err))
+			return
+		}
+		if fi, err := os.Stat(path); err == nil && fi.Size() == 0 {
+			os.Remove(path)
 			return
 		}
 		sources = append(sources, Source{Name: name, Source: source, Path: path})
@@ -123,6 +131,10 @@ func copyLines(files []string, w io.Writer, timeOf func(string, time.Time) (time
 		ref := to
 		if fi, err := f.Stat(); err == nil {
 			ref = fi.ModTime()
+			if ref.Before(from.Add(-time.Hour)) {
+				f.Close()
+				continue // last written well before the period: nothing in it
+			}
 		}
 		sc := bufio.NewScanner(r)
 		sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
@@ -177,14 +189,14 @@ func syslogTime(line string, ref time.Time) (time.Time, bool) {
 // ones are made, so it counts as overwriting.
 func LogStates() []LogState {
 	files := withRotations(collect.AuditLog)
-	if len(files) < 2 {
+	if len(files) == 0 {
 		return nil
 	}
 	oldest := firstTime(files[0], func(line string, _ time.Time) (time.Time, bool) { return auditTime(line) })
 	if oldest.IsZero() {
 		return nil
 	}
-	return []LogState{{Source: collect.AuditLog, Oldest: oldest, Wraps: true}}
+	return []LogState{{Source: collect.AuditLog, Oldest: oldest, Wraps: len(files) > 1}}
 }
 
 // firstTime is the time of the first line in file that has one.

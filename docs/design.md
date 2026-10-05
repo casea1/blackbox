@@ -535,6 +535,56 @@ SFTP collector, the OpenSSH server on TCP 22) is blocked, setup and
 `status` print the exact `New-NetFirewallRule` command for that one rule
 and the Group Policy path to create it.
 
+## 13c. Proposal for the owner: an off-box copy of the original logs (AR4)
+
+*Written 5 Oct 2026 after the v0.12.1 re-test. Not implemented; for the
+owner to decide.*
+
+**The problem.** On a standalone computer or a collector, the original
+logs (`logs-*.zip`), with each report's `manifest.sha256` and
+`summary.json`, sit only in the report folders, on the same disk as
+everything else. An administrator can delete them. The SACL (Windows) or
+audit rule (Linux) on the folder records the deletion, but the evidence
+itself is gone. AU-9(2) asks for audit records to be backed up onto a
+different system or media, and AU-4(1) for them to be moved off the
+system being audited. Reports and archives are also deleted with their
+folder under `retention_days` (now documented in reports.md).
+
+**Proposal: `archive_copy_to`, optional, off by default.**
+
+- A folder path: a removable drive, a share with write-once permissions
+  (the Blackbox account may create files but not change or delete them),
+  or a second server's share. On Linux, an SMB or SFTP share mounted the
+  way `send_to` already mounts it, with the same `soft` mount and
+  `ExecStartPre` handling (L12).
+- After each scheduled report, Blackbox copies that report's
+  `logs-*.zip`, `manifest.sha256` and `summary.json` there, into a
+  folder named like the report folder. It writes under a temporary name,
+  checks each file's SHA-256 against the manifest, then renames, as it
+  does for the inbox.
+- It never deletes or overwrites anything there, and `retention_days`
+  does not apply there: the copy is kept for as long as the site keeps it.
+- A failed or incomplete copy is retried at every run. Until it succeeds,
+  `status` says **ARCHIVE COPY FAILED: <report> could not be copied to
+  <path> since <time>: <reason>** and exits with code 4, and the next
+  report has an Audit health warning naming the report folders not yet
+  copied.
+- `blackbox verify <copy folder>` checks a copied folder the same way as
+  a report folder (the manifest covers the zips and `summary.json`).
+- Setup gets one optional field, "Also copy the original logs to", next
+  to the reports folder; `config set archive_copy_to <path>` does the
+  same.
+
+**What it costs.** One more folder to set up per site, and the space of
+the zips (a few MB a day per Windows computer). No new dependencies:
+it is a file copy with the existing hashing.
+
+**What it does not do.** It does not make the copy tamper-proof by
+itself: that depends on the target (write-once permissions, a removable
+drive kept elsewhere, or a server administered by someone else). It does
+not copy `report.html` or the event data, which can be made again from
+the original logs.
+
 ## 14. M1 implementation status
 
 **Done:**

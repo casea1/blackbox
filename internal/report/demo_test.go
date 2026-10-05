@@ -166,12 +166,12 @@ func TestDemoReport(t *testing.T) {
 			days = append(days, archive.Stored{Host: sy.name, From: from, To: to, Path: path})
 		}
 		dst := filepath.Join(tmp, "logs-"+sy.name+".zip")
-		from, to, sum, _, err := archive.Bundle(dst, days)
+		b, err := archive.Bundle(dst, days)
 		if err != nil {
 			t.Fatal(err)
 		}
 		fi, _ := os.Stat(dst)
-		archives = append(archives, ArchiveRef{Host: sy.name, From: from, To: to, Name: "logs-" + sy.name + ".zip", Path: dst, Bytes: uint64(fi.Size()), SHA256: sum})
+		archives = append(archives, ArchiveRef{Host: sy.name, From: b.From, To: b.To, Name: "logs-" + sy.name + ".zip", Path: dst, Bytes: uint64(fi.Size()), SHA256: b.SHA256})
 	}
 	site := "Lab 3 LAN"
 	if standalone {

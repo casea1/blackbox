@@ -156,6 +156,9 @@ func collectChannel(st *store.Store, tr *winevt.Translator, host, ch string, now
 		if cr.FirstRecord == 0 {
 			cr.FirstRecord = r.RecordID
 		}
+		if cr.FirstTime.IsZero() || r.Time.Before(cr.FirstTime) {
+			cr.FirstTime = r.Time
+		}
 		cr.LastRecord = r.RecordID
 		if e := tr.Translate(r); e != nil {
 			e.Collected = now

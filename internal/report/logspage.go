@@ -17,6 +17,9 @@ type LogArchive struct {
 	Bytes                                             uint64
 	Status, Class                                     string // Verified / Missing / Hash mismatch
 	Files                                             []LogFile
+	// Issues are logs that do not cover the whole period (AR2), and Notes
+	// what the archives say about the period, e.g. a clock change (AR1).
+	Issues, Notes []string
 }
 
 // LogFile is one log inside a zip.
@@ -85,35 +88,60 @@ func (r *Report) logsPage() *LogsPage {
 		if a.To.After(to) {
 			to = a.To
 		}
-		// What is inside, by log: the days of a bundle added together.
+		// What is inside, by log: the days of a bundle, and the pieces
+		// exported at each collection, added together.
 		type agg struct {
 			file, log string
 			from, to  time.Time
+			covFrom   time.Time // oldest record present (AR2)
+			lostOut   uint64    // overwritten before it could be exported
 			bytes     int64
 			hash      string
-			days      int
+			files     int
 			notes     []string
 			gaps      []string
 		}
 		logs := map[string]*agg{}
 		var order []string
 		var infoBytes int64
+		seenNote := map[string]bool{}
 		for _, info := range r.archiveState[a.Name].Contents {
 			for _, f := range info.Files {
 				base := f.Name
 				if i := strings.LastIndex(base, "/"); i >= 0 {
 					base = base[i+1:]
 				}
-				g := logs[base]
+				key := strings.ToLower(f.Source)
+				if key == "" {
+					key = base
+				}
+				g := logs[key]
 				if g == nil {
 					g = &agg{file: base, log: f.Source, from: info.From}
-					logs[base] = g
-					order = append(order, base)
+					logs[key] = g
+					order = append(order, key)
 				}
 				g.to = info.To
 				g.bytes += f.Bytes
-				g.days++
+				g.files++
 				g.hash = f.SHA256
+			}
+			for _, c := range info.Logs {
+				g := logs[strings.ToLower(c.Source)]
+				if g == nil {
+					// Nothing new from this log in the period, but what it
+					// overwrote still counts.
+					if c.Overwritten == 0 {
+						continue
+					}
+					g = &agg{file: "—", log: c.Source, from: info.From, to: info.To}
+					logs[strings.ToLower(c.Source)] = g
+					order = append(order, strings.ToLower(c.Source))
+				}
+				if g.covFrom.IsZero() {
+					g.covFrom = c.From
+				}
+				g.lostOut += c.Overwritten
 			}
 			for _, gp := range info.Gaps {
 				for _, g := range logs {
@@ -123,35 +151,68 @@ func (r *Report) logsPage() *LogsPage {
 				}
 			}
 			for _, n := range info.Notes {
+				matched := false
 				for _, g := range logs {
 					if strings.Contains(n, g.log) {
 						g.notes = append(g.notes, n)
+						matched = true
 					}
+				}
+				if !matched && !seenNote[n] && n != "no new log records in this period" {
+					seenNote[n] = true
+					la.Notes = append(la.Notes, n)
 				}
 			}
 			infoBytes += 1024
 		}
 		sort.SliceStable(order, func(i, j int) bool { return logRank(logs[order[i]].log) < logRank(logs[order[j]].log) })
 		var names []string
-		for _, base := range order {
-			g := logs[base]
+		for _, key := range order {
+			g := logs[key]
 			names = append(names, shortLog(g.log))
+			start := g.from
+			late := !g.covFrom.IsZero() && g.covFrom.Sub(g.from) > time.Minute
+			if late {
+				start = g.covFrom
+			}
 			lf := LogFile{File: g.file, Log: shortLog(g.log), Size: humanBytes(uint64(g.bytes)),
-				Covers: g.from.In(r.Location).Format("2 Jan") + " – " + g.to.In(r.Location).Format("2 Jan")}
-			if g.days == 1 && len(g.hash) > 6 {
+				Covers: start.In(r.Location).Format("2 Jan 15:04") + " – " + g.to.In(r.Location).Format("2 Jan 15:04")}
+			if g.files > 1 {
+				lf.File = fmt.Sprintf("%s + %d more", g.file, g.files-1)
+				lf.Hash = fmt.Sprintf("%d files", g.files)
+			} else if len(g.hash) > 6 {
 				lf.Hash = g.hash[:6] + "…"
-			} else if g.days > 1 {
-				lf.Hash = fmt.Sprintf("%d days", g.days)
 			}
 			if n := read[h+"|"+strings.ToLower(g.log)]; n > 0 {
 				lf.Events = commas(n)
 			}
 			isSec := strings.EqualFold(g.log, "Security") || strings.Contains(strings.ToLower(g.log), "audit")
+			var parts []string
+			if late {
+				parts = append(parts, "Covers from "+g.covFrom.In(r.Location).Format("2 Jan 15:04"))
+			}
 			switch {
-			case len(g.gaps) > 0:
-				lf.Note, lf.NoteBad = "Missing "+strings.Join(g.gaps, ", ")+": overwritten before it was saved", true
+			case g.lostOut > 0:
+				what := commas(int(g.lostOut)) + " events were overwritten before they could be exported"
+				if g.lostOut == 1 {
+					what = "1 event was overwritten before it could be exported"
+				}
+				parts = append(parts, what)
+				lf.NoteBad = true
 			case lost[h+"|"+strings.ToLower(g.log)] > 0:
-				lf.Note, lf.NoteBad = plural(int(lost[h+"|"+strings.ToLower(g.log)]), "event")+" overwritten before export", true
+				parts = append(parts, plural(int(lost[h+"|"+strings.ToLower(g.log)]), "event")+" overwritten before export")
+				lf.NoteBad = true
+			}
+			if len(g.gaps) > 0 {
+				parts = append(parts, "Missing "+strings.Join(g.gaps, ", ")+": overwritten before it was saved")
+				lf.NoteBad = true
+			}
+			switch {
+			case len(parts) > 0:
+				lf.Note = strings.Join(parts, "; ")
+				if late || lf.NoteBad {
+					la.Issues = append(la.Issues, shortLog(g.log)+": "+strings.ToLower(lf.Note[:1])+lf.Note[1:])
+				}
 			case isSec && len(cleared[h]) > 0:
 				lf.Note, lf.NoteBad = "Cleared "+cleared[h][0].In(r.Location).Format("2 Jan")+" · nothing lost", true
 			case len(g.notes) > 0:
