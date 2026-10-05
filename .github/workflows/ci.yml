@@ -379,9 +379,11 @@ jobs:
           sudo chown -R bbsftp: /home/bbsftp/.ssh /srv/inbox
           sudo chmod 700 /home/bbsftp/.ssh
           sudo mkdir -p /mnt/blackbox-inbox
-          echo 'bbsftp@127.0.0.1:/srv/inbox /mnt/blackbox-inbox fuse.sshfs noauto,_netdev,IdentityFile=/root/.ssh/bb_sftp,StrictHostKeyChecking=accept-new,reconnect 0 0' | sudo tee -a /etc/fstab > /dev/null
+          echo 'bbsftp@127.0.0.1:/srv/inbox /mnt/blackbox-inbox fuse.sshfs noauto,IdentityFile=/root/.ssh/bb_sftp,StrictHostKeyChecking=accept-new,reconnect 0 0' | sudo tee -a /etc/fstab > /dev/null
+          # Over localhost, so no _netdev: the runner's network-online.target
+          # wait job fails.
           sudo systemctl daemon-reload
-          sudo systemctl start 'mnt-blackbox\x2dinbox.mount'
+          sudo systemctl start 'mnt-blackbox\x2dinbox.mount' || { systemctl --failed --no-pager; sudo journalctl -u 'mnt-blackbox\x2dinbox.mount' --no-pager | tail -20; exit 1; }
           sudo test -f /mnt/blackbox-inbox/BLACKBOX-INBOX.txt
           sudo rm -f /srv/inbox/*.bbx
           sudo ./blackbox install --yes --send-to /mnt/blackbox-inbox --no-first-report
