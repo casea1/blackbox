@@ -422,6 +422,19 @@ newest is marked **Latest**; click a row to open it. In a report, the
 **All reports** button at the top of every page (and in the menu) opens
 it. The date range next to it only shows the report's period.
 
+**Trends.** Each report keeps a summary (`summary.json`), so later
+reports compare with earlier ones. The Overview's **What changed** panel
+lists the biggest moves this week against the average of the earlier
+reports: a network-wide count (failed logons, privileged actions, …) up
+or down by 25% or more, a system with more detections than usual, and a
+person with more privileged actions than usual or with privileged actions
+for the first time. The Trends page charts the network's counts and has
+detections per system and privileged actions per person, by week. On the
+People page, each person's **Over time** panel compares this week's
+privileged actions, after-hours actions, logons, failed logons and
+detections with their own average. Counts by person are kept from 0.13
+on, so earlier weeks are blank there.
+
 **Clicking through.** The boxes at the top of each event page filter the
 table below them: for example **Accounts locked out** shows only the
 lockouts, **New devices** only the devices seen for the first time, and the

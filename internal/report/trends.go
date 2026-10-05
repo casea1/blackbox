@@ -22,6 +22,7 @@ type TrendCard struct {
 // WeekRow is one system's detections by week.
 type WeekRow struct {
 	Name  string
+	Href  string // where the name leads (a person's page)
 	Cells []WeekCell
 }
 
@@ -36,8 +37,12 @@ type TrendsPage struct {
 	Cards  []TrendCard
 	Weeks  []string
 	Rows   []WeekRow
-	Crumb  string
-	Weeks1 bool // only this report so far
+	People []WeekRow // privileged actions by person, by week
+	// PeopleOld: some earlier reports were made before counts by person
+	// were kept, so their weeks are blank.
+	PeopleOld bool
+	Crumb     string
+	Weeks1    bool // only this report so far
 }
 
 var trendMetrics = []struct {
@@ -56,13 +61,18 @@ func weekLabel(end time.Time) string {
 	return fmt.Sprintf("W%d", w)
 }
 
-func (r *Report) trendsPage() *TrendsPage {
-	tp := &TrendsPage{Weeks1: len(r.History) == 0}
+// weekLabels names the earlier reports and this one, for charts.
+func (r *Report) weekLabels() []string {
 	var labels []string
 	for _, s := range r.History {
 		labels = append(labels, weekLabel(s.WindowEnd))
 	}
-	labels = append(labels, "This wk")
+	return append(labels, "This wk")
+}
+
+func (r *Report) trendsPage() *TrendsPage {
+	tp := &TrendsPage{Weeks1: len(r.History) == 0}
+	labels := r.weekLabels()
 	tp.Weeks = labels
 	start := r.PeriodStart()
 	if len(r.History) > 0 {
@@ -157,5 +167,22 @@ func (r *Report) trendsPage() *TrendsPage {
 		}
 		tp.Rows = append(tp.Rows, row)
 	}
+	tp.People = r.peopleByWeek()
+	for _, s := range r.History {
+		tp.PeopleOld = tp.PeopleOld || s.People == nil
+	}
 	return tp
+}
+
+// heatCell shades a count in a by-week table, darker for more.
+func heatCell(v, top int) WeekCell {
+	if v <= 0 {
+		return WeekCell{Style: "background:rgba(0,30,98,.03)"}
+	}
+	col := lerpColor(0xEE, 0xF2, 0xFA, 0x0A, 0x2A, 0x7A, 0.25+0.75*float64(v)/float64(top))
+	fg := "#3A4766"
+	if float64(v) >= 0.5*float64(top) {
+		fg = "#fff"
+	}
+	return WeekCell{N: v, Style: template.CSS("background:" + col + ";color:" + fg)}
 }
