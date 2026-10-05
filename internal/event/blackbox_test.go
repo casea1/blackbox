@@ -11,6 +11,7 @@ func TestSelfChangeRoundTrip(t *testing.T) {
 		{Kind: "upgraded", Old: "0.10.4", Version: "0.11.0", Who: "claude", Program: "setup"},
 		{Kind: "upgraded", Version: "0.11.0", Who: "claude", Program: "setup"},
 		{Kind: "removed", Who: "claude", Program: "blackbox uninstall"},
+		{Kind: "resent", New: "214-216,219", Old: `\\COLLECTOR\BlackboxInbox`, Who: `WS-07\claude`, Program: "blackbox send --resend"},
 	} {
 		got, ok := ParseSelfChange(c.Message())
 		if !ok || got != c {
@@ -23,6 +24,10 @@ func TestSelfChangeRoundTrip(t *testing.T) {
 	}
 	if e := (SelfChange{Kind: "setting", Setting: "site_name", New: "Lab", Program: "setup"}).Event(); e.Severity != SevMedium {
 		t.Errorf("site_name: %s", e.Severity)
+	}
+	if e := (SelfChange{Kind: "resent", New: "214-219", Old: "/mnt/inbox", Who: "claude", Program: "blackbox send --resend"}).Event(); e.Severity != SevMedium ||
+		e.Action != "blackbox_batches_resent" || e.Summary != "claude sent Blackbox batches 214-219 to the collector again (/mnt/inbox)." {
+		t.Errorf("resent: %s %s %s", e.Action, e.Severity, e.Summary)
 	}
 	if _, ok := ParseSelfChange("Blackbox did something else."); ok {
 		t.Error("parsed an unknown line")

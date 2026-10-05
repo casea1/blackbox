@@ -20,6 +20,7 @@ import (
 	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/gui"
 	"github.com/casea1/blackbox/internal/install"
+	"github.com/casea1/blackbox/internal/lan"
 	"github.com/casea1/blackbox/internal/report"
 	"github.com/casea1/blackbox/internal/selfaudit"
 	"github.com/casea1/blackbox/internal/setup"
@@ -39,6 +40,7 @@ Usage:
   blackbox status                Show what this computer does, when it last collected, and what is waiting
   blackbox run                   Collect new events; send them or produce a report if one is due (what the schedule runs)
   blackbox send                  Collect and send to the collector now (e.g. before shutting down a VM)
+  blackbox send --resend 214-219 Send batches again that the collector reports missing (kept keep_sent_days after delivery)
   blackbox systems               List the computers whose events this collector reports on
   blackbox systems remove NAME   Stop listing a retired computer
   blackbox report [options]      Collect and produce a report now
@@ -488,6 +490,7 @@ func cmdSend(args []string) error {
 	fs := flag.NewFlagSet("send", flag.ContinueOnError)
 	var c common
 	c.register(fs)
+	resend := fs.String("resend", "", "send kept batches again, for example 214-219 (the numbers the collector reports missing)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -497,12 +500,43 @@ func cmdSend(args []string) error {
 	}
 	logf, closeLog := openLog(cfg.DataDir)
 	defer closeLog()
+	if *resend != "" {
+		return resendBatches(cfg, logf, *resend)
+	}
 	r, err := newApp(cfg, logf).SendNow()
 	if err != nil {
 		return err
 	}
 	fmt.Printf("Sent %d batch%s to %s. Nothing is waiting.\n", r.Delivered, map[bool]string{true: "es"}[r.Delivered != 1], cfg.SendTo)
 	return nil
+}
+
+// resendBatches is "blackbox send --resend 214-219" (L11).
+func resendBatches(cfg *config.Config, logf func(string, ...any), arg string) error {
+	from, to, err := lan.ParseRange(arg)
+	if err != nil {
+		return err
+	}
+	r, err := newApp(cfg, logf).Resend(from, to)
+	if n := len(r.Sent); n > 0 {
+		fmt.Printf("Sent %d batch%s again to %s. The collector imports those it is missing at its next run.\n", n, map[bool]string{true: "es"}[n != 1], cfg.SendTo)
+	}
+	if len(r.Missing) > 0 {
+		fmt.Printf("Not kept on this computer: %s. Batches are kept for keep_sent_days (%d) after delivery; the events in these cannot be sent again.\n",
+			joinSeqs(r.Missing), cfg.KeepSentDays)
+	}
+	if err == nil && len(r.Sent) == 0 && len(r.Missing) == 0 {
+		fmt.Println("Those batches have not been delivered yet; they go with the next delivery.")
+	}
+	return err
+}
+
+func joinSeqs(s []uint64) string {
+	parts := make([]string, len(s))
+	for i, n := range s {
+		parts[i] = strconv.FormatUint(n, 10)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func cmdSystems(args []string) error {

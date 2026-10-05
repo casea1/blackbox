@@ -64,7 +64,7 @@ func send(t *testing.T, st *store.Store, host, dir string, at time.Time) int {
 	if _, err := Export(st, host, "test", at); err != nil {
 		t.Fatal(err)
 	}
-	n, err := Deliver(st, dir, host)
+	n, err := Deliver(st, dir, host, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestDuplicateDeliveryAndMissingBatch(t *testing.T) {
 	Export(ws, "WS-01", "test", t0.Add(time.Hour)) // batch 2
 	collect(t, ws, "WS-01", "windows", 1, t0.Add(2*time.Hour))
 	Export(ws, "WS-01", "test", t0.Add(2*time.Hour)) // batch 3
-	if _, err := Deliver(ws, in, "WS-01"); err != nil {
+	if _, err := Deliver(ws, in, "WS-01", false); err != nil {
 		t.Fatal(err)
 	}
 	id := ws.State.Send.ID
@@ -210,7 +210,7 @@ func TestDeliverNeedsInboxMarker(t *testing.T) {
 	Export(ws, "WS-01", "test", t0)
 	// An unmounted share looks like an empty local folder.
 	empty := t.TempDir()
-	if _, err := Deliver(ws, empty, "WS-01"); !errors.Is(err, ErrNoInbox) {
+	if _, err := Deliver(ws, empty, "WS-01", false); !errors.Is(err, ErrNoInbox) {
 		t.Fatalf("got %v, want ErrNoInbox", err)
 	}
 	if Queued(ws) != 1 {
@@ -358,7 +358,7 @@ func TestLateBatchFillsTheGap(t *testing.T) {
 	Export(ws, "WS-01", "test", t0.Add(time.Hour)) // batch 2
 	collect(t, ws, "WS-01", "windows", 1, t0.Add(2*time.Hour))
 	Export(ws, "WS-01", "test", t0.Add(2*time.Hour)) // batch 3
-	if _, err := Deliver(ws, in, "WS-01"); err != nil {
+	if _, err := Deliver(ws, in, "WS-01", false); err != nil {
 		t.Fatal(err)
 	}
 	id := ws.State.Send.ID
@@ -443,5 +443,80 @@ func TestScapResultsTravel(t *testing.T) {
 	r, err := scap.ReadFile(got[0])
 	if err != nil || r[0].Host != "WS-07" || len(r[0].Open) != 3 {
 		t.Errorf("filed result: %+v %v", r, err)
+	}
+}
+
+// L11: delivered batches are kept, resent on request to fill a gap the
+// collector reports, and removed after keep_sent_days.
+func TestKeptBatchesResendFillsGap(t *testing.T) {
+	in := inbox(t)
+	ws := system(t, "WS-01", "windows", 1, t0)
+	for i := 1; i <= 3; i++ {
+		if i > 1 {
+			collect(t, ws, "WS-01", "windows", 1, t0.Add(time.Duration(i-1)*time.Hour))
+		}
+		Export(ws, "WS-01", "test", t0.Add(time.Duration(i-1)*time.Hour))
+	}
+	if n, err := Deliver(ws, in, "WS-01", true); err != nil || n != 3 {
+		t.Fatalf("deliver: %d, %v", n, err)
+	}
+	if q := Queued(ws); q != 0 {
+		t.Errorf("kept batches counted as waiting: %d", q)
+	}
+	if k := Kept(ws); len(k) != 3 || k[0] != 1 || k[2] != 3 {
+		t.Fatalf("kept: %v", k)
+	}
+	if _, ok := OldestQueued(ws); ok {
+		t.Error("kept batches counted as waiting to send")
+	}
+	id := ws.State.Send.ID
+	os.Remove(filepath.Join(in, InboxName("WS-01", id, 2))) // lost on the collector
+
+	col, _ := store.Open(t.TempDir())
+	Import(col, in, Dirs{}, t0.Add(3*time.Hour), nil)
+	if s := col.State.Senders[id]; len(s.Missing) != 1 {
+		t.Fatalf("gap not noted: %+v", s)
+	}
+	from, to, err := ParseRange("1-4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent, missing, err := Resend(ws, in, "WS-01", from, to)
+	if err != nil || len(sent) != 3 || len(missing) != 1 || missing[0] != 4 {
+		t.Fatalf("resend: sent %v, missing %v, %v", sent, missing, err)
+	}
+	if _, err := Import(col, in, Dirs{}, t0.Add(4*time.Hour), nil); err != nil {
+		t.Fatal(err)
+	}
+	s := col.State.Senders[id]
+	evs, _ := col.ReadEvents(time.Time{})
+	if len(s.Missing) != 0 || len(evs) != 3 {
+		t.Errorf("after resend: missing %v, %d events (want 3: batches 1 and 3 not imported twice)", s.Missing, len(evs))
+	}
+
+	// Removed after keep_sent_days, counted from delivery.
+	if n, _ := PruneSent(ws, 14, time.Now()); n != 0 {
+		t.Errorf("pruned %d batches delivered today", n)
+	}
+	old := time.Now().AddDate(0, 0, -15)
+	os.Chtimes(filepath.Join(SentDir(ws), outboxName(1)), old, old)
+	if n, _ := PruneSent(ws, 14, time.Now()); n != 1 || len(Kept(ws)) != 2 {
+		t.Errorf("prune: removed %d, kept %v", n, Kept(ws))
+	}
+	if n, _ := PruneSent(ws, 0, time.Now()); n != 2 {
+		t.Errorf("keep_sent_days 0 should remove all kept batches, removed %d", n)
+	}
+}
+
+func TestParseRange(t *testing.T) {
+	for in, want := range map[string][2]uint64{"214-219": {214, 219}, "214": {214, 214}, " 7 - 9 ": {7, 9}} {
+		if a, b, err := ParseRange(in); err != nil || a != want[0] || b != want[1] {
+			t.Errorf("%q: %d-%d %v", in, a, b, err)
+		}
+	}
+	for _, bad := range []string{"", "x", "9-7", "0", "1-", "-3"} {
+		if _, _, err := ParseRange(bad); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
 	}
 }

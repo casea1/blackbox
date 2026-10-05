@@ -4,7 +4,6 @@ package app
 
 import (
 	"errors"
-	"github.com/casea1/blackbox/internal/scap"
 
 	"fmt"
 	"os"
@@ -22,6 +21,8 @@ import (
 	"github.com/casea1/blackbox/internal/install"
 	"github.com/casea1/blackbox/internal/lan"
 	"github.com/casea1/blackbox/internal/report"
+	"github.com/casea1/blackbox/internal/scap"
+	"github.com/casea1/blackbox/internal/selfaudit"
 	"github.com/casea1/blackbox/internal/share"
 	"github.com/casea1/blackbox/internal/store"
 	"github.com/casea1/blackbox/internal/winevt"
@@ -49,6 +50,9 @@ type App struct {
 	// Reschedule registers the collection task again (nil: the installed
 	// one, install.RefreshSchedule); tests replace it.
 	Reschedule func(every time.Duration) error
+	// RecordSelf records a change Blackbox makes on a person's request
+	// (nil: selfaudit.Record, the spool and the system log).
+	RecordSelf func(dataDir string, c event.SelfChange, now time.Time) error
 }
 
 func (a *App) now() time.Time {
@@ -361,7 +365,7 @@ func (a *App) send(st *store.Store) SendResult {
 		if err != nil {
 			r.Err = err
 		} else {
-			r.Delivered, r.Err = lan.Deliver(st, dest, host)
+			r.Delivered, r.Err = lan.Deliver(st, dest, host, a.Cfg.KeepSentDays > 0)
 			if r.Err == nil {
 				r.ArchivesDelivered, r.Err = lan.DeliverArchives(st, dest)
 			}
@@ -376,6 +380,9 @@ func (a *App) send(st *store.Store) SendResult {
 	}
 	r.Waiting = lan.Queued(st)
 	r.ArchivesWaiting = lan.QueuedArchives(st)
+	if _, err := lan.PruneSent(st, a.Cfg.KeepSentDays, a.now()); err != nil {
+		a.logf("removing batches kept after delivery: %v", err)
+	}
 	if s := st.State.Send; s != nil {
 		s.LastAttempt = a.now()
 		s.LastError = ""
@@ -475,6 +482,74 @@ func (a *App) SendNow() (SendResult, error) {
 	}
 	r := a.send(st)
 	return r, r.Err
+}
+
+// ResendResult is what "blackbox send --resend" did.
+type ResendResult struct {
+	Sent    []uint64 // batches copied into the inbox again
+	Missing []uint64 // no longer kept (older than keep_sent_days), or never made
+}
+
+// Resend copies batches from..to, kept after delivery, into the
+// collector's inbox again (L11), and records that it did, like a setting
+// change. The collector imports the ones that fill a gap.
+func (a *App) Resend(from, to uint64) (ResendResult, error) {
+	if a.Cfg.SendTo == "" {
+		return ResendResult{}, fmt.Errorf("this computer is not set to send to a collector (send_to is empty)")
+	}
+	st, unlock, err := a.open()
+	if err != nil {
+		return ResendResult{}, err
+	}
+	dest, err := share.Destination(a.Cfg)
+	if err != nil {
+		unlock()
+		return ResendResult{}, err
+	}
+	var r ResendResult
+	r.Sent, r.Missing, err = lan.Resend(st, dest, collect.LocalHost(), from, to)
+	if errors.Is(err, lan.ErrNoInbox) {
+		err = fmt.Errorf("%w (%s)", err, share.Why(a.Cfg, dest))
+	}
+	unlock() // the record below opens the spool itself
+	if len(r.Sent) > 0 {
+		record := a.RecordSelf
+		if record == nil {
+			record = selfaudit.Record
+		}
+		c := event.SelfChange{Kind: "resent", New: seqRange(r.Sent), Old: a.Cfg.SendTo, Program: "blackbox send --resend"}
+		if rerr := record(a.Cfg.DataDir, c, a.now()); rerr != nil {
+			a.logf("batches were sent again, but recording it failed: %v", rerr)
+		}
+	}
+	return r, err
+}
+
+// ResendCommand is the command a sender runs to fill a gap (L11).
+func ResendCommand(from, to uint64) string {
+	if to > from {
+		return fmt.Sprintf("blackbox send --resend %d-%d", from, to)
+	}
+	return fmt.Sprintf("blackbox send --resend %d", from)
+}
+
+// seqRange is "214-219" for a run of batches, "214" for one, and
+// "214-216, 219" when some are missing.
+func seqRange(seqs []uint64) string {
+	var parts []string
+	for i := 0; i < len(seqs); {
+		j := i
+		for j+1 < len(seqs) && seqs[j+1] == seqs[j]+1 {
+			j++
+		}
+		if j == i {
+			parts = append(parts, fmt.Sprint(seqs[i]))
+		} else {
+			parts = append(parts, fmt.Sprintf("%d-%d", seqs[i], seqs[j]))
+		}
+		i = j + 1
+	}
+	return strings.Join(parts, ",")
 }
 
 // Collect only collects.
@@ -719,8 +794,9 @@ func lanWarnings(st *store.Store, since, until time.Time, loc *time.Location) []
 				if g.To > g.From {
 					what = fmt.Sprintf("batches %d to %d", g.From, g.To)
 				}
-				out = append(out, fmt.Sprintf("%s: %s sent by this computer never arrived (noticed %s). The events in them are missing from the reports; they may have been deleted from the inbox folder.",
-					s.Host, what, g.Noted.In(loc).Format("2006-01-02 15:04")))
+				out = append(out, fmt.Sprintf("%s: %s sent by this computer never arrived (noticed %s). The events in them are missing from the reports; they may have been deleted from the inbox folder. "+
+					"To send them again, run on %s: %s (it keeps delivered batches for keep_sent_days, 14 days by default).",
+					s.Host, what, g.Noted.In(loc).Format("2006-01-02 15:04"), s.Host, ResendCommand(g.From, g.To)))
 			}
 		}
 		if s.ClockNoted.After(since) && !s.ClockNoted.After(until) {

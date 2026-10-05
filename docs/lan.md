@@ -113,11 +113,22 @@ VM does not have to be on at a particular time:
    - gives the local group **Blackbox Senders** permission to write to
      it (and nobody else), and adds those accounts to it
    - checks that Windows Firewall lets file sharing in. Windows Server 2025
-     ships **File and Printer Sharing (SMB-In)** turned off; setup and
-     `blackbox status` say so, but Blackbox never changes the firewall.
-     Allowing it is your decision: for example
-     `Enable-NetFirewallRule -DisplayGroup "File and Printer Sharing"`, or
-     better, a rule for TCP 445 from the senders' addresses only.
+     ships **File and Printer Sharing (SMB-In)** turned off. Blackbox
+     never changes the firewall, so setup and `blackbox status` print the
+     one rule to add, both as a command and as a Group Policy path: inbound
+     TCP 445, from the senders' addresses only, Domain and Private
+     profiles:
+
+     ```
+     New-NetFirewallRule -DisplayName "Blackbox inbox - SMB from senders" -Direction Inbound -Protocol TCP -LocalPort 445 -RemoteAddress 192.0.2.21,192.0.2.22 -Profile Domain,Private -Action Allow
+     ```
+
+     By Group Policy: Computer Configuration > Policies > Windows Settings
+     > Security Settings > Windows Defender Firewall with Advanced Security
+     > Inbound Rules > New Rule: Port, TCP 445, Allow, Domain and Private;
+     then set the rule's Scope to the senders' addresses. When the
+     collector also runs the OpenSSH server for SFTP senders and port 22 is
+     closed, the same message names TCP 22 and the OpenSSH server.
 
 Senders sign in to the share with an account on the collector. Choose how:
 
@@ -297,6 +308,17 @@ A sender keeps everything until the collector has it.
   sends everything, oldest first. To send at once, run `blackbox send` as
   an administrator or root. The collector skips anything it already has,
   and reports a gap only for batches that never arrive.
+- **Sending again.** A sender keeps each batch for `keep_sent_days`
+  (14 by default) after delivering it, in `outbox\sent` (root or SYSTEM
+  only, like the rest of the data folder, and covered by the audit rule and
+  the auditing entry Blackbox recommends for it). If the collector reports
+  batches missing, for example because they were deleted from the inbox or
+  its data folder was restored from a backup, run on the sender the
+  command the report and `blackbox status` give:
+  `blackbox send --resend 214-219`. The collector imports those that fill
+  the gap and ignores the rest. Each resend is recorded, like a setting
+  change, in the report and the system log. Batches older than
+  `keep_sent_days` can't be sent again; the command says which.
 
 In a re-test, 114 batches and 2 log archives queued over 27 hours were
 delivered in 47 seconds, with nothing rejected.
@@ -318,7 +340,7 @@ and in `summary.json`:
 |---|---|
 | A computer sent nothing in the report period | "The audit trail is not complete": the computer, its last collection, and that it may be off or unable to reach the collector |
 | A computer has not collected for more than 36 hours | Flagged on the Systems page |
-| A delivery never arrived (for example, deleted from the inbox) | Which batches from which computer are missing |
+| A delivery never arrived (for example, deleted from the inbox) | Which batches from which computer are missing, and the `blackbox send --resend` command to run on that computer |
 | A computer's clock is ahead of the collector's | The computer and by how much. Event times from it may be wrong |
 | Events arrived after the report they belong to | Included in the next report, marked **Late** |
 | A delivery is damaged or altered | It is set aside in `inbox\rejected` and logged. The gap it leaves is reported |
