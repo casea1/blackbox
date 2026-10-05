@@ -73,9 +73,13 @@ type State struct {
 	// LastCheck is when the audit settings were last checked.
 	LastCheck time.Time `json:"last_check,omitzero"`
 
-	// ArchivedUntil is the end of the last archive of the original logs
+	// ArchivedUntil is the end of the last export of the original logs
 	// (see package archive).
 	ArchivedUntil time.Time `json:"archived_until,omitzero"`
+	// ArchiveRestart is where the next export starts instead, after the
+	// clock was moved back (AR1): the first record written since the last
+	// export.
+	ArchiveRestart time.Time `json:"archive_restart,omitzero"`
 
 	// LAN: sending to a collector, receiving from other systems, and the
 	// systems seen (see lan.go).
@@ -109,6 +113,7 @@ type ChannelRun struct {
 	FirstRecord  uint64         `json:"first_record,omitempty"`
 	LastRecord   uint64         `json:"last_record,omitempty"`
 	OldestTime   time.Time      `json:"oldest_time,omitzero"` // oldest event still in the log
+	FirstTime    time.Time      `json:"first_time,omitzero"`  // earliest record read in this run
 	MaxSizeBytes uint64         `json:"max_size_bytes,omitempty"`
 	Gap          *Gap           `json:"gap,omitempty"`
 	Reset        bool           `json:"reset,omitempty"` // record numbers went backwards (log cleared/recreated)

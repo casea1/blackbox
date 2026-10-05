@@ -5,7 +5,6 @@ package archive
 import (
 	"archive/zip"
 	"compress/gzip"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -111,23 +110,6 @@ func TestCreateVerifyFileAndPrune(t *testing.T) {
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
-func readZip(t *testing.T, path string) map[string]string {
-	t.Helper()
-	zr, err := zip.OpenReader(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer zr.Close()
-	out := map[string]string{}
-	for _, f := range zr.File {
-		r, _ := f.Open()
-		b, _ := io.ReadAll(r)
-		r.Close()
-		out[f.Name] = string(b)
-	}
-	return out
-}
-
 // tamper copies an archive, changing one log's content but not its hash.
 func tamper(t *testing.T, src, dst string) {
 	t.Helper()
@@ -160,9 +142,9 @@ func TestBundleCombinesDays(t *testing.T) {
 		list = append(list, Stored{Host: "WS-07", From: from, To: to, Path: p})
 	}
 	dst := filepath.Join(dir, "logs-WS-07.zip")
-	from, to, sum, _, err := Bundle(dst, list)
-	if err != nil || !from.Equal(day1) || !to.Equal(day1.AddDate(0, 0, 2)) || len(sum) != 64 {
-		t.Fatalf("bundle: %v %v %s %v", from, to, sum, err)
+	b, err := Bundle(dst, list)
+	if err != nil || !b.From.Equal(day1) || !b.To.Equal(day1.AddDate(0, 0, 2)) || len(b.SHA256) != 64 {
+		t.Fatalf("bundle: %+v %v", b, err)
 	}
 	got := readZip(t, dst)
 	for _, want := range []string{"20260928-0000Z_20260929-0000Z/Security.evtx", "20260929-0000Z_20260930-0000Z/archive.json"} {
@@ -175,20 +157,21 @@ func TestBundleCombinesDays(t *testing.T) {
 	}
 	// A damaged daily archive stops the bundle rather than being included.
 	os.WriteFile(list[0].Path, []byte("damaged"), 0o644)
-	if _, _, _, _, err := Bundle(dst, list); err == nil {
+	if _, err := Bundle(dst, list); err == nil {
 		t.Error("damaged archive bundled")
 	}
 }
 
-// Linux: once auditd has rotated the audit log, it counts as overwriting,
-// reaching back to the first record of the oldest copy.
+// Linux: the audit log reaches back to its first record; once auditd has
+// rotated it, it counts as overwriting, reaching back to the first record
+// of the oldest copy.
 func TestAuditLogStates(t *testing.T) {
 	dir := t.TempDir()
 	audit := filepath.Join(dir, "audit.log")
 	defer func(a string) { collect.AuditLog = a }(collect.AuditLog)
 	collect.AuditLog = audit
 	os.WriteFile(audit, []byte("type=SYSCALL msg=audit(1791158400.000:9): live\n"), 0o644)
-	if s := LogStates(); s != nil {
+	if s := LogStates(); len(s) != 1 || s[0].Wraps || s[0].Oldest.Unix() != 1791158400 {
 		t.Errorf("not rotated yet: %+v", s)
 	}
 	os.WriteFile(audit+".2", []byte("garbage\ntype=SYSCALL msg=audit(1791150000.500:1): oldest\n"), 0o644)

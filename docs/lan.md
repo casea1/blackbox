@@ -24,7 +24,8 @@ own logs every 15 minutes and copy what they collect into the collector's
   so. See [What the report shows](#what-the-report-shows).
 - **Small.** Only the security events Blackbox keeps are sent, compressed,
   and only what is new. Expect tens of kilobytes per computer per hour.
-  Once a day a computer also sends a zip of its original logs, typically
+  Once a day a computer also sends a zip of its original logs (exported
+  at every collection, so a log that rolls over loses nothing), typically
   a few MB for Windows (see [Original logs](reports.md#original-logs)).
 
 ## Choosing a role

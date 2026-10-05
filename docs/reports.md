@@ -258,24 +258,44 @@ UTC), with that day's logs and an `archive.json` listing each file's
 SHA-256. The zip's own SHA-256 is in the report's `manifest.sha256`, so
 `blackbox verify` checks it with the rest of the report.
 
-**How it works.** Once a day each computer saves its logs since the last
-save, so nothing rolls over before the report is made. The first save
-reaches back a week. At every collection, Blackbox also checks whether
-any log is full and overwriting its oldest events. If one could overwrite
-events not yet saved before the next collection, the logs are saved
-straight away instead of waiting for the day, so a small or busy log is
-saved every run and a large one daily. If a full log had already
-overwritten part of the period when it was saved, that part is recorded
-as missing: the Original logs page shows "Missing <from> – <to>:
-overwritten before it was saved" for that log, Audit health has a
-warning, `summary.json` lists it under the archive's `gaps`, and
-`blackbox status` says **LOGS INCOMPLETE** for 14 days and exits with
-code 4. The fix is a larger log (`blackbox check` gives the size the STIG
-requires) or more frequent collection. When a report is made, the computer saves its logs up
-to the end of the period, then the saved days go into the report's folder.
-It works the same on a standalone computer and on a collector.
+**How it works.** At every collection, each computer exports its logs
+written since the last export, while the logs still hold them: with
+`wevtutil epl` on Windows, and by copying the new lines on Linux. A log
+the collection read nothing new from is left out of that export. Once a
+day the exports are packed into one archive: the `.evtx` files of each
+export are kept as they are (named after the export's start time, e.g.
+`Security_20261005-0415Z.evtx`, when there is more than one), and the
+text logs are joined in order into one file. The first export reaches
+back a week. So a log that rolls over within the day (one Windows Update
+run can fill a 20 MB Security log in an hour) loses only what it
+overwrote between two collections.
 
-A computer that sends to a collector delivers its daily saves with its
+`archive.json` records, for each log, the part of the period it actually
+covers (`logs[].from`, the oldest record present) and the events
+Blackbox knows it overwrote before they could be exported
+(`logs[].overwritten`, from the collection's record numbers). The
+Original logs page shows the same, e.g. "Covers from 5 Oct 04:08; 94,565
+events were overwritten before they could be exported". If a full log
+had already overwritten part of the period since the last export, that
+part is recorded as missing: the page shows "Missing <from> – <to>:
+overwritten before it was saved" for that log, Audit health has a
+warning, `summary.json` lists it under the archive's `gaps` (and the
+coverage under `logs`), and `blackbox status` says **LOGS INCOMPLETE**
+for 14 days and exits with code 4. The fix is a larger log (`blackbox
+check` gives the size the STIG requires) or more frequent collection.
+
+**After the clock is moved back.** Exports follow on from the end of the
+last one. If the clock was ahead and is then corrected, what is written
+afterwards is stamped before that end. Blackbox notices, starts the next
+export at the first record written since the last one, so nothing is
+skipped, and notes it in `archive.json` and on the Original logs page.
+Records stamped in the overlap may then be in two consecutive exports.
+
+When a report is made, the computer packs its exports so far, then its
+archives go into the report's folder. It works the same on a standalone
+computer and on a collector.
+
+A computer that sends to a collector delivers its daily archives with its
 events. The collector checks every file against its hash when it arrives;
 a damaged or altered zip is set aside in the inbox's `rejected` folder. A
 day's logs go into the report whose period its save ends in, so a
@@ -285,8 +305,13 @@ The **Original logs** page lists each computer's zip with its size and
 SHA-256, checked against the hash recorded when the zip was made, and
 shows what is inside each one. A computer with no logs for the period is
 listed first, as Missing.
-They are also listed in `summary.json`. The zips are removed with their
-reports after `retention_days`.
+They are also listed in `summary.json`.
+
+**Retention.** The zips live only in the report folders. Under
+`retention_days`, a report folder is deleted with everything in it,
+including its original logs, so set `retention_days` no lower than how
+long the original logs must be kept (a year is usual, AU-11), or copy
+the report folders elsewhere first.
 
 Expect a few MB a day per Windows computer (much less for Linux),
 compressed. It depends on how busy the Security log is.

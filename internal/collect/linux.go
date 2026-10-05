@@ -124,6 +124,9 @@ func followAudit(st *store.Store, tr *linuxlog.Translator, host string, now time
 	var last time.Time
 	asm := linuxlog.NewAssembler(func(ev *linuxlog.Event) error {
 		last = ev.Time
+		if cr.FirstTime.IsZero() || ev.Time.Before(cr.FirstTime) {
+			cr.FirstTime = ev.Time
+		}
 		if e := tr.Audit(ev); e != nil {
 			return b.add(e)
 		}
@@ -160,6 +163,9 @@ func followSyslog(st *store.Store, tr *linuxlog.Translator, p *linuxlog.LinePars
 		cr.Read++
 		cr.TypeCounts[progName(l.Prog)]++
 		last = l.Time
+		if cr.FirstTime.IsZero() || l.Time.Before(cr.FirstTime) {
+			cr.FirstTime = l.Time
+		}
 		if e := tr.Syslog(l, source); e != nil {
 			return b.add(e)
 		}
@@ -216,6 +222,9 @@ func followJournal(st *store.Store, tr *linuxlog.Translator, p *linuxlog.LinePar
 		cr.Read++
 		cr.TypeCounts[progName(l.Prog)]++
 		last = l.Time
+		if cr.FirstTime.IsZero() || l.Time.Before(cr.FirstTime) {
+			cr.FirstTime = l.Time
+		}
 		if e := tr.Syslog(l, "journal"); e != nil {
 			return b.add(e)
 		}

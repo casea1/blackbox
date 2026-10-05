@@ -13,13 +13,17 @@ import (
 
 // export saves each event log Blackbox reads, for [from, to), as an .evtx
 // file with wevtutil (the export Event Viewer's "Save events as" uses).
-func export(tmp string, from, to time.Time) ([]Source, []string) {
+// Logs skip says have nothing new are left out.
+func export(tmp string, from, to time.Time, skip func(string) bool) ([]Source, []string) {
 	const ts = "2006-01-02T15:04:05.000Z"
 	query := fmt.Sprintf("/q:*[System[TimeCreated[@SystemTime>='%s' and @SystemTime<'%s']]]",
 		from.UTC().Format(ts), to.UTC().Format(ts))
 	var sources []Source
 	var notes []string
 	for _, ch := range winevt.Channels {
+		if skip != nil && skip(ch) {
+			continue
+		}
 		name := SafeName(ch) + ".evtx"
 		path := filepath.Join(tmp, name)
 		out, err := hidden.Command(wevtutil(), "epl", ch, path, query, "/ow:true").CombinedOutput()

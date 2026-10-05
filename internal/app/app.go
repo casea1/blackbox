@@ -119,51 +119,96 @@ func (a *App) scapScans() []*scap.Scan {
 // there go into the next report too.
 func (a *App) legacyLogsDir() string { return filepath.Join(a.ReportsDir(), "archives") }
 
-// archiveLogs exports the original logs (see package archive) from the end
-// of the last archive until upTo: into the outbox on a sender, otherwise
-// into the pending folder for the next report. Unless force is set it
-// runs once a day, or sooner when a full log could overwrite events not
-// yet saved before the next run. Parts a full log had already overwritten
-// are recorded in the archive and for status. If it fails, the same
-// period is tried again.
-func (a *App) archiveLogs(st *store.Store, upTo time.Time, force bool) {
-	from, due := archive.Due(st.State.ArchivedUntil, upTo)
-	if !from.Before(upTo) {
-		return
-	}
-	// The first save reaches back a week on purpose; what a log no
-	// longer holds from before Blackbox was installed is not a gap.
-	first := st.State.ArchivedUntil.IsZero()
-	var states []archive.LogState
-	if !first {
-		states = a.logStates()
-	}
-	if !(due || force) {
-		risk := archive.AtRisk(states, st.State.ArchivedUntil, a.saveMargin())
-		if len(risk) == 0 {
-			return
-		}
-		a.logf("saving the original logs early: %s is full and could overwrite events not yet saved before the next run", strings.Join(risk, ", "))
-	}
-	gaps := archive.GapsIn(states, from, upTo)
-	host := collect.LocalHost()
-	dir := filepath.Join(a.pendingLogsDir(), archive.SafeName(host))
-	if !a.Cfg.MakesReports() {
-		dir = lan.OutboxDir(st)
-	}
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		a.logf("archiving the logs: %v", err)
-		return
-	}
-	info, err := archive.Create(filepath.Join(dir, archive.FileName(host, from, upTo)), host, runtime.GOOS, from, upTo, a.now(), gaps)
-	if err != nil {
-		a.logf("archiving the logs: %v; will try again next run", err)
-		return
-	}
-	for _, n := range info.Notes {
-		a.logf("log archive: %s", n)
-	}
+// piecesDir holds the original logs exported at each collection until
+// they are packed into the day's archive (see package archive).
+func (a *App) piecesDir() string { return filepath.Join(a.Cfg.DataDir, "archive-pieces") }
+
+// saveLogPiece exports the original logs (see package archive) written
+// since the last export, at every collection, while the logs still hold
+// them (AR2). run is the collection just made, prevCollect the one before.
+// What each log covers and what it overwrote before it could be saved are
+// recorded with the piece and kept for status. After the clock was moved
+// back, the export starts again at the first record written since the last
+// one (AR1). If it fails, the same period is tried again.
+func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Time) {
 	now := a.now()
+	from := st.State.ArchivedUntil
+	// The first export reaches back a week on purpose; what a log no
+	// longer holds from before Blackbox was installed is not a gap.
+	first := from.IsZero()
+	if first {
+		from = now.Add(-archive.FirstSpan)
+	}
+	var notes []string
+	if from.After(now) {
+		// The clock was moved back since the last export: everything
+		// written since then was read by this collection.
+		restart := now
+		for _, c := range run.Channels {
+			if !c.FirstTime.IsZero() && c.FirstTime.Before(restart) {
+				restart = c.FirstTime
+			}
+		}
+		if r := st.State.ArchiveRestart; r.IsZero() || restart.Before(r) {
+			st.State.ArchiveRestart = restart
+		}
+	}
+	if r := st.State.ArchiveRestart; !r.IsZero() {
+		if r.Before(from) {
+			notes = append(notes, fmt.Sprintf("The clock was moved back: the export before this one ran to %s, later than the clock showed afterwards. This part starts again at %s, the first record written since, so nothing is skipped; records stamped from %s to %s may also be in the part before.",
+				stampUTC(st.State.ArchivedUntil), stampUTC(r), stampUTC(r), stampUTC(st.State.ArchivedUntil)))
+			a.logf("the clock was moved back: the original logs are exported again from %s so nothing is skipped", r.In(a.loc()).Format("2006-01-02 15:04"))
+		}
+		from = r
+	}
+	if !from.Before(now) {
+		st.State.ArchiveRestart = time.Time{}
+		return
+	}
+	states := a.logStates()
+	host := collect.LocalHost()
+	lost := map[string]uint64{}
+	for _, c := range run.Channels {
+		if c.Gap != nil {
+			lost[c.Channel] += c.Gap.Lost
+		}
+	}
+	if first {
+		// What collection already knew was overwritten in the period.
+		if runs, err := st.ReadRuns(from); err == nil {
+			for _, r := range runs {
+				if r == run || !strings.EqualFold(r.Host, host) || r.Time.Equal(run.Time) {
+					continue
+				}
+				for _, c := range r.Channels {
+					if c.Gap != nil {
+						lost[c.Channel] += c.Gap.Lost
+					}
+				}
+			}
+		}
+	}
+	var gaps []archive.Gap
+	if !first {
+		gaps = archive.GapsIn(states, from, now)
+	}
+	// A log this collection read nothing new from has nothing new to
+	// export, if the last export came after the last collection.
+	caughtUp := !first && st.State.ArchiveRestart.IsZero() && !st.State.ArchivedUntil.Before(prevCollect)
+	known, fresh := map[string]bool{}, map[string]bool{}
+	for _, c := range run.Channels {
+		known[c.Channel] = true
+		if c.Read > 0 || c.Gap != nil || c.Reset || c.Error != "" {
+			fresh[c.Channel] = true
+		}
+	}
+	skip := func(src string) bool { return caughtUp && known[src] && !fresh[src] }
+	info := archive.Info{Host: host, OS: runtime.GOOS, From: from, To: now, Created: now, Notes: notes, Gaps: gaps,
+		Logs: archive.Coverage(states, from, now, lost)}
+	if _, err := archive.SavePiece(a.piecesDir(), info, nil, skip); err != nil {
+		a.logf("exporting the original logs: %v; will try again next run", err)
+		return
+	}
 	var kept []store.LogGap
 	for _, g := range st.State.LogGaps {
 		if now.Sub(g.Noted) < logGapsKept {
@@ -175,25 +220,48 @@ func (a *App) archiveLogs(st *store.Store, upTo time.Time, force bool) {
 		kept = append(kept, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: now})
 	}
 	st.State.LogGaps = kept
-	st.State.ArchivedUntil = upTo
-	if err := st.Save(); err != nil {
-		a.logf("saving state: %v", err)
+	st.State.ArchivedUntil = now
+	st.State.ArchiveRestart = time.Time{}
+}
+
+func stampUTC(t time.Time) string { return t.UTC().Format("2006-01-02 15:04Z") }
+
+// packLogs packs the exported pieces of the original logs into one
+// archive: into the outbox on a sender, otherwise into the pending folder
+// for the next report. Unless force is set it waits until the oldest
+// piece is a day old.
+func (a *App) packLogs(st *store.Store, force bool) {
+	pieces, err := archive.Pieces(a.piecesDir())
+	if err != nil {
+		a.logf("archiving the logs: %v", err)
+		return
+	}
+	if len(pieces) == 0 || !(force || archive.PackDue(pieces, a.now())) {
+		return
+	}
+	host := collect.LocalHost()
+	dir := filepath.Join(a.pendingLogsDir(), archive.SafeName(host))
+	if !a.Cfg.MakesReports() {
+		dir = lan.OutboxDir(st)
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		a.logf("archiving the logs: %v", err)
+		return
+	}
+	span := archive.Span(pieces)
+	info, err := archive.Pack(filepath.Join(dir, archive.FileName(host, span.From, span.To)), host, runtime.GOOS, pieces, a.now())
+	if err != nil {
+		a.logf("archiving the logs: %v; will try again next run", err)
+		return
+	}
+	for _, n := range info.Notes {
+		a.logf("log archive: %s", n)
 	}
 }
 
 // logGapsKept is how long status points out a gap in the saved original
 // logs.
 const logGapsKept = 14 * 24 * time.Hour
-
-// saveMargin is how close a full log may come to overwriting unsaved
-// events before they are saved early: two collection intervals.
-func (a *App) saveMargin() time.Duration {
-	every := a.Cfg.CollectEvery
-	if every <= 0 {
-		every = 15 * time.Minute
-	}
-	return 2 * every
-}
 
 func (a *App) logStates() []archive.LogState {
 	if a.LogStates != nil {
@@ -231,7 +299,7 @@ func (a *App) bundleLogs(end time.Time) (refs []report.ArchiveRef, used []string
 		days := byHost[k]
 		name := "logs-" + archive.SafeName(days[0].Host) + ".zip"
 		tmp := filepath.Join(a.pendingLogsDir(), "."+name)
-		from, to, sum, gaps, err := archive.Bundle(tmp, days)
+		b, err := archive.Bundle(tmp, days)
 		if err != nil {
 			a.logf("original logs of %s: %v; they stay pending", days[0].Host, err)
 			os.Remove(tmp)
@@ -242,7 +310,7 @@ func (a *App) bundleLogs(end time.Time) (refs []report.ArchiveRef, used []string
 		if fi != nil {
 			size = uint64(fi.Size())
 		}
-		refs = append(refs, report.ArchiveRef{Host: days[0].Host, From: from, To: to, Name: name, Path: tmp, Bytes: size, SHA256: sum, Gaps: gaps})
+		refs = append(refs, report.ArchiveRef{Host: days[0].Host, From: b.From, To: b.To, Name: name, Path: tmp, Bytes: size, SHA256: b.SHA256, Gaps: b.Gaps, Logs: b.Logs, Notes: b.Notes})
 		for _, d := range days {
 			used = append(used, d.Path)
 		}
@@ -268,10 +336,12 @@ func (a *App) open() (*store.Store, func(), error) {
 // receive what other systems sent, if this is a collector.
 func (a *App) gather(st *store.Store, forceCheck bool) error {
 	a.noticeClock(st)
+	prevCollect := st.State.LastCollect
 	run, err := collect.Live(st, collect.Options{Version: a.Version, Now: a.now, Logf: a.Logf})
 	if err != nil {
 		return err
 	}
+	a.saveLogPiece(st, run, prevCollect)
 	st.NoteSystem(run.Host, run.OS, a.Version, "", run.Time, time.Time{}, a.now())
 	if err := a.recordChecks(st, run.Host, forceCheck); err != nil {
 		a.logf("audit settings check: %v", err)
@@ -510,13 +580,13 @@ func (a *App) Scheduled() (string, error) {
 		return "", err
 	}
 	if !a.Cfg.MakesReports() {
-		a.archiveLogs(st, a.now(), false)
+		a.packLogs(st, false)
 		a.send(st)
 		return "", nil
 	}
 	end, due := DueWindowEnd(a.Cfg.ReportEvery, a.Cfg.ReportAt, st.State.LastWindowEnd, a.now(), a.loc())
 	if !due {
-		a.archiveLogs(st, a.now(), false)
+		a.packLogs(st, false)
 		return "", nil
 	}
 	return a.report(st, end, true)
@@ -694,8 +764,8 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 	var logs []report.ArchiveRef
 	var usedLogs []string
 	if advance {
-		a.archiveLogs(st, end, true)
-		logs, usedLogs = a.bundleLogs(end)
+		a.packLogs(st, true)
+		logs, usedLogs = a.bundleLogs(generated)
 		defer func() {
 			for _, l := range logs {
 				os.Remove(l.Path) // left only if the report was not written

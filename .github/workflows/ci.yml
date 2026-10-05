@@ -184,7 +184,7 @@ jobs:
           $zipAcl = (Get-Acl $own.FullName).Sddl; $htmlAcl = (Get-Acl "$dir\report.html").Sddl
           if ($zipAcl -ne $htmlAcl) { throw "the logs zip has different permissions from the report: $zipAcl vs $htmlAcl" }
           $names = [IO.Compression.ZipFile]::OpenRead($own.FullName).Entries.Name
-          if (-not ($names -contains "Security.evtx")) { throw "Security.evtx not archived: $names" }
+          if (-not ($names | Where-Object { $_ -like "Security*.evtx" })) { throw "Security.evtx not archived: $names" }
           if ($sum.log_archives.Count -lt 2) { throw "report does not list the log archives" }
           & $exe verify $dir
           if ($LASTEXITCODE -ne 0) { throw "report folder does not match its manifest" }

@@ -113,7 +113,9 @@ type ArchiveRef struct {
 	Path     string // where the zip is before the report is written
 	Bytes    uint64
 	SHA256   string
-	Gaps     []archive.Gap // parts a full log had overwritten before it was saved
+	Gaps     []archive.Gap      // parts a full log had overwritten before it was saved
+	Logs     []archive.LogCover // what each log actually covers (AR2)
+	Notes    []string           // what the archives say, e.g. after a clock change (AR1)
 }
 
 // Row is one event in a section table.

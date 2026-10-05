@@ -21,20 +21,6 @@ type LogState struct {
 	Wraps  bool
 }
 
-// AtRisk lists the logs that are overwriting their oldest events and
-// could overwrite events not yet saved (after saved) within the next
-// period: they reach back less than that before saved, or not even to it.
-// Their original logs are then saved now rather than waiting for the day.
-func AtRisk(states []LogState, saved time.Time, within time.Duration) []string {
-	var out []string
-	for _, s := range states {
-		if s.Wraps && !s.Oldest.IsZero() && saved.Sub(s.Oldest) < within {
-			out = append(out, s.Source)
-		}
-	}
-	return out
-}
-
 // GapsIn lists, for a save covering [from, to), the start of the period
 // each full log had already overwritten.
 func GapsIn(states []LogState, from, to time.Time) []Gap {
