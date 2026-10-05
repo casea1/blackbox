@@ -171,3 +171,43 @@ func syslogTime(line string, ref time.Time) (time.Time, bool) {
 	l, ok := p.Parse(line)
 	return l.Time, ok
 }
+
+// LogStates reads how far back the audit log reaches, with its rotated
+// copies. Once auditd has rotated it, the oldest copy is removed as new
+// ones are made, so it counts as overwriting.
+func LogStates() []LogState {
+	files := withRotations(collect.AuditLog)
+	if len(files) < 2 {
+		return nil
+	}
+	oldest := firstTime(files[0], func(line string, _ time.Time) (time.Time, bool) { return auditTime(line) })
+	if oldest.IsZero() {
+		return nil
+	}
+	return []LogState{{Source: collect.AuditLog, Oldest: oldest, Wraps: true}}
+}
+
+// firstTime is the time of the first line in file that has one.
+func firstTime(name string, timeOf func(string, time.Time) (time.Time, bool)) time.Time {
+	f, err := os.Open(name)
+	if err != nil {
+		return time.Time{}
+	}
+	defer f.Close()
+	var r io.Reader = f
+	if strings.HasSuffix(name, ".gz") {
+		gz, err := gzip.NewReader(f)
+		if err != nil {
+			return time.Time{}
+		}
+		r = gz
+	}
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	for i := 0; sc.Scan() && i < 1000; i++ {
+		if t, ok := timeOf(sc.Text(), time.Time{}); ok {
+			return t
+		}
+	}
+	return time.Time{}
+}

@@ -62,7 +62,7 @@ func TestCreateVerifyFileAndPrune(t *testing.T) {
 	collect.AuditLog, collect.SystemLogs, collect.AuthLogs = audit, []string{syslog}, []string{filepath.Join(logs, "auth.log")}
 
 	path := filepath.Join(dir, FileName("ubu", from, to))
-	info, err := Create(path, "ubu", "linux", from, to, to)
+	info, err := Create(path, "ubu", "linux", from, to, to, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestBundleCombinesDays(t *testing.T) {
 		list = append(list, Stored{Host: "WS-07", From: from, To: to, Path: p})
 	}
 	dst := filepath.Join(dir, "logs-WS-07.zip")
-	from, to, sum, err := Bundle(dst, list)
+	from, to, sum, _, err := Bundle(dst, list)
 	if err != nil || !from.Equal(day1) || !to.Equal(day1.AddDate(0, 0, 2)) || len(sum) != 64 {
 		t.Fatalf("bundle: %v %v %s %v", from, to, sum, err)
 	}
@@ -175,7 +175,26 @@ func TestBundleCombinesDays(t *testing.T) {
 	}
 	// A damaged daily archive stops the bundle rather than being included.
 	os.WriteFile(list[0].Path, []byte("damaged"), 0o644)
-	if _, _, _, err := Bundle(dst, list); err == nil {
+	if _, _, _, _, err := Bundle(dst, list); err == nil {
 		t.Error("damaged archive bundled")
+	}
+}
+
+// Linux: once auditd has rotated the audit log, it counts as overwriting,
+// reaching back to the first record of the oldest copy.
+func TestAuditLogStates(t *testing.T) {
+	dir := t.TempDir()
+	audit := filepath.Join(dir, "audit.log")
+	defer func(a string) { collect.AuditLog = a }(collect.AuditLog)
+	collect.AuditLog = audit
+	os.WriteFile(audit, []byte("type=SYSCALL msg=audit(1791158400.000:9): live\n"), 0o644)
+	if s := LogStates(); s != nil {
+		t.Errorf("not rotated yet: %+v", s)
+	}
+	os.WriteFile(audit+".2", []byte("garbage\ntype=SYSCALL msg=audit(1791150000.500:1): oldest\n"), 0o644)
+	os.WriteFile(audit+".1", []byte("type=SYSCALL msg=audit(1791155000.000:5): newer\n"), 0o644)
+	s := LogStates()
+	if len(s) != 1 || !s[0].Wraps || s[0].Oldest.Unix() != 1791150000 {
+		t.Errorf("states: %+v", s)
 	}
 }

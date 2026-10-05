@@ -68,6 +68,12 @@ func (a *App) Status(w io.Writer) error {
 		p("Log archive:", "original logs saved up to %s (%s)", stampLocal(s.ArchivedUntil, a.loc()), where)
 	}
 
+	for _, g := range s.LogGaps {
+		attention = append(attention, "the saved original logs are incomplete")
+		p("LOGS INCOMPLETE:", "%s had already overwritten its events from %s to %s when the original logs were saved. Make the log larger (blackbox check gives the size), or collect more often.",
+			g.Source, stampLocal(g.From, a.loc()), stampLocal(g.To, a.loc()))
+	}
+
 	off := auditOffNow(st, now)
 	for h, why := range off {
 		if store.SystemKey(h) == store.SystemKey(host) {

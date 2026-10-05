@@ -260,7 +260,18 @@ SHA-256. The zip's own SHA-256 is in the report's `manifest.sha256`, so
 
 **How it works.** Once a day each computer saves its logs since the last
 save, so nothing rolls over before the report is made. The first save
-reaches back a week. When a report is made, the computer saves its logs up
+reaches back a week. At every collection, Blackbox also checks whether
+any log is full and overwriting its oldest events. If one could overwrite
+events not yet saved before the next collection, the logs are saved
+straight away instead of waiting for the day, so a small or busy log is
+saved every run and a large one daily. If a full log had already
+overwritten part of the period when it was saved, that part is recorded
+as missing: the Original logs page shows "Missing <from> – <to>:
+overwritten before it was saved" for that log, Audit health has a
+warning, `summary.json` lists it under the archive's `gaps`, and
+`blackbox status` says **LOGS INCOMPLETE** for 14 days and exits with
+code 4. The fix is a larger log (`blackbox check` gives the size the STIG
+requires) or more frequent collection. When a report is made, the computer saves its logs up
 to the end of the period, then the saved days go into the report's folder.
 It works the same on a standalone computer and on a collector.
 

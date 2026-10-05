@@ -163,7 +163,7 @@ func TestDemoReport(t *testing.T) {
 			days = append(days, archive.Stored{Host: sy.name, From: from, To: to, Path: path})
 		}
 		dst := filepath.Join(tmp, "logs-"+sy.name+".zip")
-		from, to, sum, err := archive.Bundle(dst, days)
+		from, to, sum, _, err := archive.Bundle(dst, days)
 		if err != nil {
 			t.Fatal(err)
 		}

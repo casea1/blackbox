@@ -4,6 +4,7 @@ package report
 
 import (
 	"fmt"
+	"github.com/casea1/blackbox/internal/archive"
 	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/event"
 	"github.com/casea1/blackbox/internal/scap"
@@ -112,6 +113,7 @@ type ArchiveRef struct {
 	Path     string // where the zip is before the report is written
 	Bytes    uint64
 	SHA256   string
+	Gaps     []archive.Gap // parts a full log had overwritten before it was saved
 }
 
 // Row is one event in a section table.
@@ -338,6 +340,12 @@ func (r *Report) checkArchives() {
 	}
 	if len(r.NoArchive) > 0 {
 		r.Health.Warnings = append(r.Health.Warnings, "No archive of the original logs for this period from: "+strings.Join(r.NoArchive, ", ")+". See Audit health.")
+	}
+	for _, a := range r.Archives {
+		for _, g := range a.Gaps {
+			r.Health.Warnings = append(r.Health.Warnings, fmt.Sprintf("%s: the original logs are incomplete: %s had already overwritten its events from %s to %s when they were saved. Make the log larger (blackbox check gives the size), or collect more often.",
+				a.Host, g.Source, r.stamp(g.From), r.stamp(g.To)))
+		}
 	}
 }
 
