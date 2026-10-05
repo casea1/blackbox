@@ -168,6 +168,8 @@ jobs:
           # build-time computer name must not show up as a silent system.
           if ($sum.systems | Where-Object { $_.status -eq "silent" }) { throw "a system is wrongly reported as silent" }
           if (-not (Select-String -Path "$dir\report.html" -Pattern 'data-view="systems"' -Quiet)) { throw "report has no Systems page" }
+          # The inventory read with the settings check (PowerShell CIM, as SYSTEM).
+          if (-not (Select-String -Path "$dir\report.html" -Pattern "Drives on $env:COMPUTERNAME" -SimpleMatch -Quiet)) { throw "no inventory for this computer in the report" }
           if (Get-ChildItem C:\BlackboxInbox -Filter *.bbx) { throw "batches left in the inbox after import" }
           # The report folder holds the original logs: this computer's own
           # (.evtx, exported as SYSTEM) and the Linux one's.
@@ -303,6 +305,8 @@ jobs:
           sudo systemctl start blackbox.service || { sudo journalctl -u blackbox.service --no-pager | tail -40; exit 1; }
           sudo find /srv/bb-reports-2 -name report.html | grep -q report.html || { sudo journalctl -u blackbox.service --no-pager | tail -30; exit 1; }
           echo "Sandboxed service wrote a report to /srv/bb-reports-2"
+          # The inventory read with the settings check, from inside the sandbox.
+          sudo sh -c "grep -q 'Drives on $(hostname)' /srv/bb-reports-2/*/report.html" || { echo "no inventory in the report"; exit 1; }
           # The report folder holds the original logs, in its manifest.
           sudo sh -c 'ls /srv/bb-reports-2/*/logs-*.zip' || { sudo journalctl -u blackbox.service --no-pager | tail -30; exit 1; }
           sudo sh -c 'unzip -l /srv/bb-reports-2/*/logs-*.zip' | grep -q audit.log

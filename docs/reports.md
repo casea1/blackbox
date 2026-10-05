@@ -333,6 +333,37 @@ computer in the report with no scan says **No scan found**.
   menu offers it. `summary.json` has each computer's score and open
   findings.
 
+## Inventory
+
+The **Inventory** page (under Audit) lists what each system is, read with
+its daily settings check by Blackbox 0.13 or later:
+
+- **The system:** make and model, serial number (from the BIOS on Windows,
+  DMI on Linux), BIOS version, operating system, processor and memory, and
+  its domain.
+- **Drives:** each physical disk's model, serial number, size (as its maker
+  labels it) and type (NVMe, SATA, USB; SSD, HDD, removable).
+- **Accounts:** local accounts and, on Windows, every domain account with a
+  profile on the computer: whether it is an administrator, enabled or
+  disabled, and its last logon. Only the **last four digits of each SID**
+  are kept (on Linux, the UID). On Linux an account whose password is
+  locked is shown as such but stays enabled, since it can still log on
+  with a key or through sudo; one whose shell refuses logons, or that has
+  expired, is disabled. Nothing about passwords is read or kept.
+
+Click a system for its drives and accounts; click an account to search its
+events. **Export > Inventory as CSV** saves every system, drive and
+account, one per line. Systems with no inventory yet (an older Blackbox,
+or no settings check since) are named under the table.
+
+How it is read: on Windows, one PowerShell query of CIM
+(`Win32_ComputerSystem`, `Win32_BIOS`, `Win32_DiskDrive`,
+`Get-PhysicalDisk`) and the local accounts (`Get-LocalUser`,
+`Get-LocalGroupMember`, `Win32_UserProfile`); on Linux, `/sys/class/dmi`,
+`/sys/block` (with `udevadm` for a drive's serial number), `/etc/passwd`,
+`/etc/group` and the lock and expiry fields of `/etc/shadow`. A sender's
+inventory reaches the collector with its settings check.
+
 ## Is the audit trail complete?
 
 The Overview flags a report as incomplete when:

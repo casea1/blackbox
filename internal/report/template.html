@@ -28,6 +28,7 @@
   <div class="grp">Audit</div>
   <nav>
     <a href="#health" data-nav="health">{{icon "shield-check" 17}}<span>Audit health</span></a>
+    <a href="#inventory" data-nav="inventory">{{icon "cpu" 17}}<span>Inventory</span></a>
     <a href="#trends" data-nav="trends">{{icon "trending-up" 17}}<span>Trends</span></a>
     <a href="#logs" data-nav="logs">{{icon "scroll-text" 17}}<span>Original logs</span></a>
   </nav>
@@ -56,6 +57,7 @@
 {{end}}
 <section class="view" data-view="health">{{template "head" (head . "Audit health" (healthCrumb .))}}{{with .HealthPage}}{{template "health" .}}{{else}}<div class="panel"><p class="pm" style="margin:0">No systems in this report.</p></div>{{end}}</section>
 <section class="view" data-view="trends">{{with .TrendsPage}}{{template "head" (head $ "Trends" .Crumb)}}{{template "trends" .}}{{end}}</section>
+<section class="view" data-view="inventory">{{template "head" (head . "Inventory" "Each system's make, model and serial number, its drives and its user accounts, from its latest settings check · Blackbox only reads these")}}{{template "inventory" .Inventory}}</section>
 <section class="view" data-view="logs">{{template "head" (head . "Original logs" (printf "%s · the raw Windows and Linux logs this report was built from, saved in this report's folder" .Kind))}}{{with .LogsPage}}{{template "logs" .}}{{end}}</section>
 {{template "popovers" .}}
 {{template "printout" .Print}}
@@ -154,6 +156,19 @@
 <div class="panel" style="margin-top:12px"><div class="ph"><h2>{{icon "server" 17}}Detections per system, by week</h2><span class="pm">Darker = more</span></div>{{if .Rows}}<div style="overflow-x:auto"><table class="wk"><thead><tr><th></th>{{range .Weeks}}<th>{{.}}</th>{{end}}</tr></thead><tbody>{{range .Rows}}<tr><td class="nm"><a class="link" style="color:inherit" href="#systems/{{.Name}}">{{.Name}}</a></td>{{range .Cells}}<td style="{{.Style}}">{{if .N}}{{.N}}{{end}}</td>{{end}}</tr>{{end}}</tbody></table></div>{{else}}<p class="pm" style="margin:0">No detections in these weeks.</p>{{end}}</div>
 <div class="panel" style="margin-top:12px"><div class="ph"><h2>{{icon "users" 17}}Privileged actions by person, by week</h2><span class="pm">Darker = more · click a person for their activity over time</span></div>{{if .People}}<div style="overflow-x:auto"><table class="wk"><thead><tr><th></th>{{range .Weeks}}<th>{{.}}</th>{{end}}</tr></thead><tbody>{{range .People}}<tr><td class="nm"><a class="link" style="color:inherit" href="{{.Href}}">{{.Name}}</a></td>{{range .Cells}}<td style="{{.Style}}">{{if .N}}{{.N}}{{end}}</td>{{end}}</tr>{{end}}</tbody></table></div>{{if .PeopleOld}}<p class="pm" style="margin:8px 0 0">Reports made before 0.13 did not keep counts by person; their weeks are blank.</p>{{end}}{{else}}<p class="pm" style="margin:0">No privileged actions in these weeks.</p>{{end}}</div>{{end}}
 
+{{define "inventory"}}<div class="ev6" style="grid-template-columns:repeat(4,1fr)">{{range .Stats}}{{template "stat" .}}{{end}}</div>
+{{if not .Rows}}<div class="panel"><p class="pm" style="margin:0">No inventory yet. Each system reads its make, model, serial numbers, drives and accounts with its daily settings check, from version 0.13 on; they appear here in the next report.</p></div>{{else}}
+<div class="panel" id="inv-systems" style="overflow-x:auto;margin-bottom:12px"><div class="ph"><h2>{{icon "server" 17}}Systems · {{len .Rows}}</h2><span class="pm">Click a system for its drives and accounts</span></div>
+<table class="stig"><thead><tr><th>System</th><th>Make and model</th><th>Serial number</th><th>Operating system</th><th>Processor · memory</th><th>Drives</th><th>Accounts</th><th>Inventoried</th></tr></thead><tbody>{{range .Rows}}<tr><td><b><a class="link" style="color:inherit" data-pick="{{.Host}}" href="#inventory/{{.Host}}">{{.Host}}</a></b></td><td>{{or .Make "—"}}</td><td class="mono">{{or .Serial "—"}}</td><td>{{or .OS "—"}}</td><td>{{or .CPU "—"}}{{if .Memory}} · {{.Memory}}{{end}}</td><td>{{len .Drives}}</td><td>{{len .Accounts}}{{if .Admins}} · {{.Admins}} admin{{end}}</td><td class="mute">{{.Checked}}</td></tr>{{end}}</tbody></table>
+{{if .Missing}}<p class="pm" style="margin:10px 0 0">No inventory yet from: {{range $i, $m := .Missing}}{{if $i}}, {{end}}{{$m}}{{end}}. It is read with each system's daily settings check, from version 0.13 on.</p>{{end}}</div>
+{{range .Rows}}<div data-pane="{{.Host}}" hidden><div class="row" style="grid-template-columns:1fr 1fr">
+<div class="panel" style="overflow-x:auto"><div class="ph"><h2>{{icon "hard-drive" 17}}Drives on {{.Host}} · {{len .Drives}}</h2><span class="pm">{{or .Make "Make unknown"}}{{if .Serial}} · SN {{.Serial}}{{end}}{{if .BIOS}} · BIOS {{.BIOS}}{{end}}</span></div>
+{{if .Drives}}<table class="stig"><thead><tr><th>Model</th><th>Serial number</th><th>Size</th><th>Type</th></tr></thead><tbody>{{range .Drives}}<tr><td>{{or .Model "—"}}</td><td class="mono">{{or .Serial "—"}}</td><td>{{.Size}}</td><td>{{.Interface}}{{if .Media}} · {{.Media}}{{end}}</td></tr>{{end}}</tbody></table>{{else}}<p class="pm" style="margin:0">No drives were read.</p>{{end}}
+{{range .Notes}}<p class="pm" style="margin:8px 0 0">{{.}}</p>{{end}}</div>
+<div class="panel" style="overflow-x:auto"><div class="ph"><h2>{{icon "users" 17}}Accounts on {{.Host}} · {{len .Accounts}}</h2><span class="pm">{{if .Domain}}Domain {{.Domain}} · {{end}}SID: last four digits only</span></div>
+{{if .Accounts}}<table class="stig"><thead><tr><th>Account</th><th>SID / UID</th><th>Kind</th><th>Status</th><th>Last logon</th></tr></thead><tbody>{{range .Accounts}}<tr{{if .Disabled}} class="na"{{end}}><td><a class="link" style="color:inherit" href="#search?user={{.Key}}" title="This account's events in this report">{{.Name}}</a>{{if .Admin}} <span class="st warn">Administrator</span>{{end}}</td><td class="mono">{{or .ID "—"}}</td><td>{{.Kind}}</td><td>{{.Status}}</td><td class="mute">{{or .LastLogon "—"}}</td></tr>{{end}}</tbody></table>{{else}}<p class="pm" style="margin:0">No accounts were read.</p>{{end}}</div>
+</div></div>{{end}}{{end}}{{end}}
+
 {{define "howlogs"}}<div class="how"><div><i>1</i><span>Open the report folder. Each system has a <code>logs-SYSTEM.zip</code> next to <code>report.html</code>.</span></div>
 <div><i>2</i><span>Windows logs are <code>.evtx</code>: double-click to open in Event Viewer. Linux logs are plain text.</span></div>
 <div><i>3</i><span>To prove nothing was changed: <code>blackbox verify</code> checks every file against <code>manifest.sha256</code>.</span></div></div>
@@ -180,6 +195,7 @@
 <a href="#" data-act="print">{{icon "printer" 18}}<div><b>Print or save as PDF</b><span>A clean printable summary: totals, detections and the audit trail</span></div></a>
 <a href="#" data-act="detcsv">{{icon "list-filter" 18}}<div><b>Detections as CSV</b><span>{{plural (len .Findings) "row"}} · for a POA&amp;M or ticket</span></div></a>
 <a href="events.zip" download>{{icon "layers" 18}}<div><b>All events as CSV</b><span>{{commas (len .Events)}} rows in events.zip · for Excel</span></div></a>
+<a href="#" data-act="invcsv">{{icon "cpu" 18}}<div><b>Inventory as CSV</b><span>Each system, its drives and accounts, with serial numbers</span></div></a>
 <a href="#" data-act="healthcsv">{{icon "shield-check" 18}}<div><b>Audit health as CSV</b><span>Every system × every STIG check</span></div></a>
 {{if .HasScapScans}}<a href="scap-open-rules.csv" download>{{icon "list-checks" 18}}<div><b>Open SCAP findings as CSV</b><span>{{plural .ScapOpenRules "open rule"}} · CAT, Vuln ID, rule · for a POA&amp;M</span></div></a>{{end}}
 <a href="./" target="_blank">{{icon "folder-open" 18}}<div><b>Open the report folder</b><span>Original logs, manifest, summary.json</span></div></a></div>

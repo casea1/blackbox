@@ -11,6 +11,12 @@ use.
 - It runs `auditpol`, `reg query`, `wevtutil gl`, `auditctl -l` and
   `auditctl -s`. These commands read settings for `check`; none of them
   change anything.
+- Once a day, with the settings check, it reads the computer's inventory
+  (make, model, serial numbers, drives, user accounts) with PowerShell CIM
+  queries on Windows, or from `/sys`, `/etc/passwd`, `/etc/group` and the
+  lock and expiry fields of `/etc/shadow` on Linux. It keeps only the last
+  four digits of each account's SID and nothing about passwords. See
+  [reports.md](reports.md#inventory).
 
 ## What it does not do
 

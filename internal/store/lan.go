@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/casea1/blackbox/internal/check"
+	"github.com/casea1/blackbox/internal/inventory"
 )
 
 // SendState tracks what has been sent to a collector.
@@ -116,6 +117,9 @@ type CheckRecord struct {
 	Host    string         `json:"host"`
 	OS      string         `json:"os,omitempty"`
 	Results []check.Result `json:"results"`
+	// Inventory is the computer's hardware and accounts, read with the
+	// check (nil from versions before 0.13).
+	Inventory *inventory.Inventory `json:"inventory,omitempty"`
 }
 
 // AppendChecks records an audit settings check.

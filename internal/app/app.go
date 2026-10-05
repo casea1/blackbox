@@ -19,6 +19,7 @@ import (
 	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/event"
 	"github.com/casea1/blackbox/internal/install"
+	"github.com/casea1/blackbox/internal/inventory"
 	"github.com/casea1/blackbox/internal/lan"
 	"github.com/casea1/blackbox/internal/report"
 	"github.com/casea1/blackbox/internal/scap"
@@ -56,6 +57,9 @@ type App struct {
 	// LogStates reads how far back each log reaches and whether it is full
 	// (nil: archive.LogStates); tests replace it.
 	LogStates func() []archive.LogState
+	// Inventory reads this computer's hardware and accounts (nil:
+	// inventory.Collect); tests replace it.
+	Inventory func() *inventory.Inventory
 }
 
 func (a *App) now() time.Time {
@@ -324,6 +328,13 @@ func checkDue(last, boot, now time.Time) bool {
 	return now.Sub(last) >= checkEvery || (!boot.IsZero() && boot.After(last))
 }
 
+func (a *App) inventory() *inventory.Inventory {
+	if a.Inventory != nil {
+		return a.Inventory()
+	}
+	return inventory.Collect()
+}
+
 func (a *App) bootTime() time.Time {
 	if a.BootTime != nil {
 		return a.BootTime()
@@ -341,7 +352,7 @@ func (a *App) recordChecks(st *store.Store, host string, force bool) error {
 	if !force && !checkDue(st.State.LastCheck, a.bootTime(), now) {
 		return nil
 	}
-	rec := &store.CheckRecord{Time: now, Host: host, OS: runtime.GOOS, Results: check.Run()}
+	rec := &store.CheckRecord{Time: now, Host: host, OS: runtime.GOOS, Results: check.Run(), Inventory: a.inventory()}
 	if err := st.AppendChecks(rec); err != nil {
 		return err
 	}
@@ -712,7 +723,9 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 	}
 	var sets []report.CheckSet
 	for _, c := range latest {
-		sets = append(sets, report.NewCheckSet(c.Host, c.Time, c.Results))
+		cs := report.NewCheckSet(c.Host, c.Time, c.Results)
+		cs.Inventory = c.Inventory
+		sets = append(sets, cs)
 	}
 	sort.Slice(sets, func(i, j int) bool { return strings.ToLower(sets[i].Host) < strings.ToLower(sets[j].Host) })
 

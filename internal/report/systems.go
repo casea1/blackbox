@@ -8,6 +8,7 @@ import (
 
 	"github.com/casea1/blackbox/internal/check"
 	"github.com/casea1/blackbox/internal/event"
+	"github.com/casea1/blackbox/internal/inventory"
 	"github.com/casea1/blackbox/internal/store"
 )
 
@@ -31,6 +32,7 @@ type CheckSet struct {
 	Pass, Fail, Warn int    // audit settings
 	AVFail           int    // antivirus checks failing (counted apart from audit settings)
 	Baseline         string // the STIG compared with, e.g. "Windows 11 STIG V2R8"
+	Inventory        *inventory.Inventory
 }
 
 // SystemRow is one computer on the Systems page.
