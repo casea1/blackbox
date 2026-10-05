@@ -309,6 +309,11 @@ computer in the report with no scan says **No scan found**.
   them.
 - **Overview:** open CAT I findings are a red line in the checklist;
   computers with no scan, or a stale one, are amber.
+- **Open rules:** each open CAT I, II or III count in the table opens
+  that computer's open rules on Audit health, CAT I first, then by STIG
+  ID, with each rule's title, Vuln ID and rule ID. Each computer's
+  settings list also has a **STIG compliance (SCAP)** line (score and open
+  counts; a gap when CAT I findings are open) linking to the same list.
 - **Systems:** each computer's header adds "SCAP 94% · 1 CAT I".
 - **Report folder:** each result shown is copied into `scap/` and listed
   in `manifest.sha256`, so the report proves which scan it showed.

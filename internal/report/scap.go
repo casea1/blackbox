@@ -273,3 +273,90 @@ func (r *Report) scapSummary() []ScapSummary {
 	}
 	return out
 }
+
+// ScapOpen is one benchmark's open rules on one system, for its Audit
+// health pane (SC3): CAT I first, then by STIG ID.
+type ScapOpen struct {
+	Benchmark, When string
+	Rules           []OpenRule
+}
+
+// OpenRule is one open STIG rule.
+type OpenRule struct {
+	Cat, STIG, Title, RuleID, VulnID string
+	Level                            string // bad for CAT I, warn for CAT II, na for CAT III
+}
+
+// ScapHref is where a system's open STIG rules are listed.
+func ScapHref(host string) string { return "#health/" + host + "/scap" }
+
+func (r *Report) scapOpen(host string) []ScapOpen {
+	var out []ScapOpen
+	for _, row := range r.scapTable {
+		if row.scan == nil || !strings.EqualFold(row.Host, host) {
+			continue
+		}
+		open := append([]scap.Rule(nil), row.scan.Latest.Open...)
+		sort.SliceStable(open, func(i, j int) bool {
+			if open[i].Cat() != open[j].Cat() {
+				return open[i].Cat() < open[j].Cat()
+			}
+			return open[i].STIGID < open[j].STIGID
+		})
+		so := ScapOpen{Benchmark: row.Benchmark, When: row.When}
+		for _, o := range open {
+			so.Rules = append(so.Rules, OpenRule{Cat: "CAT " + strings.Repeat("I", o.Cat()), STIG: o.STIGID, Title: o.Title, RuleID: o.ID, VulnID: o.VulnID,
+				Level: [4]string{"", "bad", "warn", "na"}[o.Cat()]})
+		}
+		out = append(out, so)
+	}
+	return out
+}
+
+// scapSetting is the "STIG compliance (SCAP)" line of a system's settings
+// table, linking to its open rules (SC3). ok is false when SCAP results
+// are not read.
+func (r *Report) scapSetting(host string) (SettingLine, bool) {
+	l := SettingLine{Check: "STIG compliance (SCAP)", STIG: "—", Want: "No open CAT I findings, scan current"}
+	found := false
+	var cat [4]int
+	var scores []string
+	stale := false
+	for _, row := range r.scapTable {
+		if !strings.EqualFold(row.Host, host) {
+			continue
+		}
+		found, host = true, row.Host // as the report names it
+		if row.Missing {
+			l.Have, l.Result, l.Class = "No scan found", "Warning", "warn"
+			return l, true
+		}
+		for c := 1; c <= 3; c++ {
+			cat[c] += row.Cat[c]
+		}
+		if row.Score != "" {
+			scores = append(scores, row.Score)
+		}
+		stale = stale || row.Stale
+	}
+	if !found {
+		return l, false
+	}
+	l.Have = fmt.Sprintf("%d CAT I, %d CAT II, %d CAT III open", cat[1], cat[2], cat[3])
+	if len(scores) > 0 {
+		l.Have = "Score " + strings.Join(scores, ", ") + " · " + l.Have
+	}
+	if stale {
+		l.Have += " · stale scan"
+	}
+	l.Href = ScapHref(host)
+	switch {
+	case cat[1] > 0:
+		l.Result, l.Class = fmt.Sprintf("%d CAT I open", cat[1]), "bad"
+	case stale || cat[2] > 0:
+		l.Result, l.Class = "Warning", "warn"
+	default:
+		l.Result, l.Class = "Matches", "ok"
+	}
+	return l, true
+}

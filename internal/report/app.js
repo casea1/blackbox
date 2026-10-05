@@ -82,9 +82,11 @@
       if (h.indexOf('#search?') === 0) search.query(h.slice(8));
       else search.open(decodeURIComponent(h.split('/').slice(1).join('/')));
     }
-    if (id === 'health' || id === 'logs') showHealth(view, decodeURIComponent(location.hash.split('/').slice(1).join('/')));
+    var to = null;
+    if (id === 'health' || id === 'logs') to = showHealth(view, decodeURIComponent(location.hash.split('/').slice(1).join('/')));
     else if (view.querySelector('[data-pick]')) showPick(view, decodeURIComponent(location.hash.split('/').slice(1).join('/')));
-    window.scrollTo(0, 0);
+    if (to) to.scrollIntoView();
+    else window.scrollTo(0, 0);
   }
 
   // ---- List pages (Systems, Detections, People): one item shown at a
@@ -101,12 +103,18 @@
   }
   // Audit health: the grid of every system (A1), or one system's settings
   // (A3) when one is named; a report of one system opens its settings.
+  // It returns the part of the page to scroll to, if not the top.
   function showHealth(view, key) {
     var a1 = view.querySelector('[data-a1]'), a3 = view.querySelector('[data-a3]');
-    if (!a1) return;
+    if (!a1) return null;
     key = key || a1.getAttribute('data-single') || '';
+    // "#health/HOST/scap" opens the system and goes to its open STIG rules (SC3).
+    var scap = /\/scap$/.test(key);
+    if (scap) key = key.replace(/\/scap$/, '');
     a1.hidden = !!key; a3.hidden = !key;
     if (key) showPick(a3, key);
+    if (scap) return a3.querySelector('[data-pane="' + key.replace(/["\\]/g, '\\$&') + '"] [data-scapopen]');
+    return null;
   }
   // Hide group headings with nothing left under them.
   function tidyHeads(list, head) {

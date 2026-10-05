@@ -90,6 +90,26 @@ func TestScapInReport(t *testing.T) {
 			t.Errorf("report.html lacks %q", want)
 		}
 	}
+	// SC3: each count opens the system's open rules, CAT I first; each
+	// system's settings list has a STIG compliance line linking there.
+	page := string(html)
+	for _, want := range []string{`href="#health/WS-07/scap"`, "Open STIG rules on WS-07 · 3", "data-scapopen",
+		`<a class="link" href="#health/WS-07/scap">STIG compliance (SCAP) →</a>`, "1 CAT I open", "Score 40% · 1 CAT I, 1 CAT II, 1 CAT III open"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("report.html lacks %q", want)
+		}
+	}
+	open := r.scapOpen("WS-07")
+	if len(open) != 1 || len(open[0].Rules) != 3 || open[0].Rules[0].Cat != "CAT I" || open[0].Rules[0].STIG != "WN11-00-000005" ||
+		open[0].Rules[1].Cat != "CAT II" || open[0].Rules[2].Cat != "CAT III" || open[0].Rules[0].RuleID == "" || open[0].Rules[0].Title == "" {
+		t.Errorf("open rules: %+v", open)
+	}
+	if l, ok := r.scapSetting("DSK9"); !ok || l.Have != "No scan found" || l.Href != "" {
+		t.Errorf("DSK9 setting: %+v", l)
+	}
+	if l, ok := r.scapSetting("ubu-01"); !ok || l.Class != "ok" || l.Href != "#health/ubu-01/scap" {
+		t.Errorf("ubu-01 setting: %+v", l)
+	}
 	// A changed scan result is caught by verify.
 	f := filepath.Join(dir, "scap", "ubu-01_ubu-01-arf.xml")
 	os.Chmod(f, 0o644)
