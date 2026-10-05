@@ -174,6 +174,43 @@ Missed-schedule test: the VM was shut down over the 05:05 collection and started
 | A14b | `groupadd` still adds two Low rows, "claude changed the owner of a file (using groupadd)" and "…permissions of a file (using groupadd) to 0644", next to "created the group". The Medium temp-file rename is gone. Fold these into the group row too. | Confirmed (minor) | 0.12.0 (#47) |
 | T2 (info) | 5038 High "Windows found a system file whose signature doesn't match: …\Windows Defender\Platform\4.18.26080.4-0\DefenderSessionHelper.exe" during a Defender platform update on a fresh install. Probably a Windows quirk; worth checking whether this file and version are a known false positive before treating every 5038 on Defender's platform folder as High. | To check | 0.12.0 (#44): kept High with a note; not a documented false positive |
 
+## v0.12.1 verification (5 Oct 2026)
+
+Re-tested live on a Windows 11 Pro 25H2 collector (standalone before), Ubuntu 26.04 (a sender over SFTP, then SMB, then standalone), and Windows Server 2025 (a collector, then a Windows sender). The actions are in [test-activity.log](test-activity.log). Confirmed and not to regress: T1, T3; U4b, U5, U6, U8b, A14b, A15, O1, U13–U15; W1 (local), R10, A5/A15 on Windows, S13; SC1, SC3; L6, L8, L10, L11 resend, L12; SMB 3.1.1 with `seal` between machines; a dead SMB mount recovering by itself; mixed versions; a Windows sender over SMB; `.evtx` and Linux archives opening; `verify` catching a changed `.evtx`.
+
+### Original-log archives
+
+| # | Finding | Status | Fixed in |
+|---|---|---|---|
+| AR2 | **High. A daily export misses what the log already overwrote, and the archive doesn't say so.** On the STIG-audited Windows 11, one Windows Update run rolled the 20 MB Security log over within an hour (C6: 94,565 events lost). The first archive claims 28 Sep → 5 Oct, but its `Security.evtx` starts at 5 Oct 04:08, with no note in `archive.json`. | Confirmed | 0.14.0 (#53): exported at every collection and packed daily; `archive.json` and the Original logs page give, per log, the period it covers and the events it overwrote before export |
+| AR1 | **High. After the clock moved back, a stretch of original logs is never archived.** `ArchivedUntil` was 07:00Z while the clock was 3 hours fast; after the correction, everything stamped 03:02Z–07:00Z fell between two archives, including the original records of a log clear and a settings edit. | Confirmed | 0.14.0 (#53): the next export starts at the first record written since the last one, with a note |
+| AR3 | Archives stranded when a collector becomes a sender: the Server 2025 still holds Ubuntu's archives (25 Sep → 4 Oct) and its own (4–5 Oct), and as a sender never bundles or forwards them. | Confirmed | 0.14.0 (#54): a final report (`_final`) with all of them before the first send; setup says where |
+| AR4 | Proposal: an off-box copy of the archives (`archive_copy_to`) for AU-9(2) and AU-4(1); archives are deleted with their report under `retention_days`. | Proposal | Written up in design.md §13c (0.14.0, #53); retention documented in reports.md |
+
+### Role changes and delivery
+
+| # | Finding | Status | Fixed in |
+|---|---|---|---|
+| L13 | Changing a sender's collector raises a false alarm: the new collector says "Missing: batches 1-280 from ubuntu-server never arrived" and suggests `--resend 1-280`, though those went to the previous collector and may not be kept. | Confirmed | 0.14.0 (#54): the first batch for a new collector is marked, with the previous collector's name; `--resend` is suggested only for batches the sender still keeps |
+| L14 | A collector that becomes a sender forwards everything it received (9,058 records, Ubuntu's included); the new collector lists ubuntu-server "via WIN-498EC8UMUEL" and still shows batches 1-280 missing. | Confirmed | 0.14.0 (#54): option (b), other systems' data is never forwarded (it is in the final report, AR3); "via" only for systems seen only through a relay |
+| W1b | Relayed data carries the former collector's former name (`WIN-R5L5B9EF403`, 42 events), shown as a 4th system ("4-systems"). | Confirmed | 0.14.0 (#54): senders send their former names; the collector files them under the current name |
+| S14 | Setup during a scheduled run said "the collector could not be reached yet: another Blackbox run is in progress". | Confirmed (minor) | 0.14.0 (#54) |
+| S15 | Sender → standalone on Linux leaves `blackbox-shutdown.service` as "not-found failed". | Confirmed (minor) | 0.14.0 (#54): stopped, removed and `reset-failed` |
+| L11b | `send --resend 1-3` exits 0 when none is kept; the collector logs a resent duplicate as "received 1 batch (0 records)". | Confirmed (minor) | 0.14.0 (#55) |
+| N2b | Windows 11 25H2 turns on "File and Printer Sharing (Restrictive) (SMB-In)" when a share is created; SMB worked and Blackbox rightly didn't warn. Check the rule counts as open, and Server 2025 still warns. | Check | 0.14.0 (#55): test for both |
+
+### Smaller items
+
+| # | Finding | Status | Fixed in |
+|---|---|---|---|
+| T3b | An interim report leaves out events stamped up to `clockSlack` after its creation: the log clear (1102), 4719 ×2 and 4616 ×2, collected at 06:44:14 but stamped 06:45:06, were not in the 06:44:44 interim. | Confirmed | 0.14.0 (#55) |
+| T1b | After the clock moved back, the Systems table shows the last collection as "2026-10-06 00:02" (the future) while the `status` header shows 06:44. | Confirmed | 0.14.0 (#55) |
+| A17b | High "Possible covering of tracks: claude created the user account bbsend2 … changed Blackbox's inbox setting" when setting up a collector. | Confirmed | 0.14.0 (#55) |
+| U4c | Login-script commands still leave rows on Ubuntu 26.04: AppArmor blocking `who` on `/etc/nsswitch.conf` and `/etc/passwd`, and the permissions of `/var/lib/landscape/landscape-sysinfo.cache`. | Confirmed | 0.14.0 (#55) |
+| C6 note | Existing installs keep `collect_every = 1h` on upgrade; while events are lost to rollover, say `blackbox config set collect_every 15m`. | Confirmed | 0.14.0 (#55): `status`, the report and the tray give the command, which now also updates the schedule |
+
+Still to re-test live: a fresh Windows 11 install (A13/A16/A17 noise), the SFTP outage end to end (L12), the role-change flows (L13, L14, AR3), and exporting at every collection on a busy Windows Security log (AR2).
+
 ## ISSO / ISSM review: audit coverage (AU-2, AU-6, AU-12)
 
 Looked at as an ISSO doing the weekly audit review, and as an assessor checking that what the STIG makes you audit is actually reviewed. Owner decisions respected and not re-raised: no review/sign-off section (reviews are recorded on a separate platform) and no classification banner (`design.md` §13).
