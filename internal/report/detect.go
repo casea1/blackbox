@@ -34,6 +34,9 @@ const (
 // setupActions prepare access: a new account, a privileged group or new
 // sudo rules.
 func setupAction(r *Row) bool {
+	if !person(r.User) {
+		return false // Windows setup or a service, not someone preparing access (A17)
+	}
 	switch r.Action {
 	case "account_created", "sudoers_changed":
 		return true

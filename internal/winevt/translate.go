@@ -144,6 +144,8 @@ func (t *Translator) security(r *Raw) *event.Event {
 			Summary: "Windows started up."}
 	case 4616:
 		return t.timeChanged(r)
+	case 4717, 4718:
+		return t.systemAccess(r)
 	case 4720, 4722, 4723, 4724, 4725, 4726, 4738, 4767, 4781:
 		return t.accountChange(r)
 	case 4727, 4730, 4731, 4734, 4754, 4758:

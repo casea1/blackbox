@@ -59,6 +59,12 @@ func (t *Translator) processCreated(r *Raw) *event.Event {
 	if !elevated || t.ignoredAccount(r, "Subject") {
 		return nil
 	}
+	// Programs Blackbox runs itself (wevtutil, auditpol, reg, powershell
+	// for its checks, conhost): part of its own run, not a person's (T4).
+	switch strings.ToLower(filepath.Base(winPath(r.Get("ParentProcessName")))) {
+	case "blackbox.exe", "blackboxw.exe":
+		return nil
+	}
 	user := t.subject(r)
 	proc := r.Get("NewProcessName")
 	cmd := r.Get("CommandLine")

@@ -98,6 +98,9 @@ func (t *Translator) firewallLog(r *Raw) *event.Event {
 	who := t.resolve(r.Get("ModifyingUser"))
 	prog := r.Get("ModifyingApplication")
 	rule := r.Get("RuleName")
+	if rule == "" {
+		rule = r.Get("RuleId") // not "deleted: ." (A13b)
+	}
 	by := ""
 	if who != "" && !strings.EqualFold(who, "SYSTEM") {
 		by = " by " + who
@@ -180,6 +183,19 @@ func (t *Translator) defenderSettings(r *Raw) *event.Event {
 		DedupeKey: "defcfg|" + strings.ToLower(strings.SplitN(newV, " = ", 2)[0]),
 		Summary:   fmt.Sprintf("A Microsoft Defender setting was changed: %s.", orUnknown(newV))}
 	switch {
+	case !defenderSetting(low):
+		// Defender recording its own state (WdConfigHash, IsServiceRunning,
+		// ServiceStartStates, Diagnostics, Features\EcsConfigs, SpyNet
+		// check times): not configuration. Counted once a day (A16).
+		e.Action, e.Severity = "av_state_recorded", event.SevInfo
+		e.Summary = fmt.Sprintf("Microsoft Defender recorded its own state: %s.", orUnknown(newV))
+	case strings.Contains(low, `\nis\consumers\ips\disablebmnetworksensor = 0x1`) && !strings.Contains(low, `\policies\`):
+		// Defender sets this itself during platform updates (seen on a
+		// fresh Windows 11 25H2, no user named): not protection turned
+		// off by someone (A17). A policy setting it is still High below.
+		e.Severity = event.SevLow
+		e.Summary = fmt.Sprintf("Microsoft Defender changed its own network-inspection sensor setting (usually during a platform update): %s.", newV)
+		e.AddDetail("Note", "Defender changes this itself when its platform updates. Set by policy (under Policies), it would be reported as protection turned off.")
 	case strings.Contains(low, `\exclusions\`) && oldV == "":
 		e.Action, e.Severity = "av_exclusion_added", event.SevHigh
 		e.Summary = fmt.Sprintf("An exclusion was added to Microsoft Defender — it no longer scans: %s.", exclusionOf(newV))
@@ -192,6 +208,29 @@ func (t *Translator) defenderSettings(r *Raw) *event.Event {
 	e.AddDetail("Before", oldV)
 	e.AddDetail("After", newV)
 	return e
+}
+
+// defenderSettings are the parts of Defender's registry that are its
+// configuration (A16): exclusions, real-time and other protections,
+// tamper protection, policy, cloud protection consent, threat actions,
+// attack surface reduction and controlled folder access, and any
+// Disable* switch. Defender writes the rest itself as it runs.
+var defenderSettings = []string{`\exclusions\`, `\real-time protection\`, `\features\tamperprotection`, `\policy manager\`,
+	`\policies\`, `\spynet\spynetreporting`, `\spynet\submitsamplesconsent`, `\threats\`, `\mpengine\`,
+	`\windows defender exploit guard\`, `\nis\`, `\scan\`, `\signature updates\`, `\ux configuration\`}
+
+var disableSwitch = regexp.MustCompile(`\\disable\w+ = `)
+
+func defenderSetting(low string) bool {
+	if disableSwitch.MatchString(low) {
+		return true
+	}
+	for _, k := range defenderSettings {
+		if strings.Contains(low, k) {
+			return true
+		}
+	}
+	return false
 }
 
 // exclusionOf is the excluded path, process or extension in a 5007 value

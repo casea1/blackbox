@@ -16,7 +16,7 @@ var Reviewed = map[int]bool{
 	4608: true, 4611: true, 4612: true, 4614: true, 4616: true, 4622: true,
 	4624: true, 4625: true, 4634: true, 4647: true, 4648: true, 4656: true, 4657: true, 4663: true, 4670: true,
 	4672: true, 4688: true, 4697: true, 4698: true, 4699: true, 4700: true, 4701: true, 4702: true,
-	4704: true, 4705: true, 4706: true, 4707: true, 4713: true, 4716: true, 4719: true,
+	4704: true, 4705: true, 4706: true, 4707: true, 4713: true, 4716: true, 4717: true, 4718: true, 4719: true,
 	4720: true, 4722: true, 4723: true, 4724: true, 4725: true, 4726: true, 4727: true, 4728: true, 4729: true,
 	4730: true, 4731: true, 4732: true, 4733: true, 4734: true, 4738: true, 4739: true, 4740: true, 4754: true,
 	4756: true, 4757: true, 4758: true, 4765: true, 4766: true, 4767: true, 4771: true, 4776: true, 4778: true,
@@ -119,4 +119,51 @@ func SubcategoryReviewed(name string) string {
 		}
 	}
 	return how
+}
+
+// logonRights names the logon rights 4717/4718 grant or remove.
+var logonRights = map[string]string{
+	"SeInteractiveLogonRight":           "log on at the keyboard",
+	"SeNetworkLogonRight":               "access this computer from the network",
+	"SeBatchLogonRight":                 "log on as a batch job",
+	"SeServiceLogonRight":               "log on as a service",
+	"SeRemoteInteractiveLogonRight":     "log on through Remote Desktop",
+	"SeDenyInteractiveLogonRight":       "be refused logon at the keyboard",
+	"SeDenyNetworkLogonRight":           "be refused access from the network",
+	"SeDenyBatchLogonRight":             "be refused logon as a batch job",
+	"SeDenyServiceLogonRight":           "be refused logon as a service",
+	"SeDenyRemoteInteractiveLogonRight": "be refused logon through Remote Desktop",
+}
+
+// systemAccess is 4717/4718: a logon right granted to or removed from an
+// account (T4). Windows grants these itself on every logon of a virtual
+// account (an OpenSSH session, a service): left out. A person changing
+// them is Medium.
+func (t *Translator) systemAccess(r *Raw) *event.Event {
+	if t.ignoredAccount(r, "Subject") {
+		return nil
+	}
+	who := t.subject(r)
+	target := t.resolve(r.Get("TargetSid"))
+	right := firstNonBlank(r.Get("AccessGranted"), r.Get("AccessRemoved"))
+	var names []string
+	for _, f := range strings.Fields(right) {
+		if n, ok := logonRights[f]; ok {
+			names = append(names, n)
+		} else {
+			names = append(names, f)
+		}
+	}
+	what := strings.Join(names, ", ")
+	e := &event.Event{Category: event.CatAccount, Severity: event.SevMedium, User: who, Target: target}
+	if r.EventID == 4717 {
+		e.Action = "logon_right_granted"
+		e.Summary = fmt.Sprintf("%s gave %s the right to %s.", orUnknown(who), orUnknown(target), orUnknown(what))
+	} else {
+		e.Action = "logon_right_removed"
+		e.Summary = fmt.Sprintf("%s removed %s's right to %s.", orUnknown(who), orUnknown(target), orUnknown(what))
+	}
+	e.AddDetail("Right", right)
+	e.AddDetail("Account SID", r.Get("TargetSid"))
+	return e
 }

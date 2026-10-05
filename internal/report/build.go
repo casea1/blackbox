@@ -277,6 +277,8 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	events = r.dedupe(events)
 	events = selfChanges(events, runs)
 	events = r.appPackageRules(events)
+	events = r.defenderState(events)
+	events = r.windowsSetup(events)
 	attributeDevices(events)
 	shutdownStops(events)
 

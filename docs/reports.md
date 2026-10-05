@@ -170,9 +170,26 @@ this computer's own account or comes from a domain. A local account named
 like one (for example `helper$`) is always shown.
 
 **Windows' own housekeeping.** The firewall rules Windows registers for
-its built-in app packages (`@{Microsoft.…}`, changed by the Windows
-Firewall service) are one Info row per computer and day with the counts;
-rules changed by people keep their own rows. PowerShell module code that
+its built-in apps and services (app packages such as `@{Microsoft.…}`,
+WinDefend's rules), changed by the Windows Firewall service (by name or by
+its SID) or SYSTEM, are one Info row per computer and day with the counts;
+rules changed by people keep their own rows. A firewall rule with no name
+is shown by its rule ID. Defender's own bookkeeping in its settings
+(signature and scan state, 5007 events) is one Info row per computer and
+day; changes to exclusions, real-time protection, any `Disable…` switch,
+tamper protection and Defender policy keep their own rows.
+`DisableBmNetworkSensor` turned on outside Policies is Low, with a note.
+Windows setup's own activity (the `defaultuser0` account the out-of-box
+setup uses, and events recorded under the setup PC name `MINWINPC`) is one
+Info "Windows setup" row per computer and day, and is never paired with
+other changes as covering tracks. Blackbox's own writes to its data folder
+and the programs Blackbox starts (`wevtutil`, `auditpol` and so on) are
+left out. Deleting a report is one High row per report, not one per file.
+Logon rights given or taken away (4717/4718) are a Medium sentence when a
+person did it, and left out when Windows grants them itself. A 5038 (a
+system file whose signature doesn't match) on a Microsoft Defender
+platform file stays High, with a note: Windows often logs this while
+Defender updates its platform, and the row says how to tell. PowerShell module code that
 Windows generates (CDXML modules such as the firewall's
 `Get-NetFirewallRule`, in every part of a long script) is not flagged.
 OpenSSH for Windows' per-connection account `VIRTUAL USERS\sshd_<pid>` is
