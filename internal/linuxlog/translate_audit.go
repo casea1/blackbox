@@ -320,6 +320,10 @@ func (t *Translator) avc(ev *Event, avc *Record) *event.Event {
 		if aa != "DENIED" {
 			return nil
 		}
+		main := ev.Main()
+		if t.inLoginMessage(t.hostOf(avc), firstNonEmpty(avc.Get("pid"), main.Get("pid")), main.Get("ppid"), avc.Time) {
+			return nil // a login message script's program (U4c)
+		}
 		op := avc.Get("operation")
 		profile := avc.Get("profile")
 		e := &event.Event{Category: event.CatOther, Severity: event.SevLow, Action: "mac_denied", Process: comm, Target: name,

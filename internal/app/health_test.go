@@ -266,3 +266,17 @@ func TestSendingFailedSince(t *testing.T) {
 		t.Errorf("after a delivery that worked: %v, failing since %v", r.Err, st.State.Send.FailingSince)
 	}
 }
+
+// C6 note: an upgraded install still collecting hourly is told the exact
+// command; one already at 15 minutes is told to make the log larger.
+func TestLostAdvice(t *testing.T) {
+	if got := LostAdvice("WIN11", time.Hour, true); !strings.Contains(got, "This computer collects every hour") || !strings.Contains(got, "blackbox config set collect_every 15m") {
+		t.Errorf("hourly: %s", got)
+	}
+	if got := LostAdvice("WIN11", 15*time.Minute, true); strings.Contains(got, "collect_every") || !strings.Contains(got, "larger") {
+		t.Errorf("15 minutes: %s", got)
+	}
+	if got := LostAdvice("ubuntu-server", 15*time.Minute, false); !strings.Contains(got, "on ubuntu-server: blackbox config set collect_every 15m") {
+		t.Errorf("another computer: %s", got)
+	}
+}

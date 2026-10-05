@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/casea1/blackbox/internal/config"
 )
 
 func TestTaskXML(t *testing.T) {
@@ -150,5 +152,28 @@ func TestTaskStartsInThePast(t *testing.T) {
 	}
 	if x := taskXML(`C:\Program Files\Blackbox\blackbox.exe`, 15*time.Minute, TaskStart); !strings.Contains(x, "<StartBoundary>2000-01-01T00:05:00</StartBoundary>") {
 		t.Errorf("trigger:\n%s", x)
+	}
+}
+
+// C6 note: "blackbox config set collect_every 15m" changes the setting
+// (and the schedule, when installed); an interval the schedule can't
+// follow is refused.
+func TestSetCollectEvery(t *testing.T) {
+	var applied time.Duration
+	defer func(f func(time.Duration) error) { scheduleApplier = f }(scheduleApplier)
+	scheduleApplier = func(d time.Duration) error { applied = d; return nil }
+	p := filepath.Join(t.TempDir(), "blackbox.conf")
+	os.WriteFile(p, []byte(config.Render("", "weekly", config.DefaultReportAt, "", time.Hour)), 0o644)
+	if err := SetCollectEvery(p, 15*time.Minute, func(string, ...any) {}); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err := config.Load(p); err != nil || cfg.CollectEvery != 15*time.Minute {
+		t.Errorf("collect_every after set: %v %v", cfg, err)
+	}
+	if applied != 15*time.Minute {
+		t.Errorf("schedule updated to %v", applied)
+	}
+	if err := SetCollectEvery(p, 7*time.Minute, func(string, ...any) {}); err == nil {
+		t.Error("7 minutes accepted")
 	}
 }

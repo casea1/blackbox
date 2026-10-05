@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"syscall"
 	"unsafe"
 
@@ -141,9 +140,10 @@ func Destination(cfg *config.Config) (string, error) {
 	return cfg.SendTo, Connect(cfg.SendTo, cfg.ShareUser, pw)
 }
 
-// portInQuery says whether an enabled inbound firewall rule allows the TCP
-// port: 445 for Windows file sharing, 22 for the OpenSSH server.
-const portInQuery = `$r = Get-NetFirewallPortFilter -Protocol TCP -ErrorAction SilentlyContinue | Where-Object { @($_.LocalPort) -contains '%d' } | Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and $_.Action -eq 'Allow' }; if ($r) { 'open' } else { 'closed' }`
+// portInQuery lists the firewall rules for a TCP port, one per line,
+// tab-separated, for PortOpen: 445 for Windows file sharing, 22 for the
+// OpenSSH server. %d in the format string is the port.
+const portInQuery = `Get-NetFirewallPortFilter -Protocol TCP -ErrorAction SilentlyContinue | Where-Object { @($_.LocalPort) -contains '%d' } | Get-NetFirewallRule -ErrorAction SilentlyContinue | ForEach-Object { '{0}{4}{1}{4}{2}{4}{3}' -f $_.DisplayName, $_.Enabled, $_.Direction, $_.Action, [char]9 }`
 
 // SMBAllowedIn reports whether Windows Firewall lets other computers reach
 // this computer's file shares (N2). Server 2025 ships "File and Printer
@@ -167,5 +167,5 @@ func portAllowedIn(port int) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return strings.TrimSpace(string(out)) == "open", nil
+	return PortOpen(string(out)), nil
 }

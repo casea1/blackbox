@@ -1,6 +1,9 @@
 package share
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // The ports a collector's inbox is reached on.
 const (
@@ -25,4 +28,20 @@ func FirewallAdvice(port int) []string {
 		`Or by Group Policy: Computer Configuration > Policies > Windows Settings > Security Settings > Windows Defender Firewall with Advanced Security > Inbound Rules > New Rule:`,
 		fmt.Sprintf("  Port, TCP %d, Allow the connection, Domain and Private only; then under the rule's Scope, Remote IP address: the senders' addresses.", port),
 	}
+}
+
+// PortOpen reads the firewall rules for a port, one per line as
+// "name<TAB>enabled<TAB>direction<TAB>action" (Get-NetFirewallRule), and
+// says whether any enabled inbound rule allows it. On Windows 11 25H2,
+// creating a share turns on "File and Printer Sharing (Restrictive)
+// (SMB-In)" while the classic SMB-In rules stay off; it counts as open
+// like any other (N2b).
+func PortOpen(rules string) bool {
+	for _, l := range strings.Split(rules, "\n") {
+		f := strings.Split(strings.TrimSpace(l), "\t")
+		if len(f) == 4 && strings.EqualFold(f[1], "True") && strings.EqualFold(f[2], "Inbound") && strings.EqualFold(f[3], "Allow") {
+			return true
+		}
+	}
+	return false
 }

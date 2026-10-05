@@ -297,3 +297,46 @@ func TestLoginScriptsCollapse2604(t *testing.T) {
 		t.Errorf("got:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
+
+// U4c: what the login message scripts' programs do is part of them too:
+// "who" (from 50-landscape-sysinfo) refused by AppArmor, and
+// landscape-sysinfo setting the permissions of its cache. The same
+// denial or change by a program the person runs is still listed.
+func TestLoginScriptsFoldDenialsAndFileChanges(t *testing.T) {
+	var lines []string
+	add := func(l ...string) { lines = append(lines, l...) }
+	add(execRecPID(1, 0, 1001, 7, 6002, 6001, "run-parts --lsbsysinit /etc/update-motd.d")...)
+	add(execRecPID(2, 0, 1001, 7, 6003, 6002, "/bin/sh /etc/update-motd.d/50-landscape-sysinfo")...)
+	add(execRecPID(3, 1, 1001, 7, 6010, 6003, "who -q")...)
+	denied := func(serial, pid int, comm, name string) string {
+		return fmt.Sprintf(`type=AVC msg=audit(1790730001.000:%d): apparmor="DENIED" operation="open" class="file" profile="ubuntu_pro_esm_cache" name=%q pid=%d comm=%q requested_mask="r" denied_mask="r" fsuid=0 ouid=0`, serial, name, pid, comm)
+	}
+	add(denied(4, 6010, "who", "/etc/nsswitch.conf"), denied(5, 6010, "who", "/etc/passwd"))
+	chmod := func(serial, pid, ppid int, file string) []string {
+		at := fmt.Sprintf("1790730002.000:%d", serial)
+		return []string{
+			fmt.Sprintf(`type=SYSCALL msg=audit(%s): arch=c000003e syscall=90 success=yes exit=0 a0=55 a1=1a4 items=1 ppid=%d pid=%d auid=1001 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=7 comm="landscape-sysin" exe="/usr/bin/python3.13" key="perm_mod"`, at, ppid, pid),
+			fmt.Sprintf(`type=PATH msg=audit(%s): item=0 name=%q inode=12 dev=08:01 mode=0100644 ouid=0 ogid=0 nametype=NORMAL`, at, file),
+			fmt.Sprintf(`type=EOE msg=audit(%s):`, at),
+		}
+	}
+	add(chmod(6, 6011, 6003, "/var/lib/landscape/landscape-sysinfo.cache")...)
+	// Later, the person's own: listed.
+	add(denied(7, 7010, "who", "/etc/nsswitch.conf"))
+	add(chmod(8, 7011, 7000, "/var/lib/landscape/landscape-sysinfo.cache")...)
+	evs := translateLines(t, Users{1001: "claude"}, lines...)
+	var denials, chmods, scripts int
+	for _, e := range evs {
+		switch e.Action {
+		case "mac_denied":
+			denials++
+		case "permissions_changed":
+			chmods++
+		case "login_scripts":
+			scripts++
+		}
+	}
+	if scripts != 1 || denials != 1 || chmods != 1 {
+		t.Errorf("%d login script rows, %d AppArmor rows, %d permission rows (want 1, 1, 1):\n%s", scripts, denials, chmods, summaries(evs))
+	}
+}

@@ -181,3 +181,21 @@ func TestCoverTracksByCommandsAndDefender(t *testing.T) {
 		}
 	}
 }
+
+// A17b: setting up a collector (creating the delivery account, then
+// running Blackbox setup, which records its own inbox setting) is not
+// covering tracks; changing what Blackbox leaves out still is.
+func TestCoverTracksNotBlackboxSetup(t *testing.T) {
+	acct := ev(0, "WIN11-COL", "account_created", event.CatAccount, event.SevMedium, `WIN11-COL\claude`, "bbsend2")
+	self := func(setting string) *event.Event {
+		e := event.SelfChange{Kind: "changed", Who: `WIN11-COL\claude`, Setting: setting, Old: "", New: `C:\BlackboxInbox`, Program: "blackbox setup"}.Event()
+		e.Time, e.Host = t0.Add(30*time.Second), "WIN11-COL"
+		return e
+	}
+	if f := findings(detectOnly([]*event.Event{acct, self("inbox")}, nil, Options{}))["Possible covering of tracks"]; len(f) != 0 {
+		t.Errorf("collector setup flagged: %+v", f)
+	}
+	if f := findings(detectOnly([]*event.Event{acct, self("exclude_users")}, nil, Options{}))["Possible covering of tracks"]; len(f) != 1 {
+		t.Errorf("an exclusion after creating an account: %+v", f)
+	}
+}

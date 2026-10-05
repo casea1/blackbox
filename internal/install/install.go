@@ -410,6 +410,26 @@ func uniq(in []string) []string {
 
 // systemdTimer runs the service on a fixed schedule and catches up after
 // the system was off (Persistent=true).
+// SetCollectEvery changes collect_every in the config file and the
+// schedule that runs collection ("blackbox config set collect_every 15m",
+// C6), without running setup again.
+func SetCollectEvery(cfgPath string, every time.Duration, logf func(string, ...any)) error {
+	if _, err := systemdTimer(every); err != nil {
+		return err
+	}
+	if err := config.SetValues(cfgPath, [][2]string{{"collect_every", config.FormatDuration(every)}}); err != nil {
+		return err
+	}
+	if err := scheduleApplier(every); err != nil {
+		return fmt.Errorf("collect_every is saved, but the schedule could not be updated: %w (run setup again)", err)
+	}
+	logf("Collection now runs %s.", EveryText(every))
+	return nil
+}
+
+// scheduleApplier updates the installed schedule (tests replace it).
+var scheduleApplier = applySchedule
+
 func systemdTimer(every time.Duration) (string, error) {
 	cal, err := onCalendar(every)
 	if err != nil {

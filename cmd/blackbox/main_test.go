@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/casea1/blackbox/internal/app"
 )
 
 func TestReportRange(t *testing.T) {
@@ -69,5 +71,19 @@ func TestConfirmRetention(t *testing.T) {
 	}
 	if err := confirmRetention("retention_days", "0", false, false, strings.NewReader("")); err != nil {
 		t.Errorf("0 (keep forever): %v", err)
+	}
+}
+
+// L11b: "send --resend" fails when nothing could be sent again.
+func TestResendOutcome(t *testing.T) {
+	lines, err := resendOutcome(app.ResendResult{Missing: []uint64{1, 2, 3}}, nil, "x", 14)
+	if err == nil || !strings.Contains(strings.Join(lines, "\n"), "Not kept on this computer: 1, 2, 3") {
+		t.Errorf("none kept: %v %v", lines, err)
+	}
+	if _, err := resendOutcome(app.ResendResult{Sent: []uint64{2}, Missing: []uint64{1}}, nil, "x", 14); err != nil {
+		t.Errorf("some sent: %v", err)
+	}
+	if lines, err := resendOutcome(app.ResendResult{}, nil, "x", 14); err != nil || !strings.Contains(lines[0], "not been delivered yet") {
+		t.Errorf("still waiting: %v %v", lines, err)
 	}
 }

@@ -141,7 +141,10 @@ VM does not have to be on at a particular time:
      with offline caching off (no copies of batches in client caches)
    - gives the local group **Blackbox Senders** permission to write to
      it (and nobody else), and adds those accounts to it
-   - checks that Windows Firewall lets file sharing in. Windows Server 2025
+   - checks that Windows Firewall lets file sharing in: any enabled
+     inbound rule that allows TCP 445 counts, including **File and Printer
+     Sharing (Restrictive) (SMB-In)**, which Windows 11 25H2 turns on when
+     a share is created. Windows Server 2025
      ships **File and Printer Sharing (SMB-In)** turned off. Blackbox
      never changes the firewall, so setup and `blackbox status` print the
      one rule to add, both as a command and as a Group Policy path: inbound

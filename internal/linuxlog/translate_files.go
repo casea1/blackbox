@@ -178,6 +178,9 @@ func (t *Translator) fileChange(r *Record, actor, sc string, paths []string, exe
 	if routineFileWrite(prog, paths) || routineFileWrite(r.Get("comm"), paths) {
 		return nil // A14
 	}
+	if t.inLoginMessage(t.hostOf(r), r.Get("pid"), r.Get("ppid"), r.Time) {
+		return nil // the login message scripts, in their own row (U4c)
+	}
 	if len(paths) == 0 && (accountTools[prog] || accountTools[r.Get("comm")]) && (sc == "fchown" || sc == "fchmod") {
 		// The tool setting the owner and mode of its temporary copy by
 		// file handle, so the record has no path (A14b).

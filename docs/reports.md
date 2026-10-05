@@ -24,9 +24,11 @@ choose:
 To produce a report now, run `blackbox report`. This is an **interim**
 report: it covers the time since the last scheduled report, is marked
 *Interim* in the report and on the list of reports, and does not change the
-schedule. The next scheduled report still covers its whole period. Interim
-reports do not include the original logs; those go with the scheduled
-report.
+schedule. The next scheduled report still covers its whole period. An
+interim report shows everything collected so far, even an event stamped
+a little after the moment it was made (as happens just after the clock
+is corrected). Interim reports do not include the original logs; those
+go with the scheduled report.
 
 **A report for any period.** `blackbox report` run by hand asks which
 period to cover: press Enter for the time since the last report, type a

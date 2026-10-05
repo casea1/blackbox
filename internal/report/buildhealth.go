@@ -135,8 +135,8 @@ func (r *Report) buildHealth(runs []*store.Run, events []*event.Event) {
 			h.Warnings = append(h.Warnings, fmt.Sprintf("%s: the %s log was cleared or recreated before %s; events in it that had not yet been collected are gone.", g.Host, g.Channel, r.stamp(g.To)))
 			continue
 		}
-		h.Warnings = append(h.Warnings, fmt.Sprintf("%s: %s events in the %s log were overwritten before Blackbox could collect them (between %s and %s). Collect more often or increase the log size.",
-			g.Host, commas(g.Lost), g.Channel, r.stamp(g.From), r.stamp(g.To)))
+		h.Warnings = append(h.Warnings, fmt.Sprintf("%s: %s events in the %s log were overwritten before Blackbox could collect them (between %s and %s). Collect every 15 minutes (on %s: blackbox config set collect_every 15m) or increase the log size.",
+			g.Host, commas(g.Lost), g.Channel, r.stamp(g.From), r.stamp(g.To), g.Host))
 	}
 	for _, ch := range h.Channels {
 		if ch.LastError != "" {
