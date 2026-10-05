@@ -762,7 +762,7 @@ func (a *App) Scheduled() (string, error) {
 }
 
 // ReportNow collects and produces a report up to now. With advance=false
-// it is an interim report: the schedule and report chain are untouched,
+// it is a manual report: the schedule and report chain are untouched,
 // and the next scheduled report covers the same time again.
 func (a *App) ReportNow(advance bool) (string, error) {
 	st, unlock, err := a.open()
@@ -907,7 +907,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 	if err != nil {
 		return "", err
 	}
-	// An interim report shows everything collected so far, whatever its
+	// A manual report shows everything collected so far, whatever its
 	// time says (T3b): after a clock correction, events can be stamped a
 	// little after the moment the report is made.
 	selEnd := end
@@ -1000,9 +1000,9 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 	if len(r.Hosts) == 0 {
 		r.Hosts = []string{collect.LocalHost()}
 	}
-	name := report.DirName(end, r.Hosts, a.loc())
+	name := report.DirName(end, a.Cfg.SiteName, r.Hosts, collect.LocalHost(), a.loc())
 	if !advance {
-		name += "_interim"
+		name += "_manual"
 	} else if a.final {
 		name += "_final"
 	}

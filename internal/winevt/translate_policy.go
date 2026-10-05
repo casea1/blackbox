@@ -427,7 +427,7 @@ func firstNonBlank(v ...string) string {
 }
 
 // reportFolder is the report a path under Blackbox's reports folder
-// belongs to ("2026-10-04_2009_WIN11-TEST_interim"), or "".
+// belongs to ("2026-10-04_2009_WIN11-TEST_manual"), or "".
 func reportFolder(p string) string {
 	const marker = "/programdata/blackbox/reports/"
 	i := strings.Index(strings.ToLower(p), marker)

@@ -291,17 +291,40 @@ func (r *Report) writeCSV(w io.Writer) error {
 	return cw.Error()
 }
 
-// DirName returns a folder name for a report ending at end.
-func DirName(end time.Time, hosts []string, loc *time.Location) string {
+// DirName returns a folder name for a report ending at end: the date and
+// time, then the site (network) name when one is set, else the computer
+// reported on, or for several the computer that made the report (self),
+// e.g. 2026-10-05_0000_Lab-3-LAN.
+func DirName(end time.Time, site string, hosts []string, self string, loc *time.Location) string {
 	name := end.In(loc).Format("2006-01-02_1504")
-	switch len(hosts) {
-	case 0:
-	case 1:
-		name += "_" + safeName(hosts[0])
-	default:
-		name += fmt.Sprintf("_%d-systems", len(hosts))
+	label := cleanName(site)
+	switch {
+	case label != "":
+	case len(hosts) == 1:
+		label = cleanName(hosts[0])
+	case len(hosts) > 1 && cleanName(self) != "":
+		label = cleanName(self)
+	case len(hosts) > 1:
+		label = fmt.Sprintf("%d-systems", len(hosts))
+	}
+	if label != "" {
+		name += "_" + label
 	}
 	return name
+}
+
+// cleanName is safeName without runs of dashes or dashes at either end:
+// "Lab 3 / LAN" → "Lab-3-LAN".
+func cleanName(s string) string {
+	s = safeName(strings.TrimSpace(s))
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "-")
+	}
+	s = strings.Trim(s, "-_")
+	if len(s) > 60 {
+		s = strings.TrimRight(s[:60], "-_")
+	}
+	return s
 }
 
 func safeName(s string) string {
@@ -673,7 +696,7 @@ type archiveState struct {
 	Contents []archive.Info
 }
 
-// Latest is the newest report in reportsDir (scheduled or interim).
+// Latest is the newest report in reportsDir (scheduled or manual).
 func Latest(reportsDir string) (IndexEntry, bool) {
 	matches, _ := filepath.Glob(filepath.Join(reportsDir, "*", "summary.json"))
 	var best IndexEntry

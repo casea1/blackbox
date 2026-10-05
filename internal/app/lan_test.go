@@ -135,7 +135,7 @@ func TestLANEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(interim, "_interim") || !strings.Contains(readFile(t, interim, "report.html"), "Interim report.") {
+	if !strings.HasSuffix(interim, "_Lab-3_manual") || !strings.Contains(readFile(t, interim, "report.html"), "Manual report.") {
 		t.Errorf("interim report not marked: %s", interim)
 	}
 	if !col.State.LastWindowEnd.Equal(next) {
@@ -145,7 +145,7 @@ func TestLANEndToEnd(t *testing.T) {
 	if err := json.Unmarshal([]byte(readFile(t, interim, "summary.json")), &isum); err != nil || !isum.Interim {
 		t.Errorf("summary.json interim flag: %+v %v", isum.Interim, err)
 	}
-	if idx := readFile(t, filepath.Dir(interim), "index.html"); !strings.Contains(idx, `class="int">Interim`) {
+	if idx := readFile(t, filepath.Dir(interim), "index.html"); !strings.Contains(idx, `class="int">Manual`) {
 		t.Error("the list of reports does not mark the interim report")
 	}
 	if out := os.Getenv("BLACKBOX_SAMPLE_OUT"); out != "" {

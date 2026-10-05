@@ -494,7 +494,7 @@ report_every = {{REPORT_EVERY}}
 # and time; "Wednesday 00:00" covers each week up to Tuesday night, so a
 # fresh report is ready on Wednesday morning. Daily and monthly: a time
 # (monthly periods end on the 1st). A report run by hand
-# ("blackbox report") is an interim report and does not move this.
+# ("blackbox report") is a manual report and does not move this.
 report_at = {{REPORT_AT}}
 
 # Folder where reports are written. Leave blank for the default:

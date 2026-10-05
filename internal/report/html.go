@@ -298,11 +298,11 @@ func (r *Report) Crumb() string {
 	return strings.Join(parts, " · ")
 }
 
-// Kind is "Weekly report", "Interim report" or "Report".
+// Kind is "Weekly report", "Manual report" or "Report".
 func (r *Report) Kind() string {
 	switch {
 	case r.Interim:
-		return "Interim report"
+		return "Manual report"
 	case r.Period != "":
 		return strings.ToUpper(r.Period[:1]) + r.Period[1:] + " report"
 	}

@@ -132,7 +132,7 @@ prompt. Untick the box on the Collection page of setup to turn it off.
 Click it for the menu:
 - the status, and anything to look at;
 - **Open latest report** and **Open all reports**;
-- **Make an interim report…**, for a chosen period (the schedule doesn't change);
+- **Make a manual report…**, for a chosen period (the schedule doesn't change);
 - **Collect now**;
 - **Status details…**, the same as `blackbox status`;
 - **Change settings…**;

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{if .Site}}{{.Site}} · {{end}}{{if .Interim}}Interim {{end}}Audit report · {{dateShort .PeriodStart}} – {{dateShort .WindowEnd}}</title>
+<title>{{if .Site}}{{.Site}} · {{end}}{{if .Interim}}Manual {{end}}Audit report · {{dateShort .PeriodStart}} – {{dateShort .WindowEnd}}</title>
 <link rel="icon" href="{{logo}}">
 <style>
 {{fontCSS}}{{css}}
@@ -38,7 +38,7 @@
   </nav>{{end}}
 </aside>
 <main>
-{{if .Range}}<div class="alertbar interim">{{icon "clock-alert" 18}}<b>Report for a chosen period.</b><span>Run by hand {{stamp .Generated}} {{zone .Generated}}. {{.Range}} It does not change the schedule.</span></div>{{else if .Interim}}<div class="alertbar interim">{{icon "clock-alert" 18}}<b>Interim report.</b><span>Run by hand {{stamp .Generated}} {{zone .Generated}}, between scheduled reports. It does not change the schedule: the next scheduled report covers this time again, and that report's folder holds the original logs.</span></div>{{end}}
+{{if .Range}}<div class="alertbar interim">{{icon "clock-alert" 18}}<b>Report for a chosen period.</b><span>Run by hand {{stamp .Generated}} {{zone .Generated}}. {{.Range}} It does not change the schedule.</span></div>{{else if .Interim}}<div class="alertbar interim">{{icon "clock-alert" 18}}<b>Manual report.</b><span>Run by hand {{stamp .Generated}} {{zone .Generated}}, between scheduled reports. It does not change the schedule: the next scheduled report covers this time again, and that report's folder holds the original logs.</span></div>{{end}}
 
 <section class="view" data-view="overview">
   {{template "head" (head . (overviewTitle .) "")}}

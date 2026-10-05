@@ -21,13 +21,19 @@ choose:
   - Events that happened earlier but were collected late, for example
     because the system was off, go into the next report marked **Late**.
 
-To produce a report now, run `blackbox report`. This is an **interim**
+**Report folders** are named for the end of the period and the site name
+set in setup, for example `2026-10-05_0000_Lab-3-LAN`. Without a site
+name, a report on one computer is named after it, and a collector's
+report after the collector. A manual report's folder ends in `_manual`
+(`_interim` before 0.15), and a report for a chosen period in `_range`.
+
+To produce a report now, run `blackbox report`. This is a **manual**
 report: it covers the time since the last scheduled report, is marked
-*Interim* in the report and on the list of reports, and does not change the
-schedule. The next scheduled report still covers its whole period. An
-interim report shows everything collected so far, even an event stamped
+*Manual* in the report and on the list of reports, and does not change the
+schedule. The next scheduled report still covers its whole period. A
+manual report shows everything collected so far, even an event stamped
 a little after the moment it was made (as happens just after the clock
-is corrected). Interim reports do not include the original logs; those
+is corrected). Manual reports do not include the original logs; those
 go with the scheduled report.
 
 **A report for any period.** `blackbox report` run by hand asks which
@@ -47,7 +53,7 @@ events in each log when it was installed and is kept for
 starts, Blackbox reads this computer's event logs (or Linux logs) as far
 back as they still go. The report says what it covers and where the
 earliest available event is. It is saved with `_range` in its folder name,
-listed as Interim, and does not change the schedule. On a collector it
+listed as Manual, and does not change the schedule. On a collector it
 covers every system's collected events; only the collector's own logs can
 be read further back.
 

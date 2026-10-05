@@ -21,7 +21,7 @@ import (
 // however far back: from the events Blackbox has collected (kept for
 // retention_days, or for good by default) and, for any time before those
 // start, from this computer's own event logs, as far back as they still
-// reach. Like an interim report it does not change the schedule. It
+// reach. Like a manual report it does not change the schedule. It
 // returns the report folder.
 func (a *App) ReportRange(from, to time.Time) (string, error) {
 	if !from.Before(to) {
@@ -125,7 +125,7 @@ func (a *App) reportRange(st *store.Store, from, to time.Time) (string, error) {
 	if len(r.Hosts) == 0 {
 		r.Hosts = []string{host}
 	}
-	dir := report.UniqueDir(a.ReportsDir(), report.DirName(to, r.Hosts, loc)+"_range")
+	dir := report.UniqueDir(a.ReportsDir(), report.DirName(to, a.Cfg.SiteName, r.Hosts, collect.LocalHost(), loc)+"_range")
 	if err := r.Write(dir); err != nil {
 		return "", err
 	}

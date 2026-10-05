@@ -217,7 +217,13 @@ func shutdownFor(exe string, cfg *config.Config) string {
 // may write to. The collector's folder is not one of them (L8): the run
 // unit does not deliver to it.
 func unitPaths(cfg *config.Config) (mount string, writable []string) {
-	writable = []string{cfg.DataDir, cfg.ReportsDir(), cfg.ArchivesDir()}
+	writable = []string{cfg.DataDir, cfg.ReportsDir()}
+	if cfg.ArchiveDir != "" {
+		// Only when set: the default is inside the data folder. "-": a
+		// folder that is missing (an unmounted volume) must not stop the
+		// unit, and so collection, from starting; the run says what failed.
+		writable = append(writable, "-"+cfg.ArchiveDir)
+	}
 	if config.IsShare(cfg.SendTo) {
 		mount = mountUnitName() // mounted inside the data folder
 	}
