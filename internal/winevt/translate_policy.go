@@ -291,6 +291,14 @@ func codeIntegrity(r *Raw) *event.Event {
 	if r.EventID == 5038 {
 		e.Action, e.Severity = "code_integrity_failed", event.SevHigh
 		e.Summary = fmt.Sprintf("Windows found a system file whose signature doesn't match: %s — it may have been altered.", file)
+		if strings.Contains(strings.ToLower(file), `\windows defender\platform\`) {
+			// T2: seen on a fresh Windows 11 while Defender installed a new
+			// platform version. Not confirmed as a documented false
+			// positive, so it stays High, with how to tell.
+			e.Summary += " This is a Microsoft Defender platform file: Windows often logs this while Defender is updating its platform."
+			e.AddDetail("How to check", "If Defender updated its platform at this time (Defender log events 2000/2014, or a new folder under ProgramData\\Microsoft\\Windows Defender\\Platform), "+
+				"and the file's signature is valid now (Get-AuthenticodeSignature), it was the update. Otherwise treat it as a file that was changed.")
+		}
 	} else {
 		e.Action, e.Severity = "code_integrity_page", event.SevMedium
 		e.Summary = fmt.Sprintf("Windows found invalid page hashes in %s (often a security or monitoring driver; check it is expected).", file)
@@ -418,6 +426,18 @@ func firstNonBlank(v ...string) string {
 	return ""
 }
 
+// reportFolder is the report a path under Blackbox's reports folder
+// belongs to ("2026-10-04_2009_WIN11-TEST_interim"), or "".
+func reportFolder(p string) string {
+	const marker = "/programdata/blackbox/reports/"
+	i := strings.Index(strings.ToLower(p), marker)
+	if i < 0 {
+		return ""
+	}
+	name, _, _ := strings.Cut(p[i+len(marker):], "/")
+	return name
+}
+
 // fileAccess is 4656/4663 from the File System subcategory: files and
 // folders an administrator has set auditing on (A2). A refused access is
 // always shown; a successful one only when it wrote or deleted.
@@ -457,11 +477,27 @@ func (t *Translator) fileAccess(r *Raw) *event.Event {
 	e.Summary += "."
 	// Blackbox's own folder, with the auditing entry windows.md describes
 	// (A5): its settings, schedule state and collected events.
-	if lo := strings.ToLower(winPath(obj)); strings.Contains(lo, "/programdata/blackbox/") && !failed {
+	if lo := strings.ToLower(winPath(obj)); (strings.Contains(lo, "/programdata/blackbox/") || strings.HasSuffix(lo, "/programdata/blackbox")) && !failed {
 		self := strings.EqualFold(filepath.Base(winPath(proc)), "blackbox.exe") || strings.EqualFold(filepath.Base(winPath(proc)), "blackboxw.exe")
+		report := reportFolder(winPath(obj))
 		switch {
 		case self:
-			return nil // Blackbox's own run, or config set (recorded as a command)
+			// Blackbox's own run, or config set (self-recorded, A15). The
+			// folder itself counts too, not only what is in it (T4).
+			return nil
+		case report != "":
+			// One row for a deleted report, not two per file (T4).
+			e.Action, e.Severity, e.Category = "blackbox_files_changed", event.SevHigh, event.CatIntegrity
+			verb := "changed"
+			if op == "delete" {
+				verb = "deleted"
+			}
+			e.Summary = fmt.Sprintf("%s %s the report %s (using %s).", orUnknown(who), verb, report, filepath.Base(winPath(proc)))
+			e.Target = report
+			e.DedupeKey = "bbreport|" + verb + "|" + strings.ToLower(who+"|"+report)
+			e.AddDetail("Report", report)
+			e.AddDetail("File", obj)
+			return e
 		case strings.HasSuffix(lo, "/blackbox.conf"):
 			e.Action, e.Severity, e.Category = "blackbox_config_changed", event.SevHigh, event.CatIntegrity
 			e.Summary = fmt.Sprintf("%s edited Blackbox's settings file directly: %s (using %s).", orUnknown(who), obj, filepath.Base(winPath(proc)))

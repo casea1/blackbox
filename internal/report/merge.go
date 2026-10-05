@@ -328,17 +328,38 @@ func formerNames(events []*event.Event, systems []SystemInfo) {
 	}
 }
 
-// appPackageRule is a firewall rule change Windows made for one of its app
-// packages: the rule is named by a package resource string ("@{…}"), and
-// the change was made by the firewall service or names no one.
+// appPackageRule is a firewall rule change Windows made itself (A13): by
+// the firewall service (NT SERVICE\MpsSvc, by name or by its SID in a log
+// read on another computer) maintaining the rules of app packages and app
+// containers, whatever the rule is called; or by SYSTEM, or naming no one,
+// to a rule of an app package (its name a package resource "@{…}", its ID
+// a package family name) or of the Defender service. A person's change
+// names the person.
 func appPackageRule(e *event.Event) bool {
-	if e.OS != "windows" || !strings.HasPrefix(e.Action, "firewall_rule_") || e.Action == "firewall_rules_cleared" ||
-		!strings.HasPrefix(strings.TrimSpace(e.Target), "@{") {
+	if e.OS != "windows" || !strings.HasPrefix(e.Action, "firewall_rule_") || e.Action == "firewall_rules_cleared" {
 		return false
 	}
 	u := strings.ToLower(e.User)
-	return u == "" || strings.HasSuffix(u, `\mpssvc`) || u == "mpssvc" || u == "system" || strings.HasSuffix(u, `\system`)
+	sid := e.Fields["ModifyingUser"]
+	if strings.HasSuffix(u, `\mpssvc`) || u == "mpssvc" || sid == mpsSvcSID || u == mpsSvcSID {
+		return true
+	}
+	if !(u == "" || u == "system" || strings.HasSuffix(u, `\system`) || u == "s-1-5-18") {
+		return false
+	}
+	id := e.Fields["RuleId"]
+	name := strings.TrimSpace(e.Target)
+	lo := strings.ToLower(id + " " + name)
+	return strings.HasPrefix(name, "@{") || packageFamily.MatchString(id) || strings.Contains(id, "S-1-15-") ||
+		strings.Contains(lo, "windefend") || strings.Contains(lo, "windows defender")
 }
+
+// mpsSvcSID is NT SERVICE\MpsSvc, the Windows Firewall service.
+const mpsSvcSID = "S-1-5-80-3088073201-1464728630-1879813800-1107566885-823218052"
+
+// packageFamily is a rule ID starting with an app package family name:
+// Microsoft.WindowsTerminal_8wekyb3d8bbwe_….
+var packageFamily = regexp.MustCompile(`^[A-Za-z0-9.]+_[a-z0-9]{13}`)
 
 // appPackageRules makes the firewall rules Windows registers for its
 // built-in app packages one Info count per computer and day (A13): a
@@ -389,11 +410,119 @@ func (r *Report) appPackageRules(events []*event.Event) []*event.Event {
 				parts = append(parts, fmt.Sprintf("%d %s", p.n, p.verb))
 			}
 		}
-		g.row.Summary = fmt.Sprintf("Windows updated the firewall rules for its built-in app packages: %s (by the Windows Firewall service).",
+		g.row.Summary = fmt.Sprintf("Windows updated the firewall rules of its built-in apps and services: %s (by the Windows Firewall service or SYSTEM).",
 			strings.Join(parts, ", "))
 		g.row.Target = fmt.Sprintf("%d app package rules", g.added+g.changed+g.deleted)
 		g.row.AddDetail("Rules (first 20)", strings.Join(g.names, "; "))
 		g.row.AddDetail("Why one row", "Windows registers these for the apps that come with it; changes made by people are listed separately.")
+	}
+	return out
+}
+
+// windowsSetupEvent is part of Windows setup (OOBE) on a new computer
+// (A17): its image was built under the name MINWINPC, and setup works as
+// its temporary account defaultuser0, which it creates, adds to
+// Administrators and deletes. Only what Windows itself (SYSTEM, or no one
+// named) does to defaultuser0 counts: a person creating an account of that
+// name keeps its rows.
+func windowsSetupEvent(e *event.Event) bool {
+	if e.OS != "windows" {
+		return false
+	}
+	for _, v := range []string{e.User, e.Target, e.Fields["SubjectDomainName"], e.Fields["TargetDomainName"]} {
+		if strings.EqualFold(strings.SplitN(v, `\`, 2)[0], "MINWINPC") || strings.EqualFold(v, "MINWINPC") {
+			return true
+		}
+	}
+	if strings.Contains(e.Summary, "MINWINPC") {
+		return true
+	}
+	name := func(v string) string {
+		if i := strings.LastIndex(v, `\`); i >= 0 {
+			v = v[i+1:]
+		}
+		return strings.ToLower(v)
+	}
+	if name(e.Target) != "defaultuser0" && name(e.User) != "defaultuser0" {
+		return false
+	}
+	u := name(e.User)
+	return u == "" || u == "system" || u == "defaultuser0" || e.User == "S-1-5-18"
+}
+
+// windowsSetup makes Windows setup's own account and image events one Info
+// row per computer and day (A17), instead of a High "SYSTEM added
+// defaultuser0 to Administrators" and Medium rows for MINWINPC.
+func (r *Report) windowsSetup(events []*event.Event) []*event.Event {
+	groups := map[string]*event.Event{}
+	counts := map[*event.Event]int{}
+	out := events[:0]
+	for _, e := range events {
+		if !windowsSetupEvent(e) {
+			out = append(out, e)
+			continue
+		}
+		k := strings.ToUpper(e.Host) + "|" + e.Time.In(r.Location).Format("2006-01-02")
+		g := groups[k]
+		if g == nil {
+			g = &event.Event{Time: e.Time, Collected: e.Collected, Host: e.Host, OS: e.OS, Source: e.Source,
+				Category: event.CatAccount, Severity: event.SevInfo, Action: "windows_setup", Fields: map[string]string{}}
+			groups[k] = g
+			out = append(out, g)
+		}
+		counts[g]++
+		if len(g.Details) < 12 {
+			g.AddDetail(e.Time.In(r.Location).Format("15:04:05"), e.Summary)
+		}
+	}
+	for g, n := range counts {
+		g.Summary = fmt.Sprintf("Windows setup prepared this computer: its temporary account defaultuser0 and the image's own accounts and policy (MINWINPC) (%d event%s).",
+			n, map[bool]string{true: "s"}[n != 1])
+		g.Target = "Windows setup"
+	}
+	return out
+}
+
+// defenderState makes Microsoft Defender recording its own state (5007
+// for keys that are not configuration, translated as av_state_recorded)
+// one Info count per computer and day (A16): a fresh Windows 11 wrote 240
+// in its first day, some every minute.
+func (r *Report) defenderState(events []*event.Event) []*event.Event {
+	type group struct {
+		row  *event.Event
+		n    int
+		keys []string
+	}
+	groups := map[string]*group{}
+	out := events[:0]
+	for _, e := range events {
+		if e.Action != "av_state_recorded" {
+			out = append(out, e)
+			continue
+		}
+		k := strings.ToUpper(e.Host) + "|" + e.Time.In(r.Location).Format("2006-01-02")
+		g := groups[k]
+		if g == nil {
+			g = &group{row: &event.Event{Time: e.Time, Collected: e.Collected, Host: e.Host, OS: e.OS, Source: e.Source,
+				Category: event.CatOther, Severity: event.SevInfo, Action: "av_state_recorded", Fields: map[string]string{}}}
+			groups[k] = g
+			out = append(out, g.row)
+		}
+		g.n++
+		key, _, _ := strings.Cut(e.Target, " = ")
+		if i := strings.LastIndex(key, `\Windows Defender\`); i >= 0 {
+			key = key[i+len(`\Windows Defender\`):]
+		}
+		if len(g.keys) < 15 && !slices.Contains(g.keys, key) {
+			g.keys = append(g.keys, key)
+		}
+	}
+	for _, g := range groups {
+		g.row.Summary = fmt.Sprintf("Microsoft Defender recorded its own state %d time%s (service state, configuration hash, cloud checks): not setting changes.",
+			g.n, map[bool]string{true: "s"}[g.n != 1])
+		g.row.Target = fmt.Sprintf("%d Defender state records", g.n)
+		g.row.AddDetail("Keys (first 15)", strings.Join(g.keys, "; "))
+		g.row.AddDetail("Why one row", "Defender writes these as it runs. Its settings (exclusions, protections, tamper protection, policy) are listed separately.")
 	}
 	return out
 }

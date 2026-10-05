@@ -139,7 +139,18 @@ func TestOtherLogs(t *testing.T) {
 		{ev(chApplication, "Blackbox", 100, map[string]string{"Data0": "something else"}), "", "", ""},
 		{ev(chFirewall, "", 2004, map[string]string{"RuleName": "Backdoor 4444", "ModifyingUser": "S-1-5-21-1-2-3-1001", "ModifyingApplication": `C:\Windows\System32\netsh.exe`}), "firewall_rule_added", event.SevLow, "Backdoor 4444"},
 		{ev(chFirewall, "", 2003, map[string]string{"Profiles": "4", "SettingType": "1", "SettingValue": "0"}), "firewall_setting_changed", event.SevHigh, "turned off"},
+		// A13b: a rule deleted with no name is named by its ID, not "deleted: .".
+		{ev(chFirewall, "", 2052, map[string]string{"RuleName": "", "RuleId": "Microsoft.WindowsTerminal_8wekyb3d8bbwe_S-1-5-21-1-2-3-1001_In_emptyRemoteName_Cellular", "ModifyingUser": "S-1-5-18"}),
+			"firewall_rule_deleted", event.SevMedium, "deleted: Microsoft.WindowsTerminal_8wekyb3d8bbwe_"},
 		{ev("Microsoft-Windows-Windows Defender/Operational", "", 5007, map[string]string{"Old Value": "", "New Value": `HKLM\SOFTWARE\Microsoft\Windows Defender\Exclusions\Paths\C:\Temp = 0x0`}), "av_exclusion_added", event.SevHigh, `C:\Temp`},
+		// A16: Defender's own bookkeeping is Info (counted once a day by the
+		// report); its settings keep their rows.
+		{ev("Microsoft-Windows-Windows Defender/Operational", "", 5007, map[string]string{"Old Value": `HKLM\SOFTWARE\Microsoft\Windows Defender\WdConfigHash = 0x1a`, "New Value": `HKLM\SOFTWARE\Microsoft\Windows Defender\WdConfigHash = 0x2b`}), "av_state_recorded", event.SevInfo, "recorded its own state"},
+		{ev("Microsoft-Windows-Windows Defender/Operational", "", 5007, map[string]string{"New Value": `HKLM\SOFTWARE\Microsoft\Windows Defender\SpyNet\LastMAPSFailureTimeString = 2026-10-04T23:01`}), "av_state_recorded", event.SevInfo, "recorded its own state"},
+		{ev("Microsoft-Windows-Windows Defender/Operational", "", 5007, map[string]string{"New Value": `HKLM\SOFTWARE\Microsoft\Windows Defender\Features\EcsConfigs\X = 0x1`}), "av_state_recorded", event.SevInfo, "recorded its own state"},
+		{ev("Microsoft-Windows-Windows Defender/Operational", "", 5007, map[string]string{"New Value": `HKLM\SOFTWARE\Microsoft\Windows Defender\Features\TamperProtection = 0x4`}), "av_setting_changed", event.SevLow, "TamperProtection"},
+		{ev("Microsoft-Windows-Windows Defender/Operational", "", 5007, map[string]string{"New Value": `HKLM\SOFTWARE\Microsoft\Windows Defender\NIS\Consumers\IPS\DisableBmNetworkSensor = 0x1`}), "av_setting_changed", event.SevLow, "its own network-inspection sensor"},
+		{ev("Microsoft-Windows-Windows Defender/Operational", "", 5007, map[string]string{"New Value": `HKLM\SOFTWARE\Policies\Microsoft\Windows Defender\NIS\Consumers\IPS\DisableBmNetworkSensor = 0x1`}), "av_disabled", event.SevHigh, "turned off"},
 		{ev("Microsoft-Windows-Windows Defender/Operational", "", 5007, map[string]string{"Old Value": `HKLM\SOFTWARE\Microsoft\Windows Defender\Real-Time Protection\DisableRealtimeMonitoring = 0x0`, "New Value": `HKLM\SOFTWARE\Microsoft\Windows Defender\Real-Time Protection\DisableRealtimeMonitoring = 0x1`}), "av_disabled", event.SevHigh, "turned off"},
 		{ev("Microsoft-Windows-Windows Defender/Operational", "", 5013, map[string]string{"Value": `HKLM\SOFTWARE\Microsoft\Windows Defender\Real-Time Protection\DisableRealtimeMonitoring`}), "av_tamper_blocked", event.SevHigh, "Tamper Protection"},
 		{ev(chPrint, "", 307, map[string]string{"Param2": "salaries.xlsx", "Param3": "bob", "Param4": `\\WS-07`, "Param5": "HP LaserJet", "Param8": "3"}), "document_printed", event.SevLow, `"salaries.xlsx" on HP LaserJet (3 pages)`},
@@ -210,5 +221,66 @@ func TestBlackboxSelfAudit(t *testing.T) {
 	r.Data["ProcessName"] = `C:\Program Files\Blackbox\blackbox.exe`
 	if e = tr.Translate(r); e != nil {
 		t.Errorf("Blackbox's own write: %s", e.Summary)
+	}
+}
+
+// T4: Blackbox's own folder writes and child processes are left out; a
+// deleted report is one row; 4717/4718 are a sentence, or left out when
+// Windows grants them itself.
+func TestBlackboxOwnActivity(t *testing.T) {
+	tr := NewTranslator()
+	folder := sec(4663, with(person, "ObjectType", "File", "ObjectName", `C:\ProgramData\Blackbox`, "AccessList", "%%4417", "ProcessName", `C:\Program Files\Blackbox\blackbox.exe`))
+	folder.Task, folder.Keywords = taskFileSystem, "0x8020000000000000"
+	if e := tr.Translate(folder); e != nil {
+		t.Errorf("Blackbox writing its own folder: %s", e.Summary)
+	}
+
+	child := elevatedRun("wevtutil gl Security")
+	child.Data["ParentProcessName"] = `C:\Program Files\Blackbox\blackbox.exe`
+	if e := tr.Translate(child); e != nil {
+		t.Errorf("child of Blackbox: %s", e.Summary)
+	}
+	if e := tr.Translate(elevatedRun("wevtutil gl Security")); e == nil {
+		t.Error("the same command run by a person was dropped")
+	}
+
+	keys := map[string]bool{}
+	for _, f := range []string{`index.html`, `data\events.js`, `data`} {
+		r := sec(4663, with(person, "ObjectType", "File", "ObjectName", `C:\ProgramData\Blackbox\reports\2026-10-04_2009_WIN11-TEST_interim\`+f, "AccessList", "%%1537", "ProcessName", `C:\Windows\explorer.exe`))
+		r.Task, r.Keywords = taskFileSystem, "0x8020000000000000"
+		e := tr.Translate(r)
+		if e == nil || e.Severity != event.SevHigh || !strings.Contains(e.Summary, "mallory deleted the report 2026-10-04_2009_WIN11-TEST_interim (using explorer.exe)") {
+			t.Fatalf("report delete: %+v", e)
+		}
+		keys[e.DedupeKey] = true
+	}
+	if len(keys) != 1 {
+		t.Errorf("a deleted report should merge to one row, got keys %v", keys)
+	}
+
+	sys := map[string]string{"SubjectUserSid": "S-1-5-18", "SubjectUserName": "WS-07$", "SubjectDomainName": "CORP", "TargetSid": "S-1-5-83-1-2", "AccessGranted": "SeServiceLogonRight"}
+	if e := tr.Translate(sec(4717, sys)); e != nil {
+		t.Errorf("4717 by SYSTEM: %s", e.Summary)
+	}
+	e := tr.Translate(sec(4717, with(person, "TargetSid", "S-1-5-32-545", "AccessGranted", "SeRemoteInteractiveLogonRight")))
+	if e == nil || e.Action != "logon_right_granted" || e.Severity != event.SevMedium || !strings.Contains(e.Summary, "the right to log on through Remote Desktop") {
+		t.Errorf("4717 by a person: %+v", e)
+	}
+	e = tr.Translate(sec(4718, with(person, "TargetSid", "S-1-5-32-545", "AccessRemoved", "SeDenyNetworkLogonRight")))
+	if e == nil || e.Action != "logon_right_removed" || !strings.Contains(e.Summary, "right to be refused access from the network") {
+		t.Errorf("4718 by a person: %+v", e)
+	}
+}
+
+// T2: 5038 on a Defender platform file stays High, with how to tell an
+// update from a changed file.
+func TestDefenderPlatform5038(t *testing.T) {
+	e := NewTranslator().Translate(sec(5038, map[string]string{"param1": `\Device\HarddiskVolume3\ProgramData\Microsoft\Windows Defender\Platform\4.18.25080.5-0\DefenderSessionHelper.dll`}))
+	if e == nil || e.Severity != event.SevHigh || !strings.Contains(e.Summary, "Defender is updating its platform") || !hasDetail(e, "How to check") {
+		t.Errorf("Defender 5038: %+v", e)
+	}
+	e = NewTranslator().Translate(sec(5038, map[string]string{"param1": `\Device\HarddiskVolume3\Windows\System32\lsass.exe`}))
+	if strings.Contains(e.Summary, "Defender") {
+		t.Errorf("non-Defender 5038 got the note: %s", e.Summary)
 	}
 }

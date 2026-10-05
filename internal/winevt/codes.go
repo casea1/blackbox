@@ -184,12 +184,16 @@ func expandTokens(s string) string {
 
 // wellKnownSIDs resolves SIDs that are the same on every Windows system.
 var wellKnownSIDs = map[string]string{
-	"S-1-0-0":      "Nobody",
-	"S-1-1-0":      "Everyone",
-	"S-1-5-7":      "ANONYMOUS LOGON",
-	"S-1-5-18":     "SYSTEM",
-	"S-1-5-19":     "LOCAL SERVICE",
-	"S-1-5-20":     "NETWORK SERVICE",
+	"S-1-0-0":  "Nobody",
+	"S-1-1-0":  "Everyone",
+	"S-1-5-7":  "ANONYMOUS LOGON",
+	"S-1-5-18": "SYSTEM",
+	"S-1-5-19": "LOCAL SERVICE",
+	"S-1-5-20": "NETWORK SERVICE",
+	// Service SIDs (S-1-5-80-SHA1 of the service name), so exported logs
+	// read on another computer still name them (A13c).
+	"S-1-5-80-3088073201-1464728630-1879813800-1107566885-823218052":  `NT SERVICE\MpsSvc`,
+	"S-1-5-80-1913148863-3492339771-4165695881-2087618961-4109116736": `NT SERVICE\WinDefend`,
 	"S-1-5-32-544": "Administrators",
 	"S-1-5-32-545": "Users",
 	"S-1-5-32-546": "Guests",
