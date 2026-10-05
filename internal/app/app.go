@@ -31,6 +31,9 @@ import (
 
 // App is a configured Blackbox instance.
 type App struct {
+	// final is set while the final report before sending is made (AR3).
+	final bool
+
 	Cfg     *config.Config
 	Version string
 	Now     func() time.Time
@@ -241,7 +244,7 @@ func (a *App) packLogs(st *store.Store, force bool) {
 	}
 	host := collect.LocalHost()
 	dir := filepath.Join(a.pendingLogsDir(), archive.SafeName(host))
-	if !a.Cfg.MakesReports() {
+	if !a.Cfg.MakesReports() && !a.final {
 		dir = lan.OutboxDir(st)
 	}
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -353,12 +356,37 @@ func (a *App) gather(st *store.Store, forceCheck bool) error {
 		return err
 	}
 	a.saveLogPiece(st, run, prevCollect)
+	noteOwnName(st, run.Host, run.OS)
 	st.NoteSystem(run.Host, run.OS, a.Version, "", run.Time, time.Time{}, a.now())
 	if err := a.recordChecks(st, run.Host, forceCheck); err != nil {
 		a.logf("audit settings check: %v", err)
 	}
 	a.receive(st)
 	return st.Save()
+}
+
+// noteOwnName keeps the names this computer has collected under (W1b).
+// The first time, its earlier names are taken from the computers whose
+// data it collected itself (not delivered by another).
+func noteOwnName(st *store.Store, host, osName string) {
+	if host == "" {
+		return
+	}
+	if len(st.State.OwnNames) == 0 {
+		others := lan.OtherSystems(st, host)
+		for k, sys := range st.State.Systems {
+			if !others[k] && sys.Via == "" && sys.OS == osName && k != store.SystemKey(host) {
+				st.State.OwnNames = append(st.State.OwnNames, sys.Name)
+			}
+		}
+		sort.Strings(st.State.OwnNames)
+	}
+	for _, n := range st.State.OwnNames {
+		if strings.EqualFold(n, host) {
+			return
+		}
+	}
+	st.State.OwnNames = append(st.State.OwnNames, host)
 }
 
 // clockSlack is how far a stored time may be ahead of the clock before the
@@ -470,6 +498,9 @@ func (a *App) receive(st *store.Store) {
 
 // SendResult describes one attempt to send to the collector.
 type SendResult struct {
+	// FinalReport is the report made before this computer started sending,
+	// of what it had as a computer that made reports (AR3).
+	FinalReport              string
 	Made, Delivered, Waiting int
 	ArchivesDelivered        int
 	ArchivesWaiting          int
@@ -483,6 +514,7 @@ type SendResult struct {
 func (a *App) send(st *store.Store) SendResult {
 	var r SendResult
 	host := collect.LocalHost()
+	r.FinalReport = a.handover(st)
 	r.Made, r.Err = lan.Export(st, host, a.Version, a.now())
 	// This computer's latest SCAP results go to the collector too.
 	if dir := a.Cfg.ScapDir(); dir != "" && r.Err == nil {
@@ -511,6 +543,12 @@ func (a *App) send(st *store.Store) SendResult {
 		if err != nil {
 			r.Err = err
 		} else {
+			if changed, err := lan.NoteDestination(st, a.Cfg.SendTo, lan.InboxCollector(dest)); err != nil {
+				a.logf("noting the new collector: %v", err)
+			} else if changed {
+				s := st.State.Send
+				a.logf("sending to a different collector from batch %d; earlier batches went to %s", s.FirstSeq, s.Earlier)
+			}
 			r.Delivered, r.Err = lan.Deliver(st, dest, host, a.Cfg.KeepSentDays > 0)
 			if r.Err == nil {
 				r.ArchivesDelivered, r.Err = lan.DeliverArchives(st, dest)
@@ -553,6 +591,72 @@ func (a *App) send(st *store.Store) SendResult {
 		a.logf("sent %s to the collector", sentText(r)) // SC2: SCAP results counted too
 	}
 	return r
+}
+
+// handover makes a final report when a computer that made reports (a
+// collector or a standalone computer) starts sending to a collector
+// (AR3, L14): everything it had collected and received and not yet
+// reported, with every original log it held, its own and other
+// computers'. Those stay in that report; from then on it sends only its
+// own new data, so nothing is reported twice or filed under the wrong
+// computer. It returns the report's folder ("" if none was needed).
+func (a *App) handover(st *store.Store) string {
+	s := st.State.Send
+	var since time.Time
+	if s != nil {
+		since = s.Since
+	}
+	pending, _ := archive.List(a.pendingLogsDir())
+	reported := !st.State.LastGenerated.IsZero() && st.State.LastGenerated.After(since)
+	received := false
+	for _, snd := range st.State.Senders {
+		if snd.LastReceived.After(since) {
+			received = true
+		}
+	}
+	// Switched from making reports: what was there is in the final report
+	// and is not sent. A sender upgraded from a version without this
+	// (Since not set) keeps sending what it has not sent yet; only
+	// archives left pending from its time as a collector go in a report.
+	switched := s == nil || (!since.IsZero() && reported)
+	if !(switched && (reported || received)) && len(pending) == 0 {
+		if s != nil && since.IsZero() {
+			s.Since = a.now()
+		}
+		return ""
+	}
+	// After a switch its own original logs go in the final report too;
+	// otherwise they go to the collector as usual.
+	a.final = switched
+	dir, err := a.report(st, a.now(), true)
+	a.final = false
+	if err != nil {
+		a.logf("making the final report before sending to the collector: %v; will try again next run", err)
+		return ""
+	}
+	if st.State.Send == nil {
+		st.State.Send = &store.SendState{ID: store.NewID(), NextSeq: 1}
+	}
+	s = st.State.Send
+	if switched {
+		files, err := st.SpoolFiles()
+		if err != nil {
+			a.logf("final report: %v", err)
+			return dir
+		}
+		if s.Offsets == nil {
+			s.Offsets = map[string]int64{}
+		}
+		for _, f := range files {
+			s.Offsets[f.Name] = f.Size
+		}
+	}
+	s.Since = a.now()
+	if err := st.Save(); err != nil {
+		a.logf("saving state: %v", err)
+	}
+	a.logf("made a final report of what this computer had collected and received before sending to a collector, with the original logs it held: %s", dir)
+	return dir
 }
 
 // sentText is "3 batches, 1 log archive and 2 SCAP results".
@@ -838,6 +942,8 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 	name := report.DirName(end, r.Hosts, a.loc())
 	if !advance {
 		name += "_interim"
+	} else if a.final {
+		name += "_final"
 	}
 	dir := report.UniqueDir(a.ReportsDir(), name)
 	if err := r.Write(dir); err != nil {
@@ -909,13 +1015,23 @@ func contextEvents(all, inReport []*event.Event, start time.Time) []*event.Event
 // systemsFor lists the computers to show in a report whose period starts
 // at start: all known, except those retired before it.
 func systemsFor(st *store.Store, start time.Time) []report.SystemInfo {
+	// A name another computer says it had before is that computer, not
+	// one of its own (W1b).
+	former := map[string]bool{}
+	for k, s := range st.State.Systems {
+		for _, f := range s.Former {
+			if store.SystemKey(f) != k {
+				former[store.SystemKey(f)] = true
+			}
+		}
+	}
 	var out []report.SystemInfo
-	for _, s := range st.State.Systems {
-		if !s.Removed.IsZero() && !s.Removed.After(start) {
+	for k, s := range st.State.Systems {
+		if !s.Removed.IsZero() && !s.Removed.After(start) || former[k] {
 			continue
 		}
 		out = append(out, report.SystemInfo{Name: s.Name, OS: s.OS, Version: s.Version, Via: s.Via,
-			FirstSeen: s.FirstSeen, LastRun: s.LastRun, LastReceived: s.LastReceived})
+			FirstSeen: s.FirstSeen, LastRun: s.LastRun, LastReceived: s.LastReceived, Former: s.Former})
 	}
 	return out
 }
@@ -948,9 +1064,8 @@ func lanWarnings(st *store.Store, since, until time.Time, loc *time.Location) []
 				if g.To > g.From {
 					what = fmt.Sprintf("batches %d to %d", g.From, g.To)
 				}
-				out = append(out, fmt.Sprintf("%s: %s sent by this computer never arrived (noticed %s). The events in them are missing from the reports; they may have been deleted from the inbox folder. "+
-					"To send them again, run on %s: %s (it keeps delivered batches for keep_sent_days, 14 days by default).",
-					s.Host, what, g.Noted.In(loc).Format("2006-01-02 15:04"), s.Host, ResendCommand(g.From, g.To)))
+				out = append(out, fmt.Sprintf("%s: %s sent by this computer never arrived (noticed %s). The events in them are missing from the reports; they may have been deleted from the inbox folder. %s",
+					s.Host, what, g.Noted.In(loc).Format("2006-01-02 15:04"), ResendAdvice(s, g)))
 			}
 		}
 		if s.ClockNoted.After(since) && !s.ClockNoted.After(until) {
@@ -959,6 +1074,23 @@ func lanWarnings(st *store.Store, since, until time.Time, loc *time.Location) []
 		}
 	}
 	return out
+}
+
+// ResendAdvice says how missing batches can be filled: "blackbox send
+// --resend" on the sender, for the batches it says it still keeps (L13).
+func ResendAdvice(snd *store.SenderState, g store.SeqGap) string {
+	if snd.Kept == nil { // an older sender that does not say
+		return fmt.Sprintf("To send them again, run on %s: %s (it keeps delivered batches for keep_sent_days, 14 days by default).", snd.Host, ResendCommand(g.From, g.To))
+	}
+	from, to := max(g.From, snd.Kept.From), min(g.To, snd.Kept.To)
+	if snd.Kept.From == 0 || from > to {
+		return fmt.Sprintf("%s no longer keeps them, so they cannot be sent again.", snd.Host)
+	}
+	text := fmt.Sprintf("To send them again, run on %s: %s", snd.Host, ResendCommand(from, to))
+	if from != g.From || to != g.To {
+		return text + " (it no longer keeps the others)."
+	}
+	return text + "."
 }
 
 // SelectWindow picks the events that belong in the report ending at end,

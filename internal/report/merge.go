@@ -315,24 +315,60 @@ func sshAttempts(events []*event.Event) []*event.Event {
 // its own logs here (not delivered by another), it is that one. New
 // collections already do this (collect.OnThisComputer); this covers data
 // stored before.
+//
+// A computer that says which names it had before (sent with its data,
+// W1b) has events under those names filed under it, however many
+// computers of its OS report here.
 func formerNames(events []*event.Event, systems []SystemInfo) {
 	if len(systems) == 0 {
 		return
 	}
 	known := map[string]bool{}
+	alias := map[string]string{}   // former name → current
 	local := map[string][]string{} // OS → local computers
 	for _, s := range systems {
 		known[strings.ToUpper(s.Name)] = true
 		if s.Via == "" {
 			local[s.OS] = append(local[s.OS], s.Name)
 		}
+		for _, f := range s.Former {
+			alias[strings.ToUpper(f)] = s.Name
+		}
 	}
 	for _, e := range events {
-		if e.Host == "" || known[strings.ToUpper(e.Host)] || len(local[e.OS]) != 1 {
+		if e.Host == "" || known[strings.ToUpper(e.Host)] {
+			continue
+		}
+		if to, ok := alias[strings.ToUpper(e.Host)]; ok {
+			e.AddDetail("Recorded under", "its former name "+e.Host)
+			e.Host = to
+			continue
+		}
+		if len(local[e.OS]) != 1 {
 			continue
 		}
 		e.AddDetail("Recorded under", "its former name "+e.Host)
 		e.Host = local[e.OS][0]
+	}
+}
+
+// formerRuns files collection runs recorded under a name a computer says
+// it had before under its current one (W1b), so it is one computer in
+// Audit health, not two.
+func formerRuns(runs []*store.Run, systems []SystemInfo) {
+	alias := map[string]string{}
+	for _, s := range systems {
+		for _, f := range s.Former {
+			alias[strings.ToUpper(f)] = s.Name
+		}
+	}
+	if len(alias) == 0 {
+		return
+	}
+	for _, r := range runs {
+		if to, ok := alias[strings.ToUpper(r.Host)]; ok {
+			r.Host = to
+		}
 	}
 }
 

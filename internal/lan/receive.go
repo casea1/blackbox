@@ -252,6 +252,22 @@ func importBatch(st *store.Store, b *Batch, now time.Time) (int, error) {
 		snd = &store.SenderState{Host: b.Sender, FirstSeen: now}
 		st.State.Senders[b.SenderID] = snd
 	}
+	// The sender went to another collector before this batch (L13): the
+	// batches before it are not missing here.
+	if f := b.FirstSeq; f > 1 && b.Seq >= f {
+		snd.Missing = dropBelow(snd.Missing, f)
+		if snd.LastSeq < f-1 {
+			snd.LastSeq = f - 1
+			snd.StartSeq, snd.Earlier = f, b.Earlier
+		}
+	}
+	if b.Kept != nil {
+		k := *b.Kept
+		snd.Kept = &k
+	}
+	if b.Former != nil {
+		snd.Former = b.Former
+	}
 	late := b.Seq <= snd.LastSeq
 	if late && !inGap(snd.Missing, b.Seq) {
 		return 0, nil // already imported (delivered twice)
@@ -345,6 +361,11 @@ func importBatch(st *store.Store, b *Batch, now time.Time) (int, error) {
 	for _, r := range runList {
 		st.NoteSystem(r.Host, r.OS, r.Version, b.Sender, r.Time, now, now)
 	}
+	if b.Former != nil {
+		if sys := st.State.Systems[store.SystemKey(b.Sender)]; sys != nil {
+			sys.Former = b.Former
+		}
+	}
 	// Systems are only the computers that collect (they send runs), not
 	// every host name in the events: old events can carry a computer's
 	// former name (a renamed PC, or a VM cloned from an image), which is
@@ -354,6 +375,21 @@ func importBatch(st *store.Store, b *Batch, now time.Time) (int, error) {
 		return 0, err
 	}
 	return b.Records(), nil
+}
+
+// dropBelow removes the missing batches numbered below first.
+func dropBelow(gaps []store.SeqGap, first uint64) []store.SeqGap {
+	var out []store.SeqGap
+	for _, g := range gaps {
+		if g.To < first {
+			continue
+		}
+		if g.From < first {
+			g.From = first
+		}
+		out = append(out, g)
+	}
+	return out
 }
 
 // inGap reports whether batch seq is one of the missing ones.

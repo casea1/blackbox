@@ -5,6 +5,7 @@
 package setup
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/casea1/blackbox/internal/check"
 	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/install"
+	"github.com/casea1/blackbox/internal/store"
 )
 
 // Options for Run.
@@ -40,6 +42,11 @@ func Run(o Options) (Result, error) {
 	logf := o.Logf
 	if logf == nil {
 		logf = func(string, ...any) {}
+	}
+	// A collector that stops collecting (AR3): said below.
+	wasCollector := false
+	if prev, err := config.Load(config.DefaultPath()); err == nil && o.Reinstall {
+		wasCollector = prev.Inbox != ""
 	}
 	logf("Installing Blackbox %s", o.Version)
 	if err := install.Install(install.Options{Answers: o.Answers, Version: o.Version, Logf: logf}); err != nil {
@@ -75,13 +82,8 @@ func Run(o Options) (Result, error) {
 		logf("Collecting events and sending them to the collector (the first run reads the whole log and can take a few minutes)...")
 		r, err := a.SendNow()
 		logf("")
-		if err != nil {
-			logf("Done, but the collector could not be reached yet: %v", err)
-			logf("The events are kept safely on this computer (%d batch%s waiting) and are sent at the next scheduled run that can reach it.", r.Waiting, es(r.Waiting))
-			logf("Check with: blackbox status")
-		} else {
-			logf("Done. Sent %d batch%s to %s.", r.Delivered, es(r.Delivered), cfg.SendTo)
-			logf("This computer's events will appear in the collector's reports.")
+		for _, l := range sentLines(r, err, cfg.SendTo) {
+			logf("%s", l)
 		}
 	case o.NoReport:
 		logf("")
@@ -107,6 +109,10 @@ func Run(o Options) (Result, error) {
 		logf("Done. First report: %s", res.Report)
 		logf("All reports:        %s", filepath.Join(a.ReportsDir(), "index.html"))
 	}
+	if wasCollector && cfg.Inbox == "" && cfg.MakesReports() {
+		logf("")
+		logf("This computer no longer receives from other computers. What they sent so far, with their original logs, is in its next report. Set them to send to the new collector.")
+	}
 	if cfg.Inbox != "" {
 		logf("")
 		logf("Other computers can now send to this collector's inbox: %s", cfg.Inbox)
@@ -120,6 +126,34 @@ func Run(o Options) (Result, error) {
 		}
 	}
 	return res, nil
+}
+
+// sentLines says how the first send went.
+func sentLines(r app.SendResult, err error, sendTo string) []string {
+	var out []string
+	if r.FinalReport != "" {
+		// AR3: it made reports before; what it had stays in this one.
+		out = append(out, "This computer made reports before. Its final report, with everything it had collected and received and the original logs it held (its own and other computers'), is in:",
+			"  "+r.FinalReport,
+			"From now on it sends only its own events. Set any computers that sent to it to send to the new collector.", "")
+	}
+	return append(out, sendLines(r, err, sendTo)...)
+}
+
+func sendLines(r app.SendResult, err error, sendTo string) []string {
+	switch {
+	case errors.Is(err, store.ErrBusy):
+		// S14: a scheduled run holds the lock; nothing is wrong with
+		// the connection, and that run or the next one sends.
+		return []string{"Done. A collection was already running, so this computer's events go to the collector at the next run.",
+			"Check with: blackbox status"}
+	case err != nil:
+		return []string{"Done, but the collector could not be reached yet: " + err.Error(),
+			fmt.Sprintf("The events are kept safely on this computer (%d batch%s waiting) and are sent at the next scheduled run that can reach it.", r.Waiting, es(r.Waiting)),
+			"Check with: blackbox status"}
+	}
+	return []string{fmt.Sprintf("Done. Sent %d batch%s to %s.", r.Delivered, es(r.Delivered), sendTo),
+		"This computer's events will appear in the collector's reports."}
 }
 
 // Reported says whether this computer has produced a scheduled report.

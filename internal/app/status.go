@@ -267,8 +267,11 @@ func (a *App) writeSystems(w io.Writer, st *store.Store, now time.Time) {
 	}
 	for _, snd := range st.State.Senders {
 		for _, g := range snd.Missing {
-			fmt.Fprintf(w, "  Missing: batches %d-%d from %s never arrived (noticed %s). To send them again, run on %s: %s\n",
-				g.From, g.To, snd.Host, stampLocal(g.Noted, a.loc()), snd.Host, ResendCommand(g.From, g.To))
+			fmt.Fprintf(w, "  Missing: batches %d-%d from %s never arrived (noticed %s). %s\n",
+				g.From, g.To, snd.Host, stampLocal(g.Noted, a.loc()), ResendAdvice(snd, g))
+		}
+		if snd.StartSeq > 1 && snd.Earlier != "" {
+			fmt.Fprintf(w, "  %s: batches start at %d here; earlier ones went to %s\n", snd.Host, snd.StartSeq, snd.Earlier)
 		}
 	}
 }

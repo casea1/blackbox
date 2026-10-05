@@ -40,6 +40,34 @@ The installer's first question sets the role:
 
 A computer is one or the other: it sends to a collector, or it is one.
 
+**Changing a computer's role or its collector.** Run setup again (or
+`blackbox config set send_to …`). What happens to what it already has:
+
+- **A sender moved to another collector.** Its next batch is marked as
+  the first for the new collector, with the name of the previous one. The
+  new collector starts counting from there, so the batches that went to
+  the old collector are not reported missing; `blackbox status` on the
+  new collector says "batches start at 281 here; earlier ones went to
+  WIN-498EC8UMUEL". A batch made for the old collector but not delivered
+  yet goes to the new one.
+- **A collector (or standalone computer) that becomes a sender.** Before
+  its first send it makes a **final report**, in its reports folder with
+  `_final` at the end of the folder name: everything it had collected and
+  received and not yet reported, with every original log it held (its own
+  and other computers'). Setup gives its path. From then on it sends only
+  its own new events. It never passes on what other computers sent it, so
+  the new collector neither gets their events twice nor lists them as
+  coming "via" this computer. Point the computers that sent to it at the
+  new collector.
+- **A collector that becomes standalone.** Nothing is lost: what other
+  computers sent so far, with their original logs, is in its next report.
+- **A renamed computer.** Each sender sends the names it had before with
+  its data, so the collector files events under an old name under the
+  computer's current one and does not list the old name as another system.
+
+A computer is shown "via" another only while its data has only ever come
+through that computer.
+
 **Set up the collector first.** Senders check that the collector's inbox is
 there before they use it.
 
@@ -327,7 +355,10 @@ A sender keeps everything until the collector has it.
   `blackbox send --resend 214-219`. The collector imports those that fill
   the gap and ignores the rest. Each resend is recorded, like a setting
   change, in the report and the system log. Batches older than
-  `keep_sent_days` can't be sent again; the command says which.
+  `keep_sent_days` can't be sent again; the command says which. Each
+  batch says which batches the sender still keeps, so the collector only
+  suggests `--resend` for those, and otherwise says the sender no longer
+  keeps them.
 
 In a re-test, 114 batches and 2 log archives queued over 27 hours were
 delivered in 47 seconds, with nothing rejected.

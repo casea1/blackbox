@@ -1,6 +1,8 @@
 package lan
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,11 +23,29 @@ func OutboxDir(st *store.Store) string { return filepath.Join(st.Dir, "outbox") 
 
 // Export turns everything in the spool that has not been sent yet into
 // numbered batches in the outbox. It returns the number of batches made.
+//
+// Only this computer's own data is sent (L14): events, collections and
+// checks of computers that delivered to it while it was a collector stay
+// in its final report (see app.handover), so the new collector neither
+// gets them twice nor files them under this computer.
 func Export(st *store.Store, host, version string, now time.Time) (int, error) {
 	if st.State.Send == nil {
 		st.State.Send = &store.SendState{ID: store.NewID(), NextSeq: 1}
 	}
 	s := st.State.Send
+	others := OtherSystems(st, host)
+	var kept *store.SeqRange
+	if k := Kept(st); len(k) > 0 {
+		kept = &store.SeqRange{From: k[0], To: k[len(k)-1]}
+	} else {
+		kept = &store.SeqRange{}
+	}
+	var former []string
+	for _, n := range st.State.OwnNames {
+		if !strings.EqualFold(n, host) {
+			former = append(former, n)
+		}
+	}
 	if s.Offsets == nil {
 		s.Offsets = map[string]int64{}
 	}
@@ -43,7 +63,8 @@ func Export(st *store.Store, host, version string, now time.Time) (int, error) {
 		if b.Records() == 0 {
 			return nil
 		}
-		b.Header = Header{Sender: host, SenderID: s.ID, Seq: s.NextSeq, Created: now, Version: version, OS: runtime.GOOS}
+		b.Header = Header{Sender: host, SenderID: s.ID, Seq: s.NextSeq, Created: now, Version: version, OS: runtime.GOOS,
+			FirstSeq: s.FirstSeq, Earlier: s.Earlier, Kept: kept, Former: former}
 		data, err := b.Bytes()
 		if err != nil {
 			return err
@@ -78,6 +99,7 @@ func Export(st *store.Store, host, version string, now time.Time) (int, error) {
 			if next == off {
 				break // only an incomplete final line remains
 			}
+			lines = ownLines(lines, others)
 			switch f.Kind {
 			case "events":
 				b.Events = append(b.Events, lines...)
@@ -96,6 +118,45 @@ func Export(st *store.Store, host, version string, now time.Time) (int, error) {
 		}
 	}
 	return made, flush()
+}
+
+// OtherSystems are the computers whose data reached this one from
+// elsewhere: those that delivered to it as a collector, and those their
+// data came through. Their keys are store.SystemKey names.
+func OtherSystems(st *store.Store, host string) map[string]bool {
+	out := map[string]bool{}
+	for _, snd := range st.State.Senders {
+		out[store.SystemKey(snd.Host)] = true
+	}
+	for k, sys := range st.State.Systems {
+		if sys.Via != "" {
+			out[k] = true
+		}
+	}
+	delete(out, store.SystemKey(host))
+	for _, n := range st.State.OwnNames {
+		delete(out, store.SystemKey(n))
+	}
+	return out
+}
+
+// ownLines leaves out the spool lines (events, runs, checks: each has a
+// "host") of the other systems.
+func ownLines(lines [][]byte, others map[string]bool) [][]byte {
+	if len(others) == 0 {
+		return lines
+	}
+	out := lines[:0:0]
+	for _, l := range lines {
+		var h struct {
+			Host string `json:"host"`
+		}
+		if json.Unmarshal(l, &h) == nil && others[store.SystemKey(h.Host)] {
+			continue
+		}
+		out = append(out, l)
+	}
+	return out
 }
 
 func outboxName(seq uint64) string { return fmt.Sprintf("%010d%s", seq, batchExt) }
@@ -383,4 +444,87 @@ func OldestQueued(st *store.Store) (time.Time, bool) {
 		}
 	}
 	return oldest, !oldest.IsZero()
+}
+
+// InboxCollector is the name of the collector an inbox belongs to, from
+// its marker file ("" if it can't be read).
+func InboxCollector(inbox string) string {
+	b, err := os.ReadFile(filepath.Join(inbox, MarkerFile))
+	if err != nil {
+		return ""
+	}
+	for _, l := range strings.Split(string(b), "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(l), "Collector:"); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+// NoteDestination records where batches now go: dest is send_to, and
+// collector the name in its inbox marker ("" if not known yet). When
+// either changed since the last delivery, the first batch not yet
+// delivered is marked as the first for this collector, and the earlier
+// ones as gone to the previous one (L13), so the new collector does not
+// count them as missing. It reports whether the destination changed.
+func NoteDestination(st *store.Store, dest, collector string) (bool, error) {
+	if st.State.Send == nil {
+		st.State.Send = &store.SendState{ID: store.NewID(), NextSeq: 1}
+	}
+	s := st.State.Send
+	if s.Dest == "" {
+		// The first delivery, or the first since an upgrade: there is
+		// nothing to tell the collector.
+		s.Dest, s.Collector = dest, collector
+		return false, nil
+	}
+	norm := func(p string) string { return strings.TrimRight(strings.ReplaceAll(p, `\`, "/"), "/") }
+	sameDest := strings.EqualFold(norm(s.Dest), norm(dest))
+	sameName := collector == "" || s.Collector == "" || strings.EqualFold(collector, s.Collector)
+	if sameDest && sameName {
+		if collector != "" {
+			s.Collector = collector
+		}
+		return false, nil
+	}
+	list, err := outbox(st)
+	if err != nil {
+		return false, err
+	}
+	first := s.NextSeq
+	if len(list) > 0 {
+		if n, err := strconv.ParseUint(strings.TrimSuffix(list[0], batchExt), 10, 64); err == nil {
+			first = n
+		}
+	}
+	earlier := s.Collector
+	if earlier == "" {
+		earlier = s.Dest
+	}
+	s.FirstSeq, s.Earlier, s.Dest, s.Collector = first, earlier, dest, collector
+	// Batches already made for the previous collector carry the news too.
+	for _, name := range list {
+		if err := restamp(filepath.Join(OutboxDir(st), name), s.FirstSeq, s.Earlier); err != nil {
+			return true, err
+		}
+	}
+	return true, nil
+}
+
+// restamp rewrites a waiting batch with a new FirstSeq and Earlier.
+func restamp(path string, first uint64, earlier string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	b, err := Decode(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	b.FirstSeq, b.Earlier = first, earlier
+	out, err := b.Bytes()
+	if err != nil {
+		return err
+	}
+	return store.WriteFileAtomic(path, out, 0o640)
 }

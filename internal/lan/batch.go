@@ -30,6 +30,8 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	"github.com/casea1/blackbox/internal/store"
 )
 
 const (
@@ -52,6 +54,17 @@ type Header struct {
 	Created  time.Time `json:"created"`
 	Version  string    `json:"version,omitempty"`
 	OS       string    `json:"os,omitempty"`
+
+	// FirstSeq is the first batch this collector gets from the sender:
+	// earlier ones went to Earlier, another collector, and are not
+	// missing here (L13).
+	FirstSeq uint64 `json:"first_seq,omitempty"`
+	Earlier  string `json:"earlier,omitempty"`
+	// Kept is the range of batches the sender keeps after delivery and
+	// can send again (L13).
+	Kept *store.SeqRange `json:"kept,omitempty"`
+	// Former are names the sender's computer had before (W1b).
+	Former []string `json:"former,omitempty"`
 }
 
 // record is one line after the header. Exactly one field is set.

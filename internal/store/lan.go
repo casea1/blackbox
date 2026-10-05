@@ -32,6 +32,18 @@ type SendState struct {
 	ID      string           `json:"id"`
 	NextSeq uint64           `json:"next_seq"`
 	Offsets map[string]int64 `json:"offsets"` // spool file name → bytes already batched
+
+	// Dest is the collector folder (send_to) batches go to, and Collector
+	// that collector's name (from its inbox marker). FirstSeq is the first
+	// batch it got after send_to changed; earlier ones went to Earlier
+	// (L13).
+	Dest      string `json:"dest,omitempty"`
+	Collector string `json:"collector,omitempty"`
+	FirstSeq  uint64 `json:"first_seq,omitempty"`
+	Earlier   string `json:"earlier,omitempty"`
+	// Since is when this computer last started sending after making
+	// reports itself (AR3): what it had by then went into a final report.
+	Since time.Time `json:"since,omitzero"`
 }
 
 // SenderState is what a collector knows about one sender.
@@ -44,6 +56,21 @@ type SenderState struct {
 	Missing      []SeqGap  `json:"missing,omitempty"`
 	ClockAhead   string    `json:"clock_ahead,omitempty"` // last clock problem noticed
 	ClockNoted   time.Time `json:"clock_noted,omitzero"`
+	// StartSeq is the first batch this sender sent here after sending to
+	// another collector (Earlier) before (L13); earlier ones are not gaps.
+	StartSeq uint64 `json:"start_seq,omitempty"`
+	Earlier  string `json:"earlier,omitempty"`
+	// Kept is the range of batches the sender still keeps after delivery
+	// and can send again (nil: it did not say, an older version).
+	Kept *SeqRange `json:"kept,omitempty"`
+	// Former are names the sender's computer had before (W1b).
+	Former []string `json:"former,omitempty"`
+}
+
+// SeqRange is a range of batch numbers; From 0 means none.
+type SeqRange struct {
+	From uint64 `json:"from"`
+	To   uint64 `json:"to"`
 }
 
 // SeqGap is a range of batches that never arrived.
@@ -64,6 +91,13 @@ type System struct {
 	LastRun      time.Time `json:"last_run,omitzero"`      // its latest collection (its own clock)
 	LastReceived time.Time `json:"last_received,omitzero"` // when its data last arrived here
 	Removed      time.Time `json:"removed,omitzero"`       // retired with "blackbox systems remove"
+	// Direct is set once its data came from itself (collected here, or
+	// delivered by it): Via then stays empty, even if another computer
+	// also passed its data on (L14).
+	Direct bool `json:"direct,omitempty"`
+	// Former are names this computer had before (W1b): data recorded
+	// under them is its own.
+	Former []string `json:"former,omitempty"`
 }
 
 // SystemKey is the registry key for a host name (names are compared
@@ -91,10 +125,10 @@ func (s *Store) NoteSystem(host, osName, version, via string, lastRun, received,
 	if version != "" {
 		sys.Version = version
 	}
-	if via != "" && !strings.EqualFold(via, host) {
+	if via == "" || strings.EqualFold(via, host) {
+		sys.Via, sys.Direct = "", true
+	} else if !sys.Direct {
 		sys.Via = via
-	} else if via != "" {
-		sys.Via = ""
 	}
 	if lastRun.After(sys.LastRun) {
 		sys.LastRun = lastRun
