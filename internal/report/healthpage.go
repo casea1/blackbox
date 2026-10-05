@@ -70,6 +70,7 @@ type HealthRow struct {
 	Cells                   []Cell
 	Facts                   []Fact
 	Table                   []SettingLine
+	Scap                    []ScapOpen // open STIG rules from SCAP scans (SC3)
 	Checked                 bool
 	CheckedAt               string // when the settings were checked
 }
@@ -78,6 +79,7 @@ type HealthRow struct {
 type SettingLine struct {
 	Check, STIG, Want, Have, Result, Class, Fix string
 	Note                                        string // how the report covers it, when it doesn't review it
+	Href                                        string // where the check's details are, if elsewhere
 }
 
 // GapCard is one gap on the Audit health page.
@@ -368,7 +370,7 @@ func (r *Report) healthPage() *HealthPage {
 		if c := row.Cells[len(row.Cells)-1]; c.Class == "bad" {
 			intact.Have, intact.Result, intact.Class = c.Title, "Gap", "bad"
 		}
-		rep := SettingLine{Check: "Reporting", STIG: "—", Want: "Every hour", Result: "Matches", Class: "ok",
+		rep := SettingLine{Check: "Reporting", STIG: "—", Want: "At each scheduled collection", Result: "Matches", Class: "ok",
 			Have: fmt.Sprintf("%s, last %s", plural(len(s.runTimes), "run"), stampOrDash(s.LastRun, r.Location))}
 		if c := row.Cells[len(row.Cells)-2]; c.Class == "na" {
 			rep.Want, rep.Have, rep.Result, rep.Class = "—", "Not collected live", "—", "na"
@@ -376,6 +378,10 @@ func (r *Report) healthPage() *HealthPage {
 			rep.Result, rep.Class = map[string]string{"bad": "Gap", "warn": "Warning"}[c.Class], c.Class
 		}
 		row.Table = append(row.Table, intact, rep)
+		if l, ok := r.scapSetting(h); ok {
+			row.Table = append(row.Table, l)
+			row.Scap = r.scapOpen(h)
+		}
 
 		checks, match := 0, 0
 		for _, l := range row.Table {

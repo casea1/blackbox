@@ -89,6 +89,7 @@ func funcs(loc *time.Location) template.FuncMap {
 		}
 	}
 	return template.FuncMap{
+		"scapHref": ScapHref,
 		"logo":     func() template.URL { return template.URL(brand.LogoDataURI()) },
 		"css":      func() template.CSS { return template.CSS(styleCSS) },
 		"js":       func() template.JS { return template.JS(appJS) },
