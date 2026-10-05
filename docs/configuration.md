@@ -14,6 +14,7 @@ file:
 | `report_every` | `weekly` | `daily`, `weekly` or `monthly` |
 | `report_at` | `Wednesday 00:00` | When each report period ends and the report is produced. Weekly: a day and time; `Wednesday 00:00` covers each week up to Tuesday night, so a fresh report is ready on Wednesday morning. Daily and monthly: a time such as `06:00` (monthly periods end on the 1st) |
 | `report_dir` | *(blank = default)* | Folder for reports. Any full path Blackbox can write to, including one you have locked down |
+| `archive_dir` | *(blank = `archives` in the data folder)* | Folder where the original logs (this computer's and, on a collector, every sender's) wait until the next **scheduled** report moves them into its folder; with weekly reports that is up to a week of logs. Choose a larger volume for many computers, e.g. `D:\BlackboxLogs`. Setup asks for it. A new folder is created for administrators only; an existing one keeps its permissions. Archives already waiting where it was go into the next report from there |
 | `collect_every` | `15m` | How often events are collected (15 minutes since 0.12: a STIG-audited Security log can fill within an hour). An upgrade keeps the old value, often `1h`; while events are being lost to rollover, `status` and the report give the command to change it. `blackbox config set collect_every 15m` changes it and the schedule (the scheduled task or `blackbox.timer`); it must divide an hour or a day evenly |
 | `retention_days` | `0` | Days to keep reports and collected events; `0` keeps them forever. A report folder holds the original logs (the daily archives) for its period, so they are deleted with it. Below 365 days, `config set` asks you to type `yes` (or add `--yes` in a script), since a year is the usual retention (AU-11). The next scheduled report lists the reports that were removed |
 | `exclude_users` | *(none)* | Accounts whose routine activity is left out of reports, e.g. `svc_backup, CORP\svc_scanner`. Failed logons against them, changes to them and anything Medium or above are always shown (see [Exclusions](reports.md#detections)) |
@@ -39,8 +40,8 @@ blackbox config set working_hours "Mon-Fri 06:00-18:00"
 
 `blackbox config set` checks the value before saving it:
 
-- For `report_dir`, it also checks the folder is writable, and on Linux lets
-  the service write there.
+- For `report_dir` and `archive_dir`, it also checks the folder is
+  writable, and on Linux lets the service write there.
 - For `send_to` and `inbox`, it sets up the share, mount or inbox folder.
   A new share password is read from `BLACKBOX_SHARE_PASSWORD`.
 - `none` clears a LAN setting, `exclude_users`, `exclude_processes` or

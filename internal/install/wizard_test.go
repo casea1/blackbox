@@ -75,7 +75,7 @@ func lines(l ...string) string { return strings.Join(l, "\n") + "\n" }
 
 func TestWizardDefaults(t *testing.T) {
 	// Enter on every question, then Enter to confirm.
-	a, out, err := runWizard(t, lines("", "", "", "", "", "", ""), Answers{}, fakeEnv{}, false)
+	a, out, err := runWizard(t, lines("", "", "", "", "", "", "", ""), Answers{}, fakeEnv{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,8 @@ func TestWizardDefaults(t *testing.T) {
 		t.Errorf("got %+v, want %+v", a, want)
 	}
 	for _, s := range []string{"1. How will this computer's audit events be reviewed?", "2. Site or system name", "3. How often should a report",
-		"4. Which day and time should each weekly report be ready", "5. Where should reports be saved", "6. How often should events be collected",
+		"4. Which day and time should each weekly report be ready", "5. Where should reports be saved", "6. Where should the original logs wait for the next report",
+		"7. How often should events be collected", "Original logs:    " + DefaultArchiveDir(),
 		"weekly, ready Wednesday 00:00 (each covers the week to Tuesday night)", "Summary", "Install these settings?"} {
 		if !strings.Contains(out, s) {
 			t.Errorf("output missing %q", s)
@@ -102,6 +103,8 @@ func TestWizardAnswersAndRetries(t *testing.T) {
 		abs("/srv/readonly"),    // exists but not writable: asked again
 		abs("/srv/new-reports"), // does not exist…
 		"y",                     // …create it
+		abs("/srv/logs"),        // original logs on another volume…
+		"y",                     // …create it
 		"1",                     // every 15 minutes
 		"",                      // confirm
 	)
@@ -109,7 +112,7 @@ func TestWizardAnswersAndRetries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Answers{Role: RoleStandalone, Site: "Lab 3", ReportEvery: "daily", ReportAt: config.ReportAt{Day: time.Wednesday, Minute: 6*60 + 30}, ReportDir: abs("/srv/new-reports"), CollectEvery: 15 * time.Minute}
+	want := Answers{Role: RoleStandalone, Site: "Lab 3", ReportEvery: "daily", ReportAt: config.ReportAt{Day: time.Wednesday, Minute: 6*60 + 30}, ReportDir: abs("/srv/new-reports"), ArchiveDir: abs("/srv/logs"), CollectEvery: 15 * time.Minute}
 	if !reflect.DeepEqual(a, want) {
 		t.Errorf("got %+v, want %+v", a, want)
 	}
@@ -121,8 +124,8 @@ func TestWizardAnswersAndRetries(t *testing.T) {
 }
 
 func TestWizardReinstallKeepsCurrentSettings(t *testing.T) {
-	cur := Answers{Role: RoleStandalone, Site: "Lab 3", ReportEvery: "monthly", ReportAt: config.ReportAt{Day: time.Thursday, Minute: 360}, ReportDir: abs("/srv/locked"), CollectEvery: 2 * time.Hour}
-	a, out, err := runWizard(t, lines("", "", "", "", "", "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true}}, true)
+	cur := Answers{Role: RoleStandalone, Site: "Lab 3", ReportEvery: "monthly", ReportAt: config.ReportAt{Day: time.Thursday, Minute: 360}, ReportDir: abs("/srv/locked"), ArchiveDir: abs("/srv/logs"), CollectEvery: 2 * time.Hour}
+	a, out, err := runWizard(t, lines("", "", "", "", "", "", "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true, abs("/srv/logs"): true}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +139,7 @@ func TestWizardReinstallKeepsCurrentSettings(t *testing.T) {
 
 func TestWizardDefaultFolderAndClearSite(t *testing.T) {
 	cur := Answers{Site: "Old", ReportEvery: "weekly", ReportDir: abs("/srv/locked"), CollectEvery: time.Hour}
-	a, _, err := runWizard(t, lines("", "-", "", "", abs("/var/lib/blackbox/reports"), "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true}}, true)
+	a, _, err := runWizard(t, lines("", "-", "", "", abs("/var/lib/blackbox/reports"), "", "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +149,7 @@ func TestWizardDefaultFolderAndClearSite(t *testing.T) {
 }
 
 func TestWizardCancel(t *testing.T) {
-	if _, _, err := runWizard(t, lines("", "", "", "", "", "", "n"), Answers{}, fakeEnv{}, false); !errors.Is(err, ErrCancelled) {
+	if _, _, err := runWizard(t, lines("", "", "", "", "", "", "", "n"), Answers{}, fakeEnv{}, false); !errors.Is(err, ErrCancelled) {
 		t.Errorf("answering no should cancel, got %v", err)
 	}
 	if _, _, err := runWizard(t, "1\nLab", Answers{}, fakeEnv{}, false); !errors.Is(err, ErrCancelled) {
@@ -221,6 +224,7 @@ func TestWizardWindowsCollector(t *testing.T) {
 		"1",      // daily
 		"",       // at midnight
 		"",       // default report folder
+		"",       // original logs in the data folder
 		"",       // default inbox…
 		"y",      // …create it
 		"y",      // VMs on this PC send to it
@@ -249,7 +253,7 @@ func TestWizardWindowsCollector(t *testing.T) {
 // S12: on a server without VirtualBox, the VirtualBox shared folder is not
 // suggested (Enter means no), and no account is filled in for it.
 func TestWizardNoVirtualBox(t *testing.T) {
-	input := lines("3", "", "", "", "", "", "y",
+	input := lines("3", "", "", "", "", "", "", "y",
 		"",       // VMs on this PC send to it? Enter: no
 		"y",      // share it
 		"bbsend", // who delivers
@@ -269,7 +273,7 @@ func TestWizardNoVirtualBox(t *testing.T) {
 // Changing a collector back to standalone clears the LAN settings.
 func TestWizardBackToStandalone(t *testing.T) {
 	cur := Answers{Role: RoleCollector, Inbox: abs("/srv/blackbox-inbox"), ShareInbox: true, ReportEvery: "weekly", CollectEvery: time.Hour}
-	a, _, err := runWizard(t, lines("1", "", "", "", "", "", ""), cur, fakeEnv{}, true)
+	a, _, err := runWizard(t, lines("1", "", "", "", "", "", "", ""), cur, fakeEnv{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

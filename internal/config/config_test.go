@@ -186,6 +186,7 @@ func TestEverySettingRoundTrips(t *testing.T) {
 		{"report_every", "monthly", func(c *Config) string { return c.ReportEvery }},
 		{"report_at", "Friday 12:00", func(c *Config) string { return c.ReportAt.String() }},
 		{"report_dir", abs("Audit #1"), func(c *Config) string { return c.ReportDir }},
+		{"archive_dir", abs("Logs #1"), func(c *Config) string { return c.ArchiveDir }},
 		{"retention_days", "90", func(c *Config) string { return strconv.Itoa(c.RetentionDays) }},
 		{"exclude_users", "svc_backup, CORP\\svc_scan", func(c *Config) string { return strings.Join(c.ExcludeUsers, ", ") }},
 		{"exclude_processes", "scan.exe", func(c *Config) string { return strings.Join(c.ExcludeProcesses, ", ") }},
@@ -234,5 +235,28 @@ func TestScapDir(t *testing.T) {
 	c.ScapResults = "none"
 	if c.ScapDir() != "" {
 		t.Errorf("none: %q", c.ScapDir())
+	}
+}
+
+// The original logs wait in the data folder unless archive_dir names
+// another one, e.g. on a larger volume.
+func TestArchivesDir(t *testing.T) {
+	abs := func(p string) string {
+		if runtime.GOOS == "windows" {
+			return `D:\` + p
+		}
+		return "/srv/" + p
+	}
+	c := Default()
+	if c.ArchivesDir() != filepath.Join(c.DataDir, "archives") {
+		t.Errorf("default: %s", c.ArchivesDir())
+	}
+	c.ArchiveDir = abs("Logs")
+	if c.ArchivesDir() != abs("Logs") {
+		t.Errorf("set: %s", c.ArchivesDir())
+	}
+	c.ArchiveDir = "relative"
+	if err := c.Validate(); err == nil {
+		t.Error("a relative archive_dir was accepted")
 	}
 }

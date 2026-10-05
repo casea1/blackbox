@@ -75,6 +75,11 @@ func Install(opt Options) error {
 			return err
 		}
 	}
+	if opt.ArchiveDir != "" {
+		if err := PrepareArchiveDir(opt.ArchiveDir, logf); err != nil {
+			return err
+		}
+	}
 
 	// 3. Config: created, or updated with these settings on a re-install.
 	cfgPath := config.DefaultPath()

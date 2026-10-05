@@ -335,6 +335,11 @@ func cmdConfig(args []string) error {
 		fmt.Printf("  report_every       %s\n", cfg.ReportEvery)
 		fmt.Printf("  report_at          %s   (%s)\n", cfg.ReportAt, cfg.ReportAt.Describe(cfg.ReportEvery))
 		fmt.Printf("  report_dir         %s\n", dir)
+		logs := cfg.ArchivesDir()
+		if cfg.ArchiveDir == "" {
+			logs += " (default)"
+		}
+		fmt.Printf("  archive_dir        %s   (original logs waiting for the next scheduled report)\n", logs)
 		fmt.Printf("  collect_every      %s\n", config.FormatDuration(cfg.CollectEvery))
 		fmt.Printf("  retention_days     %d%s\n", cfg.RetentionDays, map[bool]string{true: "   (keep forever)"}[cfg.RetentionDays == 0])
 		fmt.Printf("  exclude_users      %s\n", strings.Join(cfg.ExcludeUsers, ", "))
@@ -389,6 +394,18 @@ func cmdConfig(args []string) error {
 			return err
 		}
 		recordChanges(path, before, "blackbox config set")
+		return nil
+	}
+	if key == "archive_dir" {
+		if value == "default" || value == filepath.Join(config.DefaultDataDir(), "archives") {
+			value = ""
+		}
+		if err := install.SetArchiveDir(path, value, printf); err != nil {
+			return err
+		}
+		cfg, _ := config.Load(path)
+		recordChanges(path, before, "blackbox config set")
+		fmt.Printf("Original logs will now wait in %s until the next scheduled report. Those already waiting go into that report from where they are.\n", cfg.ArchivesDir())
 		return nil
 	}
 	if key == "report_dir" {

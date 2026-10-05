@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -90,8 +91,27 @@ func (a *App) ReportsDir() string { return a.Cfg.ReportsDir() }
 
 // pendingLogsDir holds each computer's daily archives of its original
 // logs (this computer's own, and those received from senders) until a
-// report takes them into its folder.
-func (a *App) pendingLogsDir() string { return filepath.Join(a.Cfg.DataDir, "archives") }
+// scheduled report takes them into its folder: archive_dir, or the
+// archives folder in the data folder.
+func (a *App) pendingLogsDir() string { return a.Cfg.ArchivesDir() }
+
+// dataLogsDir is the archives folder in the data folder, where archives
+// waited before archive_dir was set; any left there go into the next
+// report too.
+func (a *App) dataLogsDir() string { return filepath.Join(a.Cfg.DataDir, "archives") }
+
+// waitingLogsDirs are the folders archives may be waiting in: archive_dir,
+// the data folder's (before archive_dir was set) and the reports folder's
+// (version 0.4).
+func (a *App) waitingLogsDirs() []string {
+	out := []string{a.pendingLogsDir()}
+	for _, d := range []string{a.dataLogsDir(), a.legacyLogsDir()} {
+		if !slices.Contains(out, d) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
 
 // scapReceivedDir is where a collector keeps the SCAP results senders
 // deliver, by computer.
@@ -123,8 +143,31 @@ func (a *App) scapScans() []*scap.Scan {
 func (a *App) legacyLogsDir() string { return filepath.Join(a.ReportsDir(), "archives") }
 
 // piecesDir holds the original logs exported at each collection until
-// they are packed into the day's archive (see package archive).
-func (a *App) piecesDir() string { return filepath.Join(a.Cfg.DataDir, "archive-pieces") }
+// they are packed into the day's archive (see package archive): in
+// archive_dir when it is set, next to the archives.
+func (a *App) piecesDir() string {
+	if a.Cfg.ArchiveDir != "" {
+		return filepath.Join(a.Cfg.ArchiveDir, ".exports")
+	}
+	return a.dataPiecesDir()
+}
+
+func (a *App) dataPiecesDir() string { return filepath.Join(a.Cfg.DataDir, "archive-pieces") }
+
+// allPieces lists the exports waiting to be packed, those left in the
+// data folder from before archive_dir was set first.
+func (a *App) allPieces() ([]archive.Piece, error) {
+	var out []archive.Piece
+	if a.piecesDir() != a.dataPiecesDir() {
+		old, err := archive.Pieces(a.dataPiecesDir())
+		if err != nil {
+			return nil, err
+		}
+		out = old
+	}
+	p, err := archive.Pieces(a.piecesDir())
+	return append(out, p...), err
+}
 
 // saveLogPiece exports the original logs (see package archive) written
 // since the last export, at every collection, while the logs still hold
@@ -234,7 +277,7 @@ func stampUTC(t time.Time) string { return t.UTC().Format("2006-01-02 15:04Z") }
 // for the next report. Unless force is set it waits until the oldest
 // piece is a day old.
 func (a *App) packLogs(st *store.Store, force bool) {
-	pieces, err := archive.Pieces(a.piecesDir())
+	pieces, err := a.allPieces()
 	if err != nil {
 		a.logf("archiving the logs: %v", err)
 		return
@@ -278,7 +321,7 @@ func (a *App) logStates() []archive.LogState {
 // daily archives used, to remove once the report is written.
 func (a *App) bundleLogs(end time.Time) (refs []report.ArchiveRef, used []string) {
 	var list []archive.Stored
-	for _, dir := range []string{a.pendingLogsDir(), a.legacyLogsDir()} {
+	for _, dir := range a.waitingLogsDirs() {
 		l, err := archive.List(dir)
 		if err != nil {
 			a.logf("listing log archives in %s: %v", dir, err)
@@ -613,7 +656,11 @@ func (a *App) handover(st *store.Store) string {
 	if s != nil {
 		since = s.Since
 	}
-	pending, _ := archive.List(a.pendingLogsDir())
+	var pending []archive.Stored
+	for _, d := range a.waitingLogsDirs() {
+		l, _ := archive.List(d)
+		pending = append(pending, l...)
+	}
 	reported := !st.State.LastGenerated.IsZero() && st.State.LastGenerated.After(since)
 	received := false
 	for _, snd := range st.State.Senders {
@@ -992,7 +1039,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		if err := st.Save(); err != nil {
 			a.logf("noting removed reports: %v", err)
 		}
-		for _, d := range []string{a.pendingLogsDir(), a.legacyLogsDir()} {
+		for _, d := range a.waitingLogsDirs() {
 			if err := archive.Prune(d, a.Cfg.RetentionDays, generated); err != nil {
 				a.logf("pruning old log archives: %v", err)
 			}

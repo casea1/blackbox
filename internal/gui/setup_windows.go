@@ -165,6 +165,8 @@ func (s *setupWin) header() (title, sub string) {
 		return "This computer", install.QRole
 	case pReports:
 		return "Reports", "What reports are called, how often they are produced and where they are saved"
+	case pArchive:
+		return "Original logs", "Where the raw logs wait for the next report"
 	case pInbox:
 		return "Inbox", "Where the other computers deliver their events"
 	case pSendTo:
@@ -255,6 +257,15 @@ func (s *setupWin) build() {
 		s.c["dir"] = s.edit(dir, x, y+22, w-100, false)
 		s.button("Browse…", x+w-92, y+20, 92, false, func() { s.browse("dir", "Where should reports be saved?") })
 		s.note(install.NoteReport, x, y+52, w, 20)
+	case pArchive:
+		s.label(install.QArchiveDir, x, y, w, 20)
+		dir := s.a.ArchiveDir
+		if dir == "" {
+			dir = install.DefaultArchiveDir()
+		}
+		s.c["logs"] = s.edit(dir, x, y+22, w-100, false)
+		s.button("Browse…", x+w-92, y+20, 92, false, func() { s.browse("logs", install.QArchiveDir) })
+		s.note(install.NoteArchive, x, y+52, w, 60)
 	case pInbox:
 		s.label(install.QInbox, x, y, w, 20)
 		s.note(install.NoteInbox, x, y+20, w, 20)
@@ -396,6 +407,12 @@ func (s *setupWin) save() {
 		} else {
 			s.a.ReportDir = strings.Trim(d, `"`)
 		}
+	case pArchive:
+		if d := strings.Trim(get("logs"), `"`); d == install.DefaultArchiveDir() {
+			s.a.ArchiveDir = ""
+		} else {
+			s.a.ArchiveDir = d
+		}
 	case pInbox:
 		s.a.Inbox = strings.Trim(get("inbox"), `"`)
 		s.a.InboxWriters = nil
@@ -489,6 +506,19 @@ func (s *setupWin) check_() bool {
 			}
 			if !s.folderOK(s.a.ReportDir, "That folder does not exist yet. Create it (administrators only)?") {
 				pSetFocus.Call(s.c["dir"])
+				return false
+			}
+		}
+	case pArchive:
+		if strings.TrimSpace(getText(s.c["logs"])) == "" {
+			return warn("logs", install.ReportDirError("").Error())
+		}
+		if s.a.ArchiveDir != "" {
+			if err := install.ReportDirError(s.a.ArchiveDir); err != nil {
+				return warn("logs", err.Error())
+			}
+			if !s.folderOK(s.a.ArchiveDir, "That folder does not exist yet. Create it (administrators only)?") {
+				pSetFocus.Call(s.c["logs"])
 				return false
 			}
 		}

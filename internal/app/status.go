@@ -58,7 +58,7 @@ func (a *App) Status(w io.Writer) error {
 	if s.ArchivedUntil.IsZero() {
 		p("Log archive:", "none yet (the original logs are exported at every collection and archived once a day)")
 	} else {
-		where := "they go into the next report's folder"
+		where := "waiting in " + a.Cfg.ArchivesDir() + " for the next scheduled report"
 		if !a.Cfg.MakesReports() {
 			where = "sent to the collector"
 			if n := lan.QueuedArchives(st); n > 0 {

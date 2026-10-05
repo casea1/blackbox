@@ -28,7 +28,7 @@ type Options struct {
 func writeConfig(path string, opt Options, crlf bool) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		text := config.Render(opt.Site, opt.ReportEvery, opt.ReportAt, opt.ReportDir, opt.CollectEvery)
-		for _, kv := range [][2]string{{"send_to", opt.SendTo}, {"share_user", opt.ShareUser}, {"inbox", opt.Inbox}} {
+		for _, kv := range [][2]string{{"send_to", opt.SendTo}, {"share_user", opt.ShareUser}, {"inbox", opt.Inbox}, {"archive_dir", opt.ArchiveDir}} {
 			text = strings.Replace(text, "\n"+kv[0]+" = \n", "\n"+kv[0]+" = "+kv[1]+"\n", 1)
 		}
 		if crlf {
@@ -44,6 +44,7 @@ func writeConfig(path string, opt Options, crlf bool) error {
 		{"report_every", opt.ReportEvery},
 		{"report_at", opt.ReportAt.String()},
 		{"report_dir", opt.ReportDir},
+		{"archive_dir", opt.ArchiveDir},
 		{"collect_every", config.FormatDuration(opt.CollectEvery)},
 		{"send_to", opt.SendTo},
 		{"share_user", opt.ShareUser},
@@ -83,28 +84,38 @@ func setupLAN(opt Options, dataDir string, logf func(string, ...any)) error {
 // or root (Linux); an existing folder's permissions are left exactly as
 // they are, so a folder you have already locked down stays that way.
 func PrepareReportDir(dir string, logf func(string, ...any)) error {
+	return prepareFolder(dir, "report folder", "Report folder:      ", logf)
+}
+
+// PrepareArchiveDir is PrepareReportDir for archive_dir, where the
+// original logs wait for the next scheduled report.
+func PrepareArchiveDir(dir string, logf func(string, ...any)) error {
+	return prepareFolder(dir, "original logs folder", "Original logs:      ", logf)
+}
+
+func prepareFolder(dir, what, label string, logf func(string, ...any)) error {
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
 	if !config.IsAbs(dir) {
-		return fmt.Errorf("report folder must be a full path (got %q)", dir)
+		return fmt.Errorf("%s must be a full path (got %q)", what, dir)
 	}
 	fi, err := os.Stat(dir)
 	switch {
 	case os.IsNotExist(err):
 		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return fmt.Errorf("create report folder %s: %w", dir, err)
+			return fmt.Errorf("create %s %s: %w", what, dir, err)
 		}
 		if err := restrictDir(dir); err != nil {
 			return err
 		}
-		logf("Report folder:       %s (created; administrators only)", dir)
+		logf("%s %s (created; administrators only)", label, dir)
 	case err != nil:
-		return fmt.Errorf("report folder %s: %w", dir, err)
+		return fmt.Errorf("%s %s: %w", what, dir, err)
 	case !fi.IsDir():
-		return fmt.Errorf("report folder %s is a file, not a folder", dir)
+		return fmt.Errorf("%s %s is a file, not a folder", what, dir)
 	default:
-		logf("Report folder:       %s (existing folder; its permissions were not changed)", dir)
+		logf("%s %s (existing folder; its permissions were not changed)", label, dir)
 	}
 	if err := CheckWritable(dir); err != nil {
 		return err
@@ -138,6 +149,23 @@ func SetReportDir(cfgPath, dir string, logf func(string, ...any)) error {
 		}
 	}
 	if err := config.SetValue(cfgPath, "report_dir", dir); err != nil {
+		return err
+	}
+	return afterReportDirChange(logf)
+}
+
+// SetArchiveDir moves where the original logs wait for the next scheduled
+// report to dir (or back to the data folder when dir is ""), after
+// checking the folder, and updates what the scheduled job may write to.
+// Archives already waiting are picked up from the old folder by the next
+// report.
+func SetArchiveDir(cfgPath, dir string, logf func(string, ...any)) error {
+	if dir != "" {
+		if err := PrepareArchiveDir(dir, logf); err != nil {
+			return err
+		}
+	}
+	if err := config.SetValue(cfgPath, "archive_dir", dir); err != nil {
 		return err
 	}
 	return afterReportDirChange(logf)

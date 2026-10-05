@@ -293,9 +293,14 @@ export at the first record written since the last one, so nothing is
 skipped, and notes it in `archive.json` and on the Original logs page.
 Records stamped in the overlap may then be in two consecutive exports.
 
-When a report is made, the computer packs its exports so far, then its
-archives go into the report's folder. It works the same on a standalone
-computer and on a collector.
+Until then, the exports and the archives (this computer's and, on a
+collector, those senders delivered) wait in the `archives` folder in the
+data folder, or in `archive_dir` if set (setup asks for it: choose a
+larger volume for many computers). When a **scheduled** report is made,
+the computer packs its exports so far, then all the archives waiting go
+into the report's folder and are removed from there. A manual report
+(`blackbox report`) leaves them waiting for the scheduled one. It works
+the same on a standalone computer and on a collector.
 
 A computer that sends to a collector delivers its daily archives with its
 events. The collector checks every file against its hash when it arrives;
