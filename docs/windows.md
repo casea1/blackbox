@@ -55,7 +55,10 @@ Setup then:
 - registers the scheduled task **Blackbox Audit Collection**, which runs as
   SYSTEM every 15 minutes (by default) and at startup, and catches up
   after the system has been off. Its repeating trigger starts in 2000, so
-  its runs follow the clock even if the clock is corrected after install
+  its runs follow the clock even if the clock is corrected after install.
+  Windows runs it once straight away when it is registered, so the first
+  collection (and, on a collector or standalone computer, the first
+  report) comes within a minute of installing
 - adds **Blackbox** to Settings → Apps (and Programs and Features), with
   its version, so it can be inventoried and uninstalled like any other
   program
