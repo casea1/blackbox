@@ -367,6 +367,39 @@ jobs:
           sudo mv /srv/inbox-away /srv/inbox
           sudo ./blackbox uninstall
           sudo test ! -e /etc/systemd/system/blackbox-send.service
+      - name: "LAN: blackbox-send.service remounts a stopped sshfs mount from inside its sandbox (L12)"
+        run: |
+          # An SFTP route as sites set it up: an sshfs line in /etc/fstab.
+          sudo apt-get install -y -qq sshfs openssh-server
+          sudo systemctl start ssh
+          sudo useradd -m -s /bin/bash bbsftp
+          sudo mkdir -p /root/.ssh /home/bbsftp/.ssh
+          sudo ssh-keygen -q -t ed25519 -N '' -f /root/.ssh/bb_sftp
+          sudo cp /root/.ssh/bb_sftp.pub /home/bbsftp/.ssh/authorized_keys
+          sudo chown -R bbsftp: /home/bbsftp/.ssh /srv/inbox
+          sudo chmod 700 /home/bbsftp/.ssh
+          sudo mkdir -p /srv/blackbox-sftp
+          echo 'bbsftp@127.0.0.1:/srv/inbox /srv/blackbox-sftp fuse.sshfs noauto,IdentityFile=/root/.ssh/bb_sftp,StrictHostKeyChecking=accept-new,reconnect 0 0' | sudo tee -a /etc/fstab > /dev/null
+          # Over localhost, so no _netdev: the runner's network-online.target
+          # wait job fails. Not under /mnt: that is the runner's own (failed)
+          # mount unit.
+          sudo systemctl daemon-reload
+          sudo systemctl start 'srv-blackbox\x2dsftp.mount' || { systemctl --failed --no-pager; sudo journalctl -u 'srv-blackbox\x2dsftp.mount' --no-pager | tail -20; exit 1; }
+          sudo test -f /srv/blackbox-sftp/BLACKBOX-INBOX.txt
+          sudo rm -f /srv/inbox/*.bbx
+          sudo ./blackbox install --yes --send-to /srv/blackbox-sftp --no-first-report
+          grep -q 'ExecStartPre=-+/usr/bin/systemctl start "srv-blackbox\\\\x2dsftp.mount"' /etc/systemd/system/blackbox-send.service
+          # The collector goes away and comes back: the mount is down when the send runs.
+          sudo systemctl stop 'srv-blackbox\x2dsftp.mount'
+          if findmnt /srv/blackbox-sftp; then echo "still mounted"; exit 1; fi
+          sudo systemctl start blackbox.service || { sudo journalctl -u blackbox.service --no-pager | tail -40; exit 1; }
+          sudo systemctl start blackbox-send.service || true
+          for i in $(seq 1 60); do sudo sh -c 'ls /srv/inbox/*.bbx' >/dev/null 2>&1 && break; sleep 1; done
+          sudo sh -c 'ls /srv/inbox/*.bbx' || { echo "not delivered after the remount"; sudo journalctl -u blackbox-send.service -u 'srv-blackbox\x2dsftp.mount' --no-pager | tail -40; exit 1; }
+          # Mounted by systemd, so the mount outlives the send.
+          findmnt /srv/blackbox-sftp || { echo "the mount ended with the send"; exit 1; }
+          sudo ./blackbox uninstall
+          sudo systemctl stop 'srv-blackbox\x2dsftp.mount'
       - uses: actions/upload-artifact@v4
         with:
           name: linux-batches

@@ -203,3 +203,22 @@ func TestSudoLogAppend(t *testing.T) {
 		t.Errorf("rows:\n%s", summaries(evs))
 	}
 }
+
+// A14b: groupadd sets its temporary copy's owner and mode by file handle
+// (fchown, fchmod), so the record has no path; not rows of their own.
+// Another program doing the same still is.
+func TestAccountToolHandleWrites(t *testing.T) {
+	noPath := func(serial int, syscall, a1, exe string) []string {
+		l := sysRec(serial, syscall, "yes", "0", a1, "0", exe, "perm_mod", "")
+		l[0] = strings.Replace(l[0], "items=1", "items=0", 1)
+		return []string{l[0], l[2]}
+	}
+	var lines []string
+	lines = append(lines, noPath(1, "93", "0", "/usr/sbin/groupadd")...)   // fchown
+	lines = append(lines, noPath(2, "91", "1a4", "/usr/sbin/groupadd")...) // fchmod 0644
+	lines = append(lines, noPath(3, "91", "1ff", "/usr/bin/python3.12")...)
+	evs := translateLines(t, Users{1001: "jsmith"}, lines...)
+	if got := summaries(evs); len(evs) != 1 || !strings.Contains(got, "(using python3.12) to 0777") {
+		t.Errorf("rows:\n%s", got)
+	}
+}

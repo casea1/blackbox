@@ -115,6 +115,11 @@ func orUnknownOp(op string) string {
 }
 
 // stopsAuditd matches a command that stops or restarts the audit service.
+//
+// StopsAuditd is exported for the report, which joins an auditd stop to the
+// person's sudo command from the journal (U8b, sudo-rs).
+func StopsAuditd(cmd string) bool { return stopsAuditd.MatchString(cmd) }
+
 var stopsAuditd = regexp.MustCompile(`\b(systemctl\s+(\S+\s+)*(stop|kill|restart|try-restart|reload-or-restart)\s+(\S+\s+)*auditd(\.service)?\b|service\s+auditd\s+(stop|restart|condrestart|force-reload)\b|(pkill|killall)\s+(\S+\s+)*auditd\b)`)
 
 // stoppedBy finds the person whose command stopped the audit service:

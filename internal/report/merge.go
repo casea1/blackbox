@@ -23,11 +23,18 @@
 //     on a computer whose Blackbox records its changes, the command
 //     changed nothing and says so ("not applied").
 //  4c. appPackageRules: firewall rules Windows itself registers for its
-//     built-in app packages ("@{Microsoft.…}", by NT SERVICE\mpssvc) are
-//     one Info row per computer and day (A13).
+//     built-in apps and services (by the firewall service, by name or SID,
+//     or SYSTEM) are one Info row per computer and day (A13, A13b-d).
+//  4d. defenderState: Defender's own bookkeeping in its settings (5007) is
+//     one Info row per computer and day (A16).
+//  4e. windowsSetup: the out-of-box setup's defaultuser0 and MINWINPC
+//     events are one Info "Windows setup" row per computer and day (A17).
 //  5. attributeDevices: a USB device is attributed to whoever mounted it, or
 //     to the person at the console.
-//  6. shutdownStops: auditd stopping in a reboot or shutdown is routine.
+//  6. auditStoppedBy: auditd stopped "by root" (or by no one) right after a
+//     person's sudo command that stops it is theirs; with sudo-rs that
+//     command is only in the journal (U8b).
+//     shutdownStops: auditd stopping in a reboot or shutdown is routine.
 //
 // Some merging happens earlier, when the logs are read (package linuxlog):
 // the login message and root-shell startup scripts folded into one row
@@ -48,6 +55,7 @@ import (
 	"time"
 
 	"github.com/casea1/blackbox/internal/event"
+	"github.com/casea1/blackbox/internal/linuxlog"
 	"github.com/casea1/blackbox/internal/store"
 	"github.com/casea1/blackbox/internal/winevt"
 )
@@ -719,6 +727,33 @@ var rebootCmd = regexp.MustCompile(`(^|/|\s)(reboot|poweroff|halt|shutdown)(\s|$
 // shutdown (a SYSTEM_SHUTDOWN record, or a reboot command, on the same
 // computer within minutes) as routine: it is how every planned restart
 // ends, not someone switching auditing off. A stop with neither stays High.
+func auditStoppedBy(events []*event.Event) {
+	for i, e := range events {
+		if e.Action != "audit_stopped" || e.OS == "windows" || (person(e.User) && !isRoot(e.User)) {
+			continue
+		}
+		var by *event.Event
+		for j := i - 1; j >= 0 && e.Time.Sub(events[j].Time) <= 2*time.Minute && by == nil; j-- {
+			if x := events[j]; x.Host == e.Host && person(x.User) && !isRoot(x.User) && linuxlog.StopsAuditd(x.Command) {
+				by = x
+			}
+		}
+		for j := i + 1; j < len(events) && events[j].Time.Sub(e.Time) <= 5*time.Second && by == nil; j++ {
+			if x := events[j]; x.Host == e.Host && person(x.User) && !isRoot(x.User) && linuxlog.StopsAuditd(x.Command) {
+				by = x
+			}
+		}
+		if by == nil {
+			continue
+		}
+		e.User, e.Command, e.Severity = by.User, by.Command, event.SevHigh
+		e.Summary = fmt.Sprintf("The audit service (auditd) was stopped by %s (%s) — events are not recorded while it is stopped.", by.User, by.Command)
+		e.AddDetail("Command", by.Command)
+	}
+}
+
+func isRoot(u string) bool { return strings.EqualFold(u, "root") }
+
 func shutdownStops(events []*event.Event) {
 	for i, e := range events {
 		if e.Action != "audit_stopped" || e.Severity != event.SevHigh || e.OS == "windows" {
