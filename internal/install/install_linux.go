@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/casea1/blackbox/internal/config"
 )
@@ -258,3 +259,7 @@ func InstalledVersion() string { return "" }
 
 // VirtualBoxInstalled is only asked on Windows (the collector's host).
 func VirtualBoxInstalled() bool { return false }
+
+// RefreshSchedule has nothing to do here: systemd timers follow the clock
+// when it changes (T1).
+func RefreshSchedule(time.Duration) error { return nil }

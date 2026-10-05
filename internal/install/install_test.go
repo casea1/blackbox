@@ -141,3 +141,14 @@ func TestScheduleWhat(t *testing.T) {
 		t.Errorf("standalone: %q", s)
 	}
 }
+
+// T1: the repeating trigger starts at a fixed time in the past, so a clock
+// that was ahead at install can't leave the next run hours away.
+func TestTaskStartsInThePast(t *testing.T) {
+	if TaskStart.Year() > 2001 {
+		t.Errorf("task start %s", TaskStart)
+	}
+	if x := taskXML(`C:\Program Files\Blackbox\blackbox.exe`, 15*time.Minute, TaskStart); !strings.Contains(x, "<StartBoundary>2000-01-01T00:05:00</StartBoundary>") {
+		t.Errorf("trigger:\n%s", x)
+	}
+}

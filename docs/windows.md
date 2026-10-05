@@ -18,7 +18,7 @@ there is no .NET, Go or other runtime to install.
 |---|---|
 | This computer | How will this computer's audit events be reviewed? On this computer, send to a collector, or this is the collector |
 | Reports | Site name; daily, weekly or monthly; when each report is ready (default Wednesday 00:00); where reports are saved, with **Browse…** |
-| Collection | How often events are collected (every hour is recommended), and whether to show the status icon to administrators |
+| Collection | How often events are collected (every 15 minutes is recommended), and whether to show the status icon to administrators |
 | Ready to install | A summary of your answers, and **Install** |
 
 The last page shows each step as it happens: the install, the audit
@@ -53,8 +53,9 @@ Setup then:
 - creates `C:\ProgramData\Blackbox\`, readable only by Administrators and
   SYSTEM, which holds the settings, reports and collected events
 - registers the scheduled task **Blackbox Audit Collection**, which runs as
-  SYSTEM every hour and at startup, and catches up after the system has
-  been off
+  SYSTEM every 15 minutes (by default) and at startup, and catches up
+  after the system has been off. Its repeating trigger starts in 2000, so
+  its runs follow the clock even if the clock is corrected after install
 - adds **Blackbox** to Settings → Apps (and Programs and Features), with
   its version, so it can be inventoried and uninstalled like any other
   program
@@ -265,11 +266,13 @@ What is checked:
   additions: File System, Handle Manipulation and Registry (success and
   failure), and Process Creation failures (Windows 11).
 - **Security log size**:
-  - Windows 11 (WN11-AU-000505): it must hold **at least a week** of
-    events. Blackbox measures this: from the oldest event when the log is
-    full, or from how fast it is filling when it is not (once it has a day
-    of events). If it falls short, the fix shows a size that would hold a
-    week. DISA's example size is 5,120,000 KB (about 5 GB).
+  - Windows 11 (WN11-AU-000505, V2R8): it must hold at least a week of
+    events, and the STIG's check fails a maximum size below
+    **5,120,000 KB** (about 5 GB; earlier releases said 1,024,000 KB).
+    Blackbox fails it below that size. The 20 MB default is far too small
+    with the STIG's File System auditing: one Windows Update run
+    overwrote it many times within an hour in testing (94,565 events
+    lost).
   - Windows Server 2025 (WN25-CC-000280): at least 196,608 KB.
 - **System and Application log sizes**: at least 32,768 KB.
 - **Command line in process creation events.** Without it, elevated

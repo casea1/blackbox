@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"time"
 )
 
 var errLinux = errors.New("install is supported on Windows and Linux; on this system use `blackbox report` with exported log files")
@@ -73,3 +74,7 @@ func InstalledVersion() string { return "" }
 
 // VirtualBoxInstalled is only asked on Windows (the collector's host).
 func VirtualBoxInstalled() bool { return false }
+
+// RefreshSchedule has nothing to do here: systemd timers follow the clock
+// when it changes (T1).
+func RefreshSchedule(time.Duration) error { return nil }

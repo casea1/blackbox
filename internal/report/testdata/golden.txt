@@ -57,7 +57,7 @@
 2026-09-28T13:12:00Z medium WS-07 other_security service_installed  | A new service was installed: UpdaterSvc (C:\Users\Public\svc.exe) by admin_jd.
 2026-09-28T13:15:30Z info ubu-audit logon_activity logon success | admin_jd logged on via SSH from 10.1.1.20.
 2026-09-28T13:20:00Z high WS-07 audit_integrity audit_policy_changed  | Audit policy for "Removable Storage" was changed by admin_jd: success auditing removed, failure auditing removed.
-2026-09-28T13:25:30Z medium WS-07 audit_integrity time_changed  | System time was changed by admin_jd, moving the clock 2.0 hours back.
+2026-09-28T13:25:30Z high WS-07 audit_integrity time_changed  | System time was changed by admin_jd, moving the clock 2.0 hours back.
 2026-09-28T14:02:01Z low ubu-audit failed_logon logon_failed failure | Failed logon for root via SSH from 10.1.1.99 — wrong password or key.
 2026-09-28T14:02:09Z low ubu-audit failed_logon logon_failed failure | Failed logon for root via SSH from 10.1.1.99 — wrong password or key.
 2026-09-28T14:02:17Z low ubu-audit failed_logon logon_failed failure | Failed logon for root via SSH from 10.1.1.99 — wrong password or key.
@@ -127,8 +127,8 @@
     "WS-07"
   ],
   "events": 102,
-  "high": 24,
-  "medium": 23,
+  "high": 25,
+  "medium": 22,
   "by_category": {
     "account_changes": 10,
     "audit_integrity": 16,
@@ -228,7 +228,7 @@
     "detections": 11,
     "events": 102,
     "failed_logons": 26,
-    "high_events": 15,
+    "high_events": 16,
     "late_events": 0,
     "lockouts": 2,
     "logs_cleared": 2,

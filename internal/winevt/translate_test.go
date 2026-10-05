@@ -59,7 +59,7 @@ func TestTranslateSample(t *testing.T) {
 		{"4688@13:01:40", event.CatPrivileged, event.SevLow, "admin_jd ran with administrator rights: net  user tempuser"},
 		{"4688@16:38:00", event.CatPrivileged, event.SevHigh, "can clear logs or weaken auditing"},
 		{"4719@13:20:00", event.CatIntegrity, event.SevHigh, `Audit policy for "Removable Storage" was changed by admin_jd`},
-		{"4616@13:25:30", event.CatIntegrity, event.SevMedium, "moving the clock 2.0 hours back"},
+		{"4616@13:25:30", event.CatIntegrity, event.SevHigh, "moving the clock 2.0 hours back"}, // back: High (T3)
 		{"1102@16:40:00", event.CatIntegrity, event.SevHigh, "The Security log was cleared by admin_jd."},
 		{"104@16:38:00", event.CatIntegrity, event.SevHigh, "The Application log was cleared by admin_jd."},
 		{"4648@15:40:12", event.CatPrivileged, event.SevMedium, "jsmith used the credentials of admin_jd (RunAs"},

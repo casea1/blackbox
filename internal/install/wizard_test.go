@@ -79,7 +79,7 @@ func TestWizardDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Answers{Role: RoleStandalone, ReportEvery: "weekly", ReportAt: config.DefaultReportAt, CollectEvery: time.Hour}
+	want := Answers{Role: RoleStandalone, ReportEvery: "weekly", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute} // C6
 	if !reflect.DeepEqual(a, want) {
 		t.Errorf("got %+v, want %+v", a, want)
 	}
@@ -102,7 +102,7 @@ func TestWizardAnswersAndRetries(t *testing.T) {
 		abs("/srv/readonly"),    // exists but not writable: asked again
 		abs("/srv/new-reports"), // does not exist…
 		"y",                     // …create it
-		"3",                     // every 15 minutes
+		"1",                     // every 15 minutes
 		"",                      // confirm
 	)
 	a, out, err := runWizard(t, input, Answers{}, fakeEnv{existing: map[string]bool{abs("/srv/readonly"): true}}, false)
@@ -162,7 +162,7 @@ func TestWizardSenderFindsVirtualBoxFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Answers{Role: RoleSender, ReportEvery: "weekly", ReportAt: config.DefaultReportAt, SendTo: sf, CollectEvery: time.Hour}
+	want := Answers{Role: RoleSender, ReportEvery: "weekly", ReportAt: config.DefaultReportAt, SendTo: sf, CollectEvery: 15 * time.Minute}
 	if !reflect.DeepEqual(a, want) {
 		t.Errorf("got %+v, want %+v", a, want)
 	}
@@ -235,7 +235,7 @@ func TestWizardWindowsCollector(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	want := Answers{Role: RoleCollector, Site: "Lab 3", ReportEvery: "daily", ReportAt: config.DefaultReportAt, CollectEvery: time.Hour,
+	want := Answers{Role: RoleCollector, Site: "Lab 3", ReportEvery: "daily", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute,
 		Inbox: abs("/srv/blackbox-inbox"), ShareInbox: true, InboxWriters: []string{"vmuser"}, ShareWriters: []string{"bbsend"}, Tray: true}
 	if !reflect.DeepEqual(a, want) {
 		t.Errorf("got %+v, want %+v", a, want)

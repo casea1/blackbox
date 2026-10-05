@@ -14,7 +14,7 @@ file:
 | `report_every` | `weekly` | `daily`, `weekly` or `monthly` |
 | `report_at` | `Wednesday 00:00` | When each report period ends and the report is produced. Weekly: a day and time; `Wednesday 00:00` covers each week up to Tuesday night, so a fresh report is ready on Wednesday morning. Daily and monthly: a time such as `06:00` (monthly periods end on the 1st) |
 | `report_dir` | *(blank = default)* | Folder for reports. Any full path Blackbox can write to, including one you have locked down |
-| `collect_every` | `1h` | How often events are collected. To change it, run the installer again, which updates the schedule |
+| `collect_every` | `15m` | How often events are collected (15 minutes since 0.12: a STIG-audited Security log can fill within an hour). To change it, run the installer again, which updates the schedule |
 | `retention_days` | `0` | Days to keep reports and collected events; `0` keeps them forever. A report folder holds the original logs (the daily archives) for its period, so they are deleted with it. Below 365 days, `config set` asks you to type `yes` (or add `--yes` in a script), since a year is the usual retention (AU-11). The next scheduled report lists the reports that were removed |
 | `exclude_users` | *(none)* | Accounts whose routine activity is left out of reports, e.g. `svc_backup, CORP\svc_scanner`. Failed logons against them, changes to them and anything Medium or above are always shown (see [Exclusions](reports.md#detections)) |
 | `exclude_processes` | *(none)* | Programs to leave out, by name or full path, e.g. `scan.exe` |

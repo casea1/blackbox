@@ -165,6 +165,13 @@ const SendersGroup = "Blackbox Senders"
 // TaskName is the Windows scheduled task name.
 const TaskName = "Blackbox Audit Collection"
 
+// TaskStart is the start of the collection task's repeating trigger: a
+// fixed time in the past, so the repetitions follow the clock as it is now
+// (T1). A start taken from the clock at install time stayed in the future
+// when a fast clock was corrected, and collection paused until the clock
+// caught up.
+var TaskStart = time.Date(2000, 1, 1, 0, 5, 0, 0, time.Local)
+
 // taskXML is a Task Scheduler definition: run as SYSTEM with highest
 // privileges, every interval indefinitely, catch up after the system was
 // off, and never run two copies at once.

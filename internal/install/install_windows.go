@@ -89,15 +89,8 @@ func Install(opt Options) error {
 	}
 
 	// 4. Scheduled task.
-	start := time.Now().Truncate(time.Hour).Add(5 * time.Minute)
-	xml := taskXML(dst, opt.CollectEvery, start)
-	tmp := filepath.Join(data, "blackbox-task.xml")
-	if err := os.WriteFile(tmp, utf16LE(xml), 0o640); err != nil {
+	if err := registerTask(dst, data, opt.CollectEvery); err != nil {
 		return err
-	}
-	defer os.Remove(tmp)
-	if out, err := hidden.Command("schtasks.exe", "/Create", "/TN", TaskName, "/XML", tmp, "/F").CombinedOutput(); err != nil {
-		return fmt.Errorf("create scheduled task: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 	logf("Scheduled task:      \"%s\" — collects %s as SYSTEM; %s", TaskName, EveryText(opt.CollectEvery), scheduleWhat(opt))
 
@@ -253,4 +246,28 @@ func VirtualBoxInstalled() bool {
 		}
 	}
 	return false
+}
+
+// registerTask creates (or replaces) the collection task.
+func registerTask(exe, data string, every time.Duration) error {
+	xml := taskXML(exe, every, TaskStart)
+	tmp := filepath.Join(data, "blackbox-task.xml")
+	if err := os.WriteFile(tmp, utf16LE(xml), 0o640); err != nil {
+		return err
+	}
+	defer os.Remove(tmp)
+	if out, err := hidden.Command("schtasks.exe", "/Create", "/TN", TaskName, "/XML", tmp, "/F").CombinedOutput(); err != nil {
+		return fmt.Errorf("create scheduled task: %v: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// RefreshSchedule registers the collection task again, so its next run
+// follows the clock as it is now (T1). A run calls it when it finds the
+// clock was moved back. Nothing is done if Blackbox is not installed.
+func RefreshSchedule(every time.Duration) error {
+	if _, err := os.Stat(ProgramPath()); err != nil {
+		return nil
+	}
+	return registerTask(ProgramPath(), config.DefaultDataDir(), every)
 }
