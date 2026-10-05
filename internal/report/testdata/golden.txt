@@ -238,5 +238,68 @@
     "privileged_actions": 15,
     "systems_reporting": 4,
     "usb_events": 14
-  }
+  },
+  "people": [
+    {
+      "key": "admin_jd",
+      "name": "admin_jd",
+      "privileged_actions": 11,
+      "logons": 2,
+      "detections": 6
+    },
+    {
+      "key": "mjones",
+      "name": "mjones",
+      "logons": 2,
+      "failed_logons": 8,
+      "detections": 2
+    },
+    {
+      "key": "administrator",
+      "name": "administrator",
+      "failed_logons": 6,
+      "detections": 2
+    },
+    {
+      "key": "jsmith",
+      "name": "jsmith",
+      "privileged_actions": 3,
+      "logons": 3,
+      "failed_logons": 1,
+      "detections": 1
+    },
+    {
+      "key": "root",
+      "name": "root",
+      "failed_logons": 7,
+      "detections": 1
+    },
+    {
+      "key": "bob",
+      "name": "bob",
+      "failed_logons": 1,
+      "detections": 1
+    },
+    {
+      "key": "guest",
+      "name": "guest",
+      "failed_logons": 1,
+      "detections": 1
+    },
+    {
+      "key": "austin",
+      "name": "austin",
+      "privileged_actions": 1,
+      "logons": 2
+    },
+    {
+      "key": "(unknown user name)",
+      "name": "(unknown user name)",
+      "failed_logons": 2
+    },
+    {
+      "key": "uid 1001",
+      "name": "uid 1001"
+    }
+  ]
 }

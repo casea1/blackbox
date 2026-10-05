@@ -109,14 +109,14 @@ local folder or a file share). Its pages:
 
 | Page | Shows |
 |---|---|
-| **Overview** | Stat cards with twelve-week trends, important events, every system's health, the latest detections |
+| **Overview** | Stat cards with twelve-week trends, important events, every system's health (antivirus definitions included), the latest detections, and **What changed**: the biggest moves against earlier reports, across the network, each system and each person |
 | **Systems** | Every computer (servers, workstations, VMs), problems first: its collection this period, health, activity against a typical system, its detections |
 | **Detections** | Each detection explained: why it was flagged, what happened in order, who was involved, and the exact events |
 | **Search** | "Show [events] by [person] on [systems] during [days] containing [text]", plus eight common searches |
-| **People** | Every account that did something, grouped Needs a look / Administrators / Service accounts / Users, with when they were active |
+| **People** | Every account that did something, grouped Needs a look / Administrators / Service accounts / Users, with when they were active (click an hour for its events or detections) and their activity over time |
 | **Event pages** | Privileged activity, USB & removable, Failed logons, Accounts & groups, Audit integrity, PowerShell, Other security and Logon activity: stat cards, events per day, top six, what was flagged, and every event of that kind, filterable, with the full original event one click away |
-| **Audit health** | Every system against every STIG audit check and Defender's definitions date, the gaps and where to fix them in Group Policy, and each system's settings (Blackbox only reports these; it never changes them) |
-| **Trends** | This week against the last twelve, and detections per system by week |
+| **Audit health** | Every system against every STIG audit check, the antivirus on each (Defender or ClamAV) with its definitions date, the gaps and where to fix them in Group Policy, and each system's settings (Blackbox only reports these; it never changes them) |
+| **Trends** | This week against the last twelve, detections per system by week, and privileged actions per person by week |
 | **Original logs** | The raw logs the report was made from, one zip per system, with hashes |
 
 Export prints a one-page summary (or saves it as PDF), or saves the

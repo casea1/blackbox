@@ -28,6 +28,7 @@ type PersonView struct {
 	Notable             []CheckLine
 	NotableCount        int
 	Heat                template.HTML
+	Trend               *PersonTrend // activity over the earlier reports
 	Used                []TopItem
 	Detections          []DetectionCard
 	group               int
@@ -78,6 +79,11 @@ type personData struct {
 }
 
 func (r *Report) peoplePage() *PeoplePage {
+	totals := map[string]PersonSummary{}
+	for _, t := range r.peopleTotals() {
+		totals[t.Key] = t
+	}
+	labels := r.weekLabels()
 	people := map[string]*personData{}
 	get := func(u string) *personData {
 		k := personKey(u)
@@ -239,6 +245,11 @@ func (r *Report) peoplePage() *PeoplePage {
 		}
 		v.Notable, v.NotableCount = r.notable(p.notable)
 		v.Heat = heatmap(p.heat, p.hot, k)
+		now, ok := totals[k]
+		if !ok {
+			now = PersonSummary{Key: k}
+		}
+		v.Trend = r.personTrend(now, labels)
 		type hc struct {
 			h string
 			n int

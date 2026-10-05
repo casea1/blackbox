@@ -510,3 +510,10 @@ a.ck2 b::after{content:" ›";color:#9AA5BF;font-weight:400}
 .flagnote{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#4A5675;padding:0 6px}.flagnote b{color:#8F4F00}
 svg a.hs{cursor:pointer}svg a.hs:hover rect{stroke:#0B1630;stroke-width:1.2}
 a.panel.ec{color:inherit;text-decoration:none}
+.chg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 18px}
+.chg a{display:flex;gap:9px;align-items:baseline;padding:7px 4px;border-bottom:1px solid rgba(0,30,98,.07);color:#0B1630;text-decoration:none;font-size:13.5px}
+.chg a:hover{background:rgba(11,95,255,.05)}.chg i{font-style:normal;font-size:11px;width:12px;flex:none}
+.chg a.c-up i{color:#C22020}.chg a.c-dn i{color:#147A3D}.chg a.c-new i{color:#A35A00}
+.otime{display:grid;grid-template-columns:320px 1fr;gap:20px;align-items:start}.otc{padding-top:6px}
+@media (max-width:1100px){.otime{grid-template-columns:1fr}.otc{max-width:360px}}
+@media (max-width:900px){.chg{grid-template-columns:1fr}}

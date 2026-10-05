@@ -49,6 +49,9 @@ type Summary struct {
 	Archives    []ArchiveJSON  `json:"log_archives,omitempty"`
 	// Metrics are the counts the Trends page charts (see metrics.go).
 	Metrics map[string]int `json:"metrics,omitempty"`
+	// People are per-account counts, for each person's activity over time
+	// (see peopletrends.go). Nil in reports made before they were kept.
+	People []PersonSummary `json:"people"`
 }
 
 // ArchiveJSON is one archive of original logs in summary.json.
@@ -86,7 +89,10 @@ type SystemStatus struct {
 func (r *Report) summary() Summary {
 	s := Summary{Site: r.Site, WindowStart: r.WindowStart, WindowEnd: r.WindowEnd,
 		Generated: r.Generated, Hosts: r.Hosts, Events: len(r.Events), ByCategory: map[string]int{}, Interim: r.Interim,
-		LogClears: r.Health.LogClears, Version: r.Version, Source: r.Source, Metrics: r.metrics()}
+		LogClears: r.Health.LogClears, Version: r.Version, Source: r.Source, Metrics: r.metrics(), People: r.peopleTotals()}
+	if s.People == nil {
+		s.People = []PersonSummary{} // kept, but nobody active: not "before people were kept"
+	}
 	if s.WindowStart.IsZero() {
 		s.WindowStart = r.FirstEvent
 	}

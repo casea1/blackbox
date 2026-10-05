@@ -83,6 +83,8 @@ type Overview struct {
 	Detections  []DetectionCard
 	High, Med   int
 	Trends      []SmallTrend
+	Changes     []Change // What changed: the biggest moves against earlier reports
+	HistoryN    int      // earlier reports compared with
 	Standalone  bool
 }
 
@@ -300,6 +302,7 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	hs := r.series(MHighEvents, m[MHighEvents])
 	fl := r.series(MFailedLogons, m[MFailedLogons])
 	pa := r.series(MPrivileged, m[MPrivileged])
+	o.Changes, o.HistoryN = r.whatChanged(), len(r.History)
 	o.Trends = []SmallTrend{
 		{Title: "High-severity events", Note: trendNote(hs), Chart: sparkline(hs, true, 300, 70)},
 		{Title: "Failed logons", Note: trendNote(fl), Chart: sparkline(fl, false, 300, 70)},
