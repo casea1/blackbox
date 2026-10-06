@@ -426,11 +426,25 @@ its daily settings check by Blackbox 0.13 or later:
   with a key or through sudo; one whose shell refuses logons, or that has
   expired, is disabled. Nothing about passwords is read or kept.
 
-Each system's drives, with their serial numbers, are in its row. Click a system for its accounts; click an account to search its
-events. **Export > Inventory as CSV** saves every system, drive and
-account, one per line. Systems with no inventory yet are named under the
-table with the reason: it has sent nothing since a given time, it runs a
-Blackbox from before 0.13, or it has sent no settings check yet.
+The page has three tabs, each with a filter box:
+
+- **Systems**: one row per system (make, model and serial, operating
+  system, processor and memory, how many drives and accounts, how many
+  administrators). Click a row, or press Enter on it, to open that
+  system's drives (with serial numbers) and accounts right under it;
+  several can be open at once, and **Expand all** opens every one. A link
+  to `#inventory/WS-07` opens that system.
+- **Drives**: every drive on every system, with its serial number.
+- **Accounts**: every account on every system, with **Administrators** and
+  **Enabled** filters, so all administrator accounts on the network are in
+  one list. Click an account to search its events.
+
+The four tiles at the top open their tab (Administrators opens Accounts
+filtered to administrators). **Export > Inventory as CSV** saves every
+system, drive and account, one per line. Systems with no inventory yet
+are named under the table with the reason: it has sent nothing since a
+given time, it runs a Blackbox from before 0.13, or it has sent no
+settings check yet.
 
 How it is read: on Windows, one PowerShell query of CIM
 (`Win32_ComputerSystem`, `Win32_BIOS`, `Win32_DiskDrive`,

@@ -144,16 +144,96 @@
     }
     var to = null;
     if (id === 'health' || id === 'logs') to = showHealth(view, decodeURIComponent(location.hash.split('/').slice(1).join('/')));
+    else if (id === 'inventory') {
+      var ik = decodeURIComponent(location.hash.split('/').slice(1).join('/'));
+      if (ik) to = inv.open(ik);
+    }
     else if (view.querySelector('[data-pick]')) {
       var pk = decodeURIComponent(location.hash.split('/').slice(1).join('/'));
       showPick(view, pk);
-      // Inventory: a system named in the link scrolls to its details.
-      if (id === 'inventory' && pk) to = view.querySelector('[data-pane]:not([hidden])');
+      // Inventory: a system named in the link opens with its details.
+      if (id === 'inventory' && pk) to = inv.open(pk);
     }
     if (to) to.scrollIntoView();
     else window.scrollTo(0, 0);
     scrollCues();
   }
+
+  // ---- Inventory: Systems, Drives and Accounts tabs; a system's row opens
+  // its drives and accounts under it; a filter for each tab (UI15) ----
+  var inv = (function () {
+    var root = document.querySelector('[data-inv]');
+    var acct = '';
+    function q(sel) { return root ? root.querySelectorAll(sel) : []; }
+    function active() { var t = root && root.querySelector('[data-invtab].on'); return t ? t.getAttribute('data-invtab') : 'systems'; }
+    function filter() {
+      if (!root) return;
+      var f = (root.querySelector('[data-invfind]').value || '').toLowerCase(), shown = 0, tab = active();
+      if (tab === 'systems') {
+        q('[data-invsys]').forEach(function (b) {
+          var ok = !f || b.textContent.toLowerCase().indexOf(f) >= 0;
+          b.hidden = !ok; if (ok) shown++;
+        });
+      } else {
+        root.querySelectorAll('[data-invsec="' + tab + '"] [data-invitem]').forEach(function (r) {
+          var ok = (!f || r.textContent.toLowerCase().indexOf(f) >= 0) && (tab !== 'accounts' || !acct || r.hasAttribute('data-' + acct));
+          r.hidden = !ok; if (ok) shown++;
+        });
+      }
+      root.querySelector('[data-invnone]').hidden = shown > 0;
+    }
+    function tab(name, accounts) {
+      if (!root) return null;
+      q('[data-invtab]').forEach(function (t) { t.classList.toggle('on', t.getAttribute('data-invtab') === name); });
+      q('[data-invsec]').forEach(function (s) { s.hidden = s.getAttribute('data-invsec') !== name; });
+      if (accounts !== undefined) {
+        acct = accounts;
+        q('[data-invacct]').forEach(function (c) { c.classList.toggle('on', c.getAttribute('data-invacct') === acct); });
+      }
+      filter();
+      return root;
+    }
+    function toggle(row, open) {
+      var d = row.nextElementSibling;
+      if (open === undefined) open = d.hidden;
+      d.hidden = !open;
+      row.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    if (root) {
+      root.addEventListener('click', function (e) {
+        var t = e.target.closest('[data-invtab]');
+        if (t) { tab(t.getAttribute('data-invtab')); return; }
+        var a = e.target.closest('[data-invacct]');
+        if (a) { tab('accounts', a.getAttribute('data-invacct')); return; }
+        if (e.target.closest('[data-invexpand]')) {
+          var b = e.target.closest('[data-invexpand]'), open = b.textContent.indexOf('Expand') === 0;
+          q('[data-invtoggle]').forEach(function (r) { toggle(r, open); });
+          b.textContent = open ? 'Collapse all' : 'Expand all';
+          return;
+        }
+        var r = e.target.closest('[data-invtoggle]');
+        if (r && !e.target.closest('a')) toggle(r);
+      });
+      root.addEventListener('keydown', function (e) {
+        var r = e.target.closest('[data-invtoggle]');
+        if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(r); }
+      });
+      root.querySelector('[data-invfind]').addEventListener('input', filter);
+    }
+    return {
+      tab: tab,
+      // open shows a system's row with its details, for a link.
+      open: function (host) {
+        if (!root) return null;
+        tab('systems');
+        var b = null;
+        q('[data-invsys]').forEach(function (x) { if (x.getAttribute('data-invsys').toLowerCase() === host.toLowerCase()) b = x; });
+        if (!b) return null;
+        toggle(b.querySelector('[data-invtoggle]'), true);
+        return b;
+      }
+    };
+  })();
 
   // A wide table that still scrolls sideways says "more →" until its end
   // is in view (UI3).
@@ -751,6 +831,13 @@
       return;
     }
     var sc = e.target.closest('[data-scroll]');
+    if (sc && sc.getAttribute('data-scroll').indexOf('inv-tab-') === 0) {
+      // Inventory's tiles open their tab: Systems, Drives, Accounts, Administrators.
+      e.preventDefault();
+      var name = sc.getAttribute('data-scroll').slice(8), el = name === 'admin' ? inv.tab('accounts', 'admin') : inv.tab(name, name === 'accounts' ? '' : undefined);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
     if (sc) {
       e.preventDefault();
       var el = document.getElementById(sc.getAttribute('data-scroll'));

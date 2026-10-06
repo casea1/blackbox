@@ -205,3 +205,22 @@ func TestHealthFoldAndJump(t *testing.T) {
 		t.Errorf("report lacks %q", want)
 	}
 }
+
+// UI13: the section bar counts antivirus not checked ("None found · Not
+// checked"), never "all current".
+func TestJumpCountsAVNotChecked(t *testing.T) {
+	hp := &HealthPage{AV: []AVRow{{Level: "ok"}, {Level: "warn", Status: "Not checked"}}}
+	hp.fold()
+	for _, j := range hp.Jump {
+		if j.Target == "h-av" && (j.Note != "1 not checked" || j.Level != "warn") {
+			t.Errorf("antivirus: %+v", j)
+		}
+	}
+	hp = &HealthPage{AV: []AVRow{{Level: "bad"}, {Level: "warn"}, {Level: "ok"}}}
+	hp.fold()
+	for _, j := range hp.Jump {
+		if j.Target == "h-av" && (j.Note != "1 out of date · 1 not checked" || j.Level != "bad") {
+			t.Errorf("antivirus: %+v", j)
+		}
+	}
+}
