@@ -259,6 +259,13 @@ func importBatch(st *store.Store, b *Batch, now time.Time) (int, bool, error) {
 	}
 	// The sender went to another collector before this batch (L13): the
 	// batches before it are not missing here.
+	// L13b: a gap noted when this collector first heard from the sender,
+	// from its batch 1, is its batches going elsewhere before (recorded
+	// before L13 marked them): cleared once its batches say where its
+	// earlier batches went.
+	if b.Earlier != "" || b.FirstSeq > 1 {
+		snd.Missing = dropFirstContact(snd.Missing, snd.FirstSeen)
+	}
 	if f := b.FirstSeq; f > 1 && b.Seq >= f {
 		snd.Missing = dropBelow(snd.Missing, f)
 		if snd.LastSeq < f-1 {
@@ -392,6 +399,19 @@ func dropBelow(gaps []store.SeqGap, first uint64) []store.SeqGap {
 		}
 		if g.From < first {
 			g.From = first
+		}
+		out = append(out, g)
+	}
+	return out
+}
+
+// dropFirstContact removes a gap from batch 1 noted when the sender was
+// first heard from (within a minute of first seen).
+func dropFirstContact(gaps []store.SeqGap, first time.Time) []store.SeqGap {
+	var out []store.SeqGap
+	for _, g := range gaps {
+		if g.From == 1 && !first.IsZero() && g.Noted.Sub(first) < time.Minute && first.Sub(g.Noted) < time.Minute {
+			continue
 		}
 		out = append(out, g)
 	}

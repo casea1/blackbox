@@ -66,7 +66,7 @@ type SelfChange struct {
 	Old     string
 	New     string
 	Version string // the version installed (install and upgrade)
-	Kind    string // "setting", "installed", "upgraded", "removed", "resent"
+	Kind    string // "setting", "installed", "upgraded", "removed", "resent", "gap_accepted"
 	// For "resent": the batches (New, "214-219") and where to (Old).
 }
 
@@ -89,6 +89,8 @@ func (c SelfChange) Message() string {
 		return fmt.Sprintf("Blackbox was removed by %s (%s).", who, c.Program)
 	case "resent":
 		return fmt.Sprintf("Blackbox batches %s were sent again to %s by %s (%s).", c.New, c.Old, who, c.Program)
+	case "gap_accepted":
+		return fmt.Sprintf("Blackbox batches %s from %s were accepted as not arriving by %s (%s): %s", c.New, c.Setting, who, c.Program, c.Old)
 	}
 	return fmt.Sprintf("Blackbox setting %s changed from %q to %q by %s (%s).", c.Setting, c.Old, c.New, who, c.Program)
 }
@@ -106,6 +108,7 @@ var (
 	selfUpgradeRE = regexp.MustCompile(`^Blackbox was upgraded from (.+) to (\S+) by (.+) \(([^()]+)\)\.$`)
 	selfRemoveRE  = regexp.MustCompile(`^Blackbox was removed by (.+) \(([^()]+)\)\.$`)
 	selfResendRE  = regexp.MustCompile(`^Blackbox batches (\S+) were sent again to (.+) by (.+) \(([^()]+)\)\.$`)
+	selfGapRE     = regexp.MustCompile(`^Blackbox batches (\S+) from (\S+) were accepted as not arriving by (.+?) \(([^()]+)\): (.*)$`)
 )
 
 // ParseSelfChange reads a Message back, as found in the operating system's log.
@@ -131,6 +134,9 @@ func ParseSelfChange(msg string) (SelfChange, bool) {
 	}
 	if m := selfRemoveRE.FindStringSubmatch(msg); m != nil {
 		return SelfChange{Kind: "removed", Who: m[1], Program: m[2]}, true
+	}
+	if m := selfGapRE.FindStringSubmatch(msg); m != nil {
+		return SelfChange{Kind: "gap_accepted", New: m[1], Setting: m[2], Who: m[3], Program: m[4], Old: m[5]}, true
 	}
 	if m := selfResendRE.FindStringSubmatch(msg); m != nil {
 		return SelfChange{Kind: "resent", New: m[1], Old: m[2], Who: m[3], Program: m[4]}, true
@@ -167,6 +173,14 @@ func (c SelfChange) Event() *Event {
 	case "removed":
 		e.Action, e.Severity = "blackbox_uninstalled", SevHigh
 		e.Summary = fmt.Sprintf("%s removed Blackbox (%s).", who, c.Program)
+	case "gap_accepted":
+		// L13b: an administrator accepted that batches will not arrive.
+		e.Action, e.Severity = "blackbox_gap_accepted", SevMedium
+		e.Summary = fmt.Sprintf("%s accepted that Blackbox batches %s from %s will not arrive: %s", who, c.New, c.Setting, c.Old)
+		e.Target = c.Setting
+		e.AddDetail("Batches", c.New)
+		e.AddDetail("From", c.Setting)
+		e.AddDetail("Why", c.Old)
 	case "resent":
 		// L11: recorded like a setting change. Resending only fills a gap
 		// on the collector, but it is a person moving audit data.

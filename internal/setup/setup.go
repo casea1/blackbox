@@ -44,9 +44,10 @@ func Run(o Options) (Result, error) {
 		logf = func(string, ...any) {}
 	}
 	// A collector that stops collecting (AR3): said below.
-	wasCollector := false
+	wasCollector, madeReports := false, false
 	if prev, err := config.Load(config.DefaultPath()); err == nil && o.Reinstall {
 		wasCollector = prev.Inbox != ""
+		madeReports = prev.MakesReports()
 	}
 	logf("Installing Blackbox %s", o.Version)
 	if err := install.Install(install.Options{Answers: o.Answers, Version: o.Version, Logf: logf}); err != nil {
@@ -82,7 +83,7 @@ func Run(o Options) (Result, error) {
 		logf("Collecting events and sending them to the collector (the first run reads the whole log and can take a few minutes)...")
 		r, err := a.SendNow()
 		logf("")
-		for _, l := range sentLines(r, err, cfg.SendTo) {
+		for _, l := range sentLines(r, err, cfg.SendTo, madeReports) {
 			logf("%s", l)
 		}
 	case o.NoReport:
@@ -129,8 +130,15 @@ func Run(o Options) (Result, error) {
 }
 
 // sentLines says how the first send went.
-func sentLines(r app.SendResult, err error, sendTo string) []string {
+// madeReports: before this setup, the computer made reports (a collector
+// or standalone).
+func sentLines(r app.SendResult, err error, sendTo string, madeReports bool) []string {
 	var out []string
+	if madeReports && r.FinalReport == "" && err == nil {
+		// AR3b: no scheduled report since it last sent, so nothing to
+		// finalise: what it collected meanwhile goes to the collector.
+		out = append(out, "This computer made no scheduled report since it last sent to a collector, so no final report was needed: what it collected in the meantime is sent to the collector with its events below.", "")
+	}
 	if r.FinalReport != "" {
 		// AR3: it made reports before; what it had stays in this one.
 		out = append(out, "This computer made reports before. Its final report, with everything it had collected and received and the original logs it held (its own and other computers'), is in:",
