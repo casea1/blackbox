@@ -57,7 +57,7 @@ func TestInventoryPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-	for _, want := range []string{`data-view="inventory"`, `href="#inventory"`, "Drives on WS-07", "S5GXNX0T123456A", "<b>ubu-01</b>: it has sent no settings check yet", `data-act="invcsv"`, `href="#search?user=jsmith"`} {
+	for _, want := range []string{`data-view="inventory"`, `href="#inventory"`, "Samsung SSD 980 PRO 1TB", "S5GXNX0T123456A", "Accounts on WS-07", "<b>ubu-01</b>: it has sent no settings check yet", `data-act="invcsv"`, `href="#search?user=jsmith"`} {
 		if !strings.Contains(string(html), want) {
 			t.Errorf("report lacks %q", want)
 		}

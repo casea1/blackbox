@@ -535,3 +535,15 @@ table.mxs tr.g td{position:sticky;left:0;background:transparent}
    and a long name wraps rather than being cut. */
 .map.mapfit{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 .mapfit .m{white-space:normal;overflow-wrap:anywhere;line-height:1.3}
+/* Audit health: a bar of the page's sections, so Antivirus and SCAP are
+   one click away; systems that match on every check are folded. */
+.jump{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.jump a{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:2px;padding:8px 12px;border:1px solid rgba(0,30,98,.1);background:rgba(255,255,255,.8);color:#0B1630;text-decoration:none;font-size:13px;min-width:150px}
+.jump a span{font-size:11.5px;color:#5A6785}.jump a.bad{border-left:3px solid #D12C2C}.jump a.bad span{color:#A31D1D}
+.jump a:hover{border-color:#0B5FFF}
+tr.mxfold td{padding:8px 0 2px;text-align:left;height:auto;background:none;border:0}
+tr.mxfold button{font:600 12.5px 'Public Sans';color:#0B5FFF;background:none;border:0;padding:0;cursor:pointer}
+/* Inventory: each system's drives and serial numbers in its row. */
+.invsn{font-size:11.5px;color:#5A6785;margin-top:2px}
+td.invdr>div+div{margin-top:6px}td.invdr{min-width:220px}
+td.invdr .invm{font-weight:500;color:#0B1630}

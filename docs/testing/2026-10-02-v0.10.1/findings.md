@@ -228,6 +228,15 @@ Before and after screenshots at 1280 and 1440 are in `shots/ui/` and in each pul
 
 Not verified live: the VM flag on a real VirtualBox shared folder (senders before 0.16 send none, so their VMs show as workstations until upgraded); a reinstall of the *same* version records no install, so its data-folder writes would still show (UI4). Still to re-test live from earlier rounds: a fresh Windows 11 install, the SFTP outage end to end (L12), the role-change flows (L13, L14, AR3), and exporting at every collection on a busy Windows Security log (AR2).
 
+## Owner follow-ups on 0.16.0
+
+| # | Finding | Status | Fixed in |
+|---|---|---|---|
+| UI9 | The Overview's checklist said "No events lost to log rollover" above "95,229 events were overwritten before they were collected": a failing line kept the passing title. The same on "Logs intact", "Every system reporting", "Reports on time", "Audit settings match STIG", "Original logs archived" and a system's own health list. | Confirmed | 0.16.1: a failing line says what went wrong ("Events lost to log rollover", "Logs cleared", "Not every system reporting", "Events arrived late", "Audit settings to fix", "Original logs missing", "Antivirus needs attention"), naming the systems |
+| UI10 | Antivirus and SCAP are hard to find at the bottom of Audit health: the grid takes the whole screen. Rename "Every system, every check". | Confirmed | 0.16.1: "Audit settings by system"; systems that match on every check folded under a button; a bar at the top links to each section; Antivirus folds its current systems |
+| UI11 | SCAP: show each system's Windows or Ubuntu STIG scan by default, with the other benchmarks a click away. | Request | 0.16.1: operating-system STIG first (open CAT I first), other benchmarks (Edge, Firefox, Defender…) under "Other benchmarks"; systems with no scan in one line |
+| UI12 | Inventory: drives shown in a cramped panel at the bottom of the page, beside the accounts. | Confirmed | 0.16.1: each system's drives, with serial numbers, size and type, are in its row; a click shows its accounts at full width |
+
 ## ISSO / ISSM review: audit coverage (AU-2, AU-6, AU-12)
 
 Looked at as an ISSO doing the weekly audit review, and as an assessor checking that what the STIG makes you audit is actually reviewed. Owner decisions respected and not re-raised: no review/sign-off section (reviews are recorded on a separate platform) and no classification banner (`design.md` §13).

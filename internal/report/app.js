@@ -740,6 +740,16 @@
   document.addEventListener('click', function (e) {
     var ev = e.target.closest('[data-ev]');
     if (ev && !e.target.closest('a[href]:not([href="#"])')) { e.preventDefault(); openEventAt(ev.getAttribute('data-ev')); return; }
+    var mx = e.target.closest('[data-mxshow]');
+    if (mx) {
+      // Audit health: show the systems that match on every check.
+      var ok = mx.closest('table').querySelector('[data-mxok]');
+      if (!ok) return;
+      if (!mx.hasAttribute('data-label')) mx.setAttribute('data-label', mx.textContent);
+      ok.hidden = !ok.hidden;
+      mx.textContent = mx.getAttribute(ok.hidden ? 'data-label' : 'data-hide');
+      return;
+    }
     var sc = e.target.closest('[data-scroll]');
     if (sc) {
       e.preventDefault();

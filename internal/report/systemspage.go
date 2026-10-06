@@ -213,7 +213,7 @@ func (r *Report) systemsPage() *SystemsPage {
 		v.Health = r.systemHealth(s, cleared[h], on)
 		for i := range v.Health {
 			switch v.Health[i].Title {
-			case "Logs intact":
+			case "Logs intact", "Logs cleared":
 				v.Health[i].Href = searchLink("page", "integrity", "host", s.Name)
 			case "Reporting":
 				v.Health[i].Href = "#logs/" + s.Name
@@ -402,14 +402,14 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 		if len(by) > 0 {
 			what += " by " + joinAnd(by)
 		}
-		lines = append(lines, CheckLine{Level: "bad", Icon: "file-warning", Title: "Logs intact", What: what})
+		lines = append(lines, CheckLine{Level: "bad", Icon: "file-warning", Title: "Logs cleared", What: what})
 	} else {
 		lines = append(lines, CheckLine{Level: "ok", Icon: "file-warning", Title: "Logs intact", What: "No logs cleared this period"})
 	}
 
 	switch {
 	case s.Checks == nil:
-		lines = append(lines, CheckLine{Level: "warn", Icon: "shield-check", Title: "Audit settings match STIG", What: "Not checked yet"})
+		lines = append(lines, CheckLine{Level: "warn", Icon: "shield-check", Title: "Audit settings not checked", What: "Not checked yet"})
 	case s.Checks.Fail > 0:
 		var items []string
 		for _, res := range s.Checks.Results {
@@ -425,7 +425,7 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 		if len(items) > 2 {
 			what += fmt.Sprintf("; and %d more", len(items)-2)
 		}
-		lines = append(lines, CheckLine{Level: "bad", Icon: "shield-check", Title: "Audit settings match STIG", What: what + " — see Audit health"})
+		lines = append(lines, CheckLine{Level: "bad", Icon: "shield-check", Title: "Audit settings to fix", What: what + " — see Audit health"})
 	default:
 		what := "All match"
 		if s.Checks.Baseline != "" {
@@ -472,7 +472,11 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 			if !res.Dated.IsZero() {
 				what = product + "definitions dated " + res.Dated.In(r.Location).Format("2 Jan 2006 15:04") + " (" + roughDuration(r.WindowEnd.Sub(res.Dated)) + " old)"
 			}
-			lines = append(lines, CheckLine{Level: lv, Icon: "shield", Title: "Antivirus definitions current", What: what, Href: "#health/@av"})
+			title := "Antivirus definitions current"
+			if lv != "ok" {
+				title = "Antivirus needs attention"
+			}
+			lines = append(lines, CheckLine{Level: lv, Icon: "shield", Title: title, What: what, Href: "#health/@av"})
 		}
 	}
 
@@ -485,7 +489,7 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 		if lost > 0 {
 			what = fmt.Sprintf("%s overwritten before they were collected", plural(int(lost), "event"))
 		}
-		lines = append(lines, CheckLine{Level: "bad", Icon: "history", Title: "No events lost to log rollover", What: what})
+		lines = append(lines, CheckLine{Level: "bad", Icon: "history", Title: "Events lost to log rollover", What: what})
 	} else {
 		what := "Nothing overwritten before it was collected"
 		for _, log := range []string{"Security", "audit", "auth"} {

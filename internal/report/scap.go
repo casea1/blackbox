@@ -108,6 +108,91 @@ func (r *Report) scapRows() []ScapRow {
 	return rows
 }
 
+// osBenchmarks name the operating-system STIGs: a system's main scan.
+// Others on the same system (a browser, Defender, .NET, Office) are its
+// other benchmarks.
+var osBenchmarks = []string{"windows 10", "windows 11", "windows server", "ubuntu", "red hat", "rhel", "almalinux", "alma linux",
+	"oracle linux", "rocky", "suse", "sles", "debian"}
+
+// osBenchmark says whether a benchmark title is an operating system's STIG.
+func osBenchmark(title string) bool {
+	t := strings.ToLower(title)
+	// Components that run on an operating system and carry its name
+	// ("Windows Server 2022 DNS", "Windows Defender Firewall").
+	for _, c := range []string{"defender", "firewall", "dns", "iis", "sql", "edge", "firefox", "chrome", "office", ".net", "dotnet"} {
+		if strings.Contains(t, c) {
+			return false
+		}
+	}
+	for _, o := range osBenchmarks {
+		if strings.Contains(t, o) {
+			return true
+		}
+	}
+	return false
+}
+
+// ScapView is the STIG compliance table: each system's operating-system
+// scan first, and its other benchmarks behind a click. A system with no
+// operating-system scan shows its other scans in the main table, so
+// nothing is hidden for it.
+type ScapView struct {
+	Main, Other []ScapRow
+	OtherNames  string   // "Microsoft Edge, Mozilla Firefox"
+	Missing     []string // systems with no scan, in one line below the table
+}
+
+func (r *Report) scapView() *ScapView {
+	if len(r.scapTable) == 0 {
+		return nil
+	}
+	hasOS := map[string]bool{}
+	for _, row := range r.scapTable {
+		if !row.Missing && osBenchmark(row.Benchmark) {
+			hasOS[store.SystemKey(row.Host)] = true
+		}
+	}
+	v := &ScapView{}
+	names := map[string]bool{}
+	var order []string
+	for _, row := range r.scapTable {
+		if row.Missing {
+			v.Missing = append(v.Missing, row.Host)
+			continue
+		}
+		if osBenchmark(row.Benchmark) || !hasOS[store.SystemKey(row.Host)] {
+			v.Main = append(v.Main, row)
+			continue
+		}
+		v.Other = append(v.Other, row)
+		n := benchmarkName(row.Benchmark)
+		if !names[n] {
+			names[n] = true
+			order = append(order, n)
+		}
+	}
+	v.OtherNames = strings.Join(order, ", ")
+	sort.SliceStable(v.Main, func(i, j int) bool { return scapRank(v.Main[i]) < scapRank(v.Main[j]) })
+	sort.Slice(v.Missing, func(i, j int) bool { return naturalLess(v.Missing[i], v.Missing[j]) })
+	return v
+}
+
+// scapRank puts open CAT I first, then warnings, then the rest.
+func scapRank(r ScapRow) int {
+	return map[string]int{"bad": 0, "warn": 1}[r.Level] + map[bool]int{false: 2}[r.Level == "bad" || r.Level == "warn"]
+}
+
+// benchmarkName shortens a benchmark title for a list: "Microsoft Edge
+// Security Technical Implementation Guide V2R2" is "Microsoft Edge".
+func benchmarkName(title string) string {
+	for _, cut := range []string{" Security Technical Implementation Guide", " STIG", " SCAP Benchmark"} {
+		if i := strings.Index(title, cut); i > 0 {
+			return title[:i]
+		}
+	}
+	return title
+}
+
 // scapFiles copies the results the table shows into the report folder
 // (scap/…), returning their manifest names and hashes.
 func (r *Report) scapFiles(dir string) (map[string]string, error) {
