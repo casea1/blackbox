@@ -100,7 +100,7 @@ func TestChecklistTitlesMatchResult(t *testing.T) {
 	r := Build([]*event.Event{cleared}, runs, Options{WindowStart: end.AddDate(0, 0, -1), WindowEnd: end, Location: time.UTC, Source: "Live collection", Collector: true,
 		Systems: []SystemInfo{{Name: "WS-07", OS: "windows"}, {Name: "WS-09", OS: "windows", LastRun: end.AddDate(0, 0, -3)}}, CheckSets: []CheckSet{cs}})
 	healthy := map[string]bool{"Logs intact": true, "Every system reporting": true, "Audit settings match STIG": true,
-		"No events lost to log rollover": true, "Original logs archived": true, "Reports on time": true, "Antivirus definitions current": true}
+		"No events lost to log rollover": true, "Original logs archived": true, "Reports on time": true, "Antivirus definitions current": true, "STIG compliance (SCAP)": true}
 	overview := r.overview(nil).Checks
 	lines := overview
 	for _, sp := range r.systemsPage().Groups {

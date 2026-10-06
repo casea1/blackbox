@@ -108,6 +108,44 @@ func (r *Report) scapRows() []ScapRow {
 	return rows
 }
 
+// ScapGlance is one system's SCAP result at a glance: its
+// operating-system scan when it has one, else its first scan.
+type ScapGlance struct {
+	Score     string // "94%", or "" when the scan has no score
+	Benchmark string
+	Cat       [4]int
+	Stale     bool
+	Missing   bool // no scan of this system
+}
+
+// scapGlance is host's SCAP result for the places that show it at a
+// glance (a system's Audit health facts, its Systems page health list).
+func (r *Report) scapGlance(host string) (ScapGlance, bool) {
+	var first, os *ScapRow
+	for i := range r.scapTable {
+		row := &r.scapTable[i]
+		if !strings.EqualFold(row.Host, host) {
+			continue
+		}
+		if row.Missing {
+			return ScapGlance{Missing: true}, true
+		}
+		if first == nil {
+			first = row
+		}
+		if os == nil && osBenchmark(row.Benchmark) {
+			os = row
+		}
+	}
+	if os == nil {
+		os = first
+	}
+	if os == nil {
+		return ScapGlance{}, false
+	}
+	return ScapGlance{Score: os.Score, Benchmark: os.Benchmark, Cat: os.Cat, Stale: os.Stale}, true
+}
+
 // osBenchmarks name the operating-system STIGs: a system's main scan.
 // Others on the same system (a browser, Defender, .NET, Office) are its
 // other benchmarks.

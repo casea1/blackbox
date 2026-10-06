@@ -215,6 +215,8 @@ func (r *Report) systemsPage() *SystemsPage {
 			switch v.Health[i].Title {
 			case "Logs intact", "Logs cleared":
 				v.Health[i].Href = searchLink("page", "integrity", "host", s.Name)
+			case "STIG compliance (SCAP)", "No SCAP scan", "SCAP scan out of date", "Open CAT I findings (SCAP)", "Open CAT II findings (SCAP)":
+				v.Health[i].Href = ScapHref(s.Name)
 			case "Reporting":
 				v.Health[i].Href = "#logs/" + s.Name
 			default:
@@ -478,6 +480,28 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 			}
 			lines = append(lines, CheckLine{Level: lv, Icon: "shield", Title: title, What: what, Href: "#health/@av"})
 		}
+	}
+
+	if sc, ok := r.scapGlance(s.Name); ok {
+		l := CheckLine{Level: "ok", Icon: "shield-check", Title: "STIG compliance (SCAP)", Href: ScapHref(s.Name)}
+		switch {
+		case sc.Missing:
+			l.Level, l.Title, l.What = "warn", "No SCAP scan", "Put this system's SCC or OpenSCAP results in the scap_results folder"
+		default:
+			l.What = fmt.Sprintf("%d CAT I, %d CAT II, %d CAT III open · %s", sc.Cat[1], sc.Cat[2], sc.Cat[3], sc.Benchmark)
+			if sc.Score != "" {
+				l.What = "Score " + sc.Score + " · " + l.What
+			}
+			switch {
+			case sc.Cat[1] > 0:
+				l.Level, l.Title = "bad", "Open CAT I findings (SCAP)"
+			case sc.Stale:
+				l.Level, l.Title, l.What = "warn", "SCAP scan out of date", l.What+" · stale scan"
+			case sc.Cat[2] > 0:
+				l.Level, l.Title = "warn", "Open CAT II findings (SCAP)"
+			}
+		}
+		lines = append(lines, l)
 	}
 
 	if len(s.gaps) > 0 {

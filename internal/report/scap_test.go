@@ -1,6 +1,7 @@
 package report
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,5 +128,73 @@ func TestNoScapNoTable(t *testing.T) {
 	}
 	if _, ok := r.scapCheckLine(); ok {
 		t.Error("overview line without SCAP")
+	}
+}
+
+// The SCAP score is at hand: a system's Audit health facts (all a
+// one-computer report's Audit health shows), its Systems page health list,
+// and the jump bar.
+func TestScapScoreShown(t *testing.T) {
+	end := time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)
+	evs := []*event.Event{
+		{Time: end.Add(-time.Hour), Host: "WS-07", OS: "windows", Category: event.CatLogon, Severity: event.SevInfo, Action: "logon", Summary: "x"},
+		{Time: end.Add(-time.Hour), Host: "ubu-01", OS: "linux", Category: event.CatLogon, Severity: event.SevInfo, Action: "logon", Summary: "x"},
+	}
+	r := Build(evs, nil, Options{WindowEnd: end, Location: time.UTC, Scap: scapScans(t), ScapEnabled: true, ScapMaxAgeDays: 30, Collector: true,
+		Systems: []SystemInfo{{Name: "WS-07", OS: "windows"}, {Name: "ubu-01", OS: "linux"}}})
+	hp := r.healthPage()
+	facts := map[string]Fact{}
+	for _, g := range hp.Groups {
+		for _, row := range g.Rows {
+			for _, f := range row.Facts {
+				if f.Label == "SCAP score" {
+					facts[row.Name] = f
+				}
+			}
+		}
+	}
+	if f := facts["WS-07"]; f.Value != "40% · 1 CAT I" || !f.Bad || f.Href != ScapHref("WS-07") {
+		t.Errorf("WS-07 fact: %+v", f)
+	}
+	if f := facts["ubu-01"]; f.Value != "67%" || f.Bad {
+		t.Errorf("ubu-01 fact: %+v", f)
+	}
+	var jump string
+	for _, j := range hp.Jump {
+		if j.Target == "h-scap" {
+			jump = j.Note
+		}
+	}
+	if jump != "lowest score 40% · 1 open CAT I" {
+		t.Errorf("jump: %q", jump)
+	}
+	lines := map[string]CheckLine{}
+	for _, g := range r.systemsPage().Groups {
+		for _, v := range g.Systems {
+			for _, l := range v.Health {
+				if strings.Contains(l.Title, "SCAP") {
+					lines[v.Name] = l
+				}
+			}
+		}
+	}
+	if l := lines["WS-07"]; l.Title != "Open CAT I findings (SCAP)" || l.Level != "bad" || !strings.HasPrefix(l.What, "Score 40% · 1 CAT I, 1 CAT II, 1 CAT III open") || l.Href != ScapHref("WS-07") {
+		t.Errorf("WS-07 health: %+v", l)
+	}
+	if l := lines["ubu-01"]; l.Title != "STIG compliance (SCAP)" || l.Level != "ok" || !strings.HasPrefix(l.What, "Score 67%") {
+		t.Errorf("ubu-01 health: %+v", l)
+	}
+
+	// A one-computer report: Audit health opens on the system's own view,
+	// which now has the score at the top.
+	r = Build(evs[:1], nil, Options{WindowEnd: end, Location: time.UTC, Scap: scapScans(t), ScapEnabled: true, ScapMaxAgeDays: 30})
+	var b bytes.Buffer
+	if err := r.WriteHTML(&b, nil); err != nil {
+		t.Fatal(err)
+	}
+	h := b.String()
+	i := strings.Index(h, `data-pane="WS-07"`)
+	if !strings.Contains(h, `data-single="WS-07"`) || i < 0 || !strings.Contains(h[i:], "SCAP score<b class=\"bad\">40% · 1 CAT I</b>") {
+		t.Error("the one-computer report's Audit health lacks the SCAP score")
 	}
 }

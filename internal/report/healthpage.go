@@ -443,6 +443,21 @@ func (r *Report) healthPage() *HealthPage {
 		}
 		row.Facts = []Fact{{Label: "Checks", Value: commas(checks)}, {Label: "Matching", Value: commas(match)},
 			{Label: "Gaps", Value: commas(checks - match), Bad: checks > match}, {Label: "Log holds", Value: hold}, {Label: "Last check", Value: last}}
+		if sc, ok := r.scapGlance(s.Name); ok {
+			// The SCAP score up front: on a one-computer report this view
+			// is all Audit health shows.
+			f := Fact{Label: "SCAP score", Value: "no scan", Bad: true, Href: ScapHref(s.Name)}
+			if !sc.Missing {
+				f.Value, f.Bad = "—", sc.Cat[1] > 0
+				if sc.Score != "" {
+					f.Value = sc.Score
+				}
+				if sc.Cat[1] > 0 {
+					f.Value += fmt.Sprintf(" · %d CAT I", sc.Cat[1])
+				}
+			}
+			row.Facts = append(row.Facts, f)
+		}
 		g.Rows = append(g.Rows, row)
 	}
 	for _, g := range groups {
@@ -593,6 +608,23 @@ func (hp *HealthPage) fold() {
 			cat1 += row.Cat[1]
 		}
 		n := fmt.Sprintf("%d open CAT I", cat1)
+		var low string
+		lowV, scored := 101.0, 0
+		for _, row := range hp.Scap.Main {
+			var v float64
+			if _, err := fmt.Sscanf(row.Score, "%f%%", &v); err == nil {
+				scored++
+				if v < lowV {
+					lowV, low = v, row.Score
+				}
+			}
+		}
+		switch {
+		case scored == 1:
+			n = "score " + low + " · " + n
+		case scored > 1:
+			n = "lowest score " + low + " · " + n
+		}
 		if missing > 0 {
 			n += fmt.Sprintf(" · %d not scanned", missing)
 		}
