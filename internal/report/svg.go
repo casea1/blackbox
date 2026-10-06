@@ -114,7 +114,10 @@ func stackedBars(labels []string, series []Series, hot []bool, faded bool, w, h 
 	plot := float64(h - 34)
 	// Only as many day labels as fit (about 6.5 units a letter at 11px).
 	step, long := 1, 0
-	for _, l := range labels {
+	for i, l := range labels {
+		if faded && i == n-1 && n > 1 {
+			continue // the last is always shown, from its right edge
+		}
 		long = max(long, len(l))
 	}
 	if bw < 6.5*float64(long)+8 {
@@ -148,8 +151,21 @@ func stackedBars(labels []string, series []Series, hot []bool, faded bool, w, h 
 		if faded && i == n-1 {
 			weight = ` style="font-weight:700;fill:#0B1630"`
 		}
-		// Skip a label that would run off the right edge.
-		if lx := x + bwid/2; (i%step == 0 && lx+3.25*float64(len(labels[i])) <= float64(w)) || (faded && i == n-1) {
+		// Skip a label that would run off the right edge, or into the
+		// last one.
+		lastW := 0.0
+		if faded {
+			lastW = 6.5 * float64(len(labels[n-1]))
+		}
+		lx := x + bwid/2
+		switch {
+		case faded && i == n-1:
+			anchor := "middle"
+			if lx+lastW/2 > float64(w) {
+				lx, anchor = float64(w), "end"
+			}
+			fmt.Fprintf(&b, `<text x="%.1f" y="%d" text-anchor="%s" class="ax"%s>%s</text>`, lx, h-6, anchor, weight, template.HTMLEscapeString(labels[i]))
+		case i%step == 0 && lx+3.25*float64(len(labels[i])) <= float64(w)-lastW-6:
 			fmt.Fprintf(&b, `<text x="%.1f" y="%d" text-anchor="middle" class="ax"%s>%s</text>`, lx, h-6, weight, template.HTMLEscapeString(labels[i]))
 		}
 	}

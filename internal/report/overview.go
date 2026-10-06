@@ -66,6 +66,7 @@ type DetectionCard struct {
 // SmallTrend is one of the Overview's twelve-week charts.
 type SmallTrend struct {
 	Title, Note string
+	From, To    string // the x-axis ends: the first week shown, and this week
 	Chart       template.HTML
 }
 
@@ -83,8 +84,9 @@ type Overview struct {
 	Detections  []DetectionCard
 	High, Med   int
 	Trends      []SmallTrend
-	Changes     []Change // What changed: the biggest moves against earlier reports
-	HistoryN    int      // earlier reports compared with
+	Changes     []Change // What changed: the biggest moves against earlier weeks
+	HistoryN    int      // complete weeks compared with (0: not enough history)
+	TrendSpan   string   // "last 6 weeks · 1 Sep – 12 Oct 2026"
 	Standalone  bool
 }
 
@@ -179,7 +181,7 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	total := len(systems)
 	rep := m[MSystems]
 	o.KPIs = append(o.KPIs, KPI{Label: "Systems reporting", Href: "#systems", Value: fmt.Sprintf("%d / %d", rep, total), Bad: rep < total,
-		Note: silentNote(systems), Spark: sparkline(r.series(MSystems, rep), rep < total, 120, 34)})
+		Note: silentNote(systems), Spark: r.weekSpark(MSystems, rep < total)})
 	high, med := 0, 0
 	for _, f := range r.Findings {
 		if f.Severity == event.SevHigh {
@@ -190,13 +192,12 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	}
 	o.High, o.Med = high, med
 	o.KPIs = append(o.KPIs, KPI{Label: "Detections", Href: "#detections", Value: commas(len(r.Findings)), Bad: len(r.Findings) > 0,
-		Note: map[bool]string{true: "none this " + map[bool]string{true: "week", false: "period"}[r.Period == "weekly" || r.Period == ""], false: fmt.Sprintf("%d high · %d medium", high, med)}[len(r.Findings) == 0], Spark: sparkline(r.series(MDetections, len(r.Findings)), len(r.Findings) > 0, 120, 34)})
-	ev := r.series(MEvents, len(r.Events))
-	o.KPIs = append(o.KPIs, KPI{Label: "Events collected", Href: "#search", Value: shortCount(len(r.Events)), Note: vsAverage(ev),
-		Spark: sparkline(ev, false, 120, 34)})
+		Note: map[bool]string{true: "none this " + map[bool]string{true: "week", false: "period"}[r.Period == "weekly" || r.Period == ""], false: fmt.Sprintf("%d high · %d medium", high, med)}[len(r.Findings) == 0], Spark: r.weekSpark(MDetections, len(r.Findings) > 0)})
+	o.KPIs = append(o.KPIs, KPI{Label: "Events collected", Href: "#search", Value: shortCount(len(r.Events)), Note: r.vsAverage(MEvents),
+		Spark: r.weekSpark(MEvents, false)})
 	o.KPIs = append(o.KPIs, KPI{Label: "Privileged actions", Href: "#privileged", Value: commas(m[MPrivileged]),
 		Note:  fmt.Sprintf("by %d %s", len(people), map[bool]string{true: "person", false: "people"}[len(people) == 1]),
-		Spark: sparkline(r.series(MPrivileged, m[MPrivileged]), false, 120, 34)})
+		Spark: r.weekSpark(MPrivileged, false)})
 
 	// Important-event cards.
 	where := func(action string, newAdmin bool) string {
@@ -228,8 +229,8 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	card("user-plus", "New admins", MNewAdmins, "bad", where("group_member_added", true), "#accounts")
 	card("settings", "Policy changes", MPolicyChanges, "warn", where("audit_policy_changed", false), "#integrity")
 	lockNote := where("account_locked", false)
-	if avg := average(r.series(MLockouts, m[MLockouts])); avg >= 0 {
-		lockNote = fmt.Sprintf("normal: %.0f", avg)
+	if t := r.metricTrend(MLockouts); t.OK && lockNote == "" {
+		lockNote = fmt.Sprintf("normal: %.0f a week", t.Avg)
 	}
 	card("lock", "Lockouts", MLockouts, "warn", lockNote, "#failed")
 	card("moon", "After-hours admin", MAfterHours, "warn", afterHoursNote(r), "#privileged")
@@ -298,16 +299,31 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	// Detections, newest first, grouped by day.
 	o.Detections = r.detectionCards()
 
-	// Trends.
-	hs := r.series(MHighEvents, m[MHighEvents])
-	fl := r.series(MFailedLogons, m[MFailedLogons])
-	pa := r.series(MPrivileged, m[MPrivileged])
-	o.Changes, o.HistoryN = r.whatChanged(), len(r.History)
-	o.Trends = []SmallTrend{
-		{Title: "High-severity events", Note: trendNote(hs), Chart: sparkline(hs, true, 300, 70)},
-		{Title: "Failed logons", Note: trendNote(fl), Chart: sparkline(fl, false, 300, 70)},
-		{Title: "Privileged actions", Note: trendNote(pa), Chart: sparkline(pa, false, 300, 70)},
+	// Trends, by calendar week (UI1).
+	o.Changes = r.whatChanged()
+	if t := r.metricTrend(MEvents); t.OK {
+		o.HistoryN = t.Complete
 	}
+	ws := r.weeks()
+	o.TrendSpan = "last " + r.weeksCrumb()
+	if c := ws[len(ws)-1]; c.Current {
+		o.TrendSpan += " · this week: " + trimFloat(c.Days) + " of 7 days so far"
+	}
+	small := func(title, metric string, bad bool) SmallTrend {
+		t := r.metricTrend(metric)
+		st := SmallTrend{Title: title, From: "Week of " + ws[0].Start.In(r.Location).Format("2 Jan"), To: "This week (so far)",
+			Note: commas(t.Now) + " so far"}
+		if !ws[len(ws)-1].Current {
+			st.Note = commas(t.Now) + " last week"
+		}
+		if t.OK {
+			st.Note += " · avg " + shortNum(t.Avg) + "/wk"
+			st.Chart = sparkline(t.Values, bad, 300, 70)
+		}
+		return st
+	}
+	o.Trends = []SmallTrend{small("High-severity events", MHighEvents, true), small("Failed logons", MFailedLogons, false),
+		small("Privileged actions", MPrivileged, false)}
 	return o
 }
 
@@ -468,42 +484,34 @@ func silentNote(systems []SystemRow) string {
 
 // average is the mean of the earlier values in a series (not the last),
 // or -1 when there are none.
-func average(vals []int) float64 {
-	sum, n := 0, 0
-	for _, v := range vals[:len(vals)-1] {
-		if v >= 0 {
-			sum += v
-			n++
-		}
+// weekSpark is a KPI tile's small chart: the metric by calendar week,
+// drawn once there is enough history (UI1).
+func (r *Report) weekSpark(metric string, bad bool) template.HTML {
+	t := r.metricTrend(metric)
+	if !t.OK {
+		return ""
 	}
-	if n == 0 {
-		return -1
-	}
-	return float64(sum) / float64(n)
+	return sparkline(t.Values, bad, 120, 34)
 }
 
-func vsAverage(vals []int) string {
-	avg := average(vals)
-	if avg <= 0 {
-		return "first weeks: no average yet"
+// vsAverage compares this week so far with the same part of an average
+// complete week.
+func (r *Report) vsAverage(metric string) string {
+	t := r.metricTrend(metric)
+	if !t.OK {
+		return "trends start after 2 full weeks"
 	}
-	d := (float64(vals[len(vals)-1]) - avg) / avg * 100
+	if t.Expected <= 0 {
+		return "normal"
+	}
+	d := (float64(t.Now) - t.Expected) / t.Expected * 100
 	switch {
 	case d > -15 && d < 15:
-		return "normal"
+		return "normal for this point of the week"
 	case d > 0:
-		return fmt.Sprintf("+%.0f%% vs. avg", d)
+		return fmt.Sprintf("+%.0f%% on an average week so far", d)
 	}
-	return fmt.Sprintf("%.0f%% vs. avg", d)
-}
-
-func trendNote(vals []int) string {
-	now := vals[len(vals)-1]
-	avg := average(vals)
-	if avg < 0 {
-		return fmt.Sprintf("%s this week", commas(now))
-	}
-	return fmt.Sprintf("%s this week · avg %s", commas(now), shortNum(avg))
+	return fmt.Sprintf("%.0f%% on an average week so far", d)
 }
 
 func afterHoursNote(r *Report) string {

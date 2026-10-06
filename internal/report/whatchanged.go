@@ -7,9 +7,9 @@ import (
 )
 
 // The Overview's "What changed" panel (ISSO request): the biggest moves
-// this week against the average of the earlier reports, across the
-// network's totals, each system's detections and each person's
-// privileged actions, in plain sentences.
+// this week so far against the same part of an average complete week (see
+// weeks.go), across the network's totals, each system's detections and
+// each person's privileged actions, in plain sentences.
 
 // Change is one line of "What changed".
 type Change struct {
@@ -21,80 +21,87 @@ type Change struct {
 const maxChanges = 8
 
 func (r *Report) whatChanged() []Change {
-	if len(r.History) == 0 {
-		return nil
+	ws := r.weeks()
+	base := r.metricTrend(MEvents)
+	if !base.OK {
+		return nil // not enough history: the panel says so
 	}
 	var out []Change
 	add := func(text, class, href string, now, avg float64) {
 		out = append(out, Change{Text: text, Class: class, Href: href, weight: math.Abs(now-avg) / math.Max(avg, 1)})
 	}
-	weeks := fmt.Sprintf("the last %s", plural(len(r.History), "report"))
+	now := r.nowLabel()
+	weeks := plural(base.Complete, "complete week")
 
 	// The network's totals.
-	m := r.metrics()
 	for _, t := range trendMetrics {
-		vals := r.series(t.Metric, m[t.Metric])
-		now, avg := float64(vals[len(vals)-1]), average(vals)
-		if avg < 0 {
+		if t.Metric == MAfterHours && !r.WorkingHours.Set() {
 			continue
 		}
-		d, class := change(now, avg)
+		tr := r.metricTrend(t.Metric)
+		if !tr.OK {
+			continue
+		}
+		d, class := change(float64(tr.Now), tr.Expected)
 		if class == "flat" {
 			continue
 		}
 		dir := "up"
-		if now < avg {
+		if float64(tr.Now) < tr.Expected {
 			dir = "down"
 		}
 		if !t.BadUp && class != "new" { // fewer systems reporting is worse
 			class = map[string]string{"up": "dn", "dn": "up"}[class]
 		}
-		add(fmt.Sprintf("%s: %s this week, %s %s on the average of %s (%.0f)", t.Title, commas(int(now)), dir, trimSign(d), weeks, avg), class, t.Href, now, avg)
+		add(fmt.Sprintf("%s: %s %s, %s %s on the average of %s (%.0f by this point of a week)", t.Title, commas(tr.Now), now, dir, trimSign(d), weeks, tr.Expected),
+			class, t.Href, float64(tr.Now), tr.Expected)
 	}
 
 	// Each system's detections.
-	hosts := map[string][]int{}
-	n := len(r.History) + 1
-	for w, s := range r.History {
-		for _, d := range s.Detections {
-			if hosts[d.Host] == nil {
-				hosts[d.Host] = make([]int, n)
-			}
-			hosts[d.Host][w]++
+	hosts := map[string]bool{}
+	for _, w := range ws {
+		for h := range w.HostDet {
+			hosts[h] = true
 		}
 	}
-	for _, f := range r.Findings {
-		if hosts[f.Host] == nil {
-			hosts[f.Host] = make([]int, n)
+	for h := range hosts {
+		host := h
+		tr := trendOf(ws, func(w trendWeek) int { return w.HostDet[host] })
+		if !tr.OK {
+			continue
 		}
-		hosts[f.Host][n-1]++
-	}
-	for h, vals := range hosts {
-		now, avg := float64(vals[n-1]), average(vals)
-		if _, class := change(now, avg); class == "up" || class == "new" {
-			add(fmt.Sprintf("%s: %s this week (average %.0f)", h, plural(int(now), "detection"), avg), "up", "#systems/"+h, now, avg)
+		if _, class := change(float64(tr.Now), tr.Expected); class == "up" || class == "new" {
+			add(fmt.Sprintf("%s: %s %s (average %.0f by this point of a week)", h, plural(tr.Now, "detection"), now, tr.Expected), "up", "#systems/"+h, float64(tr.Now), tr.Expected)
 		}
 	}
 
-	// Each person's privileged actions.
-	kept := false
-	for _, s := range r.History {
-		kept = kept || s.People != nil
+	// Each person's privileged actions, from the weeks that kept them.
+	people := map[string]string{}
+	for _, w := range ws {
+		for k, p := range w.People {
+			people[k] = p.Name
+		}
 	}
-	if kept {
-		for _, p := range r.peopleTotals() {
-			vals := r.personSeries(p.Key, p, func(x PersonSummary) int { return x.Privileged })
-			now, avg := float64(p.Privileged), average(vals)
-			seen := false
-			for _, v := range vals[:len(vals)-1] {
-				seen = seen || v > 0
+	for k, name := range people {
+		key := k
+		tr := trendOf(ws, func(w trendWeek) int {
+			if !w.HasPeople {
+				return -1
 			}
-			switch _, class := change(now, avg); {
-			case !seen && now >= 3:
-				add(fmt.Sprintf("%s: %s, none in %s", p.Name, plural(int(now), "privileged action"), weeks), "new", "#people/"+p.Key, now, 0)
-			case class == "up":
-				add(fmt.Sprintf("%s: %s this week (average %.0f)", p.Name, plural(int(now), "privileged action"), avg), "up", "#people/"+p.Key, now, avg)
-			}
+			return w.People[key].Privileged
+		})
+		if !tr.OK {
+			continue
+		}
+		seen := false
+		for _, v := range tr.Values[:len(tr.Values)-1] {
+			seen = seen || v > 0
+		}
+		switch _, class := change(float64(tr.Now), tr.Expected); {
+		case !seen && tr.Now >= 3:
+			add(fmt.Sprintf("%s: %s %s, none in the %s before", name, plural(tr.Now, "privileged action"), now, weeks), "new", "#people/"+key, float64(tr.Now), 0)
+		case class == "up":
+			add(fmt.Sprintf("%s: %s %s (average %.0f by this point of a week)", name, plural(tr.Now, "privileged action"), now, tr.Expected), "up", "#people/"+key, float64(tr.Now), tr.Expected)
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -117,29 +124,24 @@ func trimSign(d string) string {
 }
 
 // peopleByWeek is the Trends page's privileged actions by person, by
-// week: the 20 most active people this week and before.
+// calendar week: the 20 most active people this week and before.
 func (r *Report) peopleByWeek() []WeekRow {
-	n := len(r.History) + 1
+	ws := r.weeks()
+	n := len(ws)
 	counts := map[string][]int{}
 	names := map[string]string{}
-	set := func(key, name string, w, v int) {
-		if v == 0 {
-			return
-		}
-		if counts[key] == nil {
-			counts[key] = make([]int, n)
-		}
-		counts[key][w] = v
-		if names[key] == "" {
-			names[key] = name
-		}
-	}
-	for _, p := range r.peopleTotals() {
-		set(p.Key, p.Name, n-1, p.Privileged)
-	}
-	for w, s := range r.History {
-		for _, p := range s.People {
-			set(p.Key, p.Name, w, p.Privileged)
+	for i, w := range ws {
+		for k, p := range w.People {
+			if p.Privileged == 0 {
+				continue
+			}
+			if counts[k] == nil {
+				counts[k] = make([]int, n)
+			}
+			counts[k][i] = p.Privileged
+			if names[k] == "" {
+				names[k] = p.Name
+			}
 		}
 	}
 	keys := make([]string, 0, len(counts))

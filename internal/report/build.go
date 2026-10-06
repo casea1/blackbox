@@ -230,6 +230,8 @@ type Health struct {
 
 // Report is everything the template needs.
 type Report struct {
+	weeksCache []trendWeek // see weeks()
+
 	Options
 	Hosts      []string
 	FirstEvent time.Time
