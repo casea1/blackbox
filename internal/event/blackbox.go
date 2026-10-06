@@ -141,6 +141,12 @@ func ParseSelfChange(msg string) (SelfChange, bool) {
 // SelfFlag marks, in Fields, an event Blackbox recorded about itself.
 const SelfFlag = "blackbox_self"
 
+// ExportPieceFlag marks, in Fields, the Event Log service writing one of
+// the original-log pieces a Blackbox run exports (wevtutil epl writes
+// them through the service). The report treats it as Blackbox's own when
+// a Blackbox run on that computer covers its time (AR2b).
+const ExportPieceFlag = "blackbox_export_piece"
+
 // Event is the report row for the change (Time, Host and OS are the
 // caller's). The copy in the operating system's log gives the same
 // DedupeKey, so the two are one row.
