@@ -220,6 +220,17 @@ Set-Acl C:\ProgramData\Blackbox $acl
 This needs File System auditing (success and failure), which the STIG
 already requires.
 
+Two kinds of writes to that folder are Blackbox's own and are not rows:
+the original-log pieces each collection exports (`archive-pieces\000001\Security.evtx`
+and so on), which `wevtutil` writes through the Event Log service
+(`svchost.exe`) in the name of whoever ran Blackbox, when a Blackbox run
+on that computer covers their time; and the installer's writes when
+Blackbox recorded that install or upgrade. The commands the installer
+runs (its Uninstall entry, the inbox share and its permissions, the
+scheduled task) are listed on that install or upgrade row instead of as
+rows of their own. Anything else changing or deleting files there is
+still High.
+
 Blackbox also **records its own changes** (A15): when `blackbox config
 set`, setup or an upgrade actually writes a setting, it adds a row of its
 own saying who (the account that ran it), which setting, and the value before and after,

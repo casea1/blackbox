@@ -623,6 +623,7 @@ func isBlackboxSetup(program string) bool {
 // installer with no such record stays a High row. A deleted report is
 // never the installer's to drop.
 func installerWrites(events []*event.Event) []*event.Event {
+	events = installerHelpers(events)
 	var installs []*event.Event
 	for _, e := range events {
 		if k := e.Fields[event.SelfFlag]; (k == "installed" || k == "upgraded") && e.Fields["program"] == "setup" {
@@ -651,6 +652,90 @@ func installerWrites(events []*event.Event) []*event.Event {
 		out = append(out, e)
 	}
 	return out
+}
+
+// installerHelpers folds the commands Blackbox's installer starts (reg.exe
+// for its Uninstall entry, net share, icacls, schtasks) into Blackbox's
+// record of that install or upgrade, as Blackbox's own child processes
+// are left out (T4, UI4b): the record says how many and which. A command
+// that flags itself (an audit-tampering one) is never folded, nor one
+// with no record of an install close by.
+func installerHelpers(events []*event.Event) []*event.Event {
+	var installs []*event.Event
+	for _, e := range events {
+		if k := e.Fields[event.SelfFlag]; (k == "installed" || k == "upgraded") && e.Fields["program"] == "setup" {
+			installs = append(installs, e)
+		}
+	}
+	if len(installs) == 0 {
+		return events
+	}
+	folded := map[*event.Event][]string{}
+	out := events[:0]
+	for _, e := range events {
+		if e.Action == "elevated_process" && e.Severity == event.SevLow && isBlackboxSetup(detail(e, "Started by")) {
+			var in *event.Event
+			for _, i := range installs {
+				if strings.EqualFold(i.Host, e.Host) && !e.Time.Before(i.Time.Add(-30*time.Minute)) && !e.Time.After(i.Time.Add(5*time.Minute)) {
+					in = i
+					break
+				}
+			}
+			if in != nil {
+				cmd := e.Command
+				if cmd == "" {
+					cmd = e.Process
+				}
+				folded[in] = append(folded[in], cmd)
+				continue
+			}
+		}
+		out = append(out, e)
+	}
+	for in, cmds := range folded {
+		in.AddDetail("Setup also ran", fmt.Sprintf("%s with administrator rights: %s", plural(len(cmds), "command"), strings.Join(cmds, "; ")))
+	}
+	return out
+}
+
+// exportWrites drops the Event Log service writing the original-log pieces
+// a Blackbox run exported (AR2b): wevtutil epl writes them through the
+// service, so with the folder audited each piece is a 4663 by svchost.exe
+// in the name of whoever ran Blackbox. Only a write matching the pieces'
+// names (see winevt) within a Blackbox run on that computer is dropped; a
+// change or delete there by anything else stays High.
+func exportWrites(events []*event.Event, runs []*store.Run) []*event.Event {
+	out := events[:0]
+	for _, e := range events {
+		if e.Fields[event.ExportPieceFlag] != "" && duringRun(e, runs) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// duringRun says whether e happened during a Blackbox run (collection and
+// export) on its computer.
+func duringRun(e *event.Event, runs []*store.Run) bool {
+	host := strings.ToLower(e.Host)
+	if i := strings.IndexByte(host, '.'); i > 0 {
+		host = host[:i]
+	}
+	for _, r := range runs {
+		h := strings.ToLower(r.Host)
+		if i := strings.IndexByte(h, '.'); i > 0 {
+			h = h[:i]
+		}
+		if h != host {
+			continue
+		}
+		end := r.Time.Add(time.Duration(r.Duration*float64(time.Second)) + 10*time.Minute)
+		if !e.Time.Before(r.Time.Add(-time.Minute)) && !e.Time.After(end) {
+			return true
+		}
+	}
+	return false
 }
 
 // selfChanges joins each "blackbox config set" command line to the record

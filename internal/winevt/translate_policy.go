@@ -438,6 +438,37 @@ func reportFolder(p string) string {
 	return name
 }
 
+var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9.-]+`)
+
+// exportPiece says whether proc writing obj is the Event Log service
+// writing a piece of the original logs Blackbox exports at each
+// collection: <archive-pieces | .exports | archives>\<6 digits>\<log>.evtx,
+// named after a log Blackbox reads (as archive.SafeName names it).
+func exportPiece(proc, obj string) bool {
+	if !strings.EqualFold(filepath.Base(winPath(proc)), "svchost.exe") {
+		return false
+	}
+	parts := strings.Split(strings.ToLower(winPath(obj)), "/")
+	n := len(parts)
+	if n < 3 {
+		return false
+	}
+	switch parts[n-3] {
+	case "archive-pieces", ".exports", "archives":
+	default:
+		return false
+	}
+	if len(parts[n-2]) != 6 || strings.Trim(parts[n-2], "0123456789") != "" {
+		return false
+	}
+	for _, ch := range Channels {
+		if parts[n-1] == strings.ToLower(strings.Trim(unsafeChars.ReplaceAllString(ch, "-"), "-"))+".evtx" {
+			return true
+		}
+	}
+	return false
+}
+
 // fileAccess is 4656/4663 from the File System subcategory: files and
 // folders an administrator has set auditing on (A2). A refused access is
 // always shown; a successful one only when it wrote or deleted.
@@ -460,6 +491,9 @@ func (t *Translator) fileAccess(r *Raw) *event.Event {
 	}
 	proc := r.Get("ProcessName")
 	e := &event.Event{Category: event.CatOther, Severity: event.SevLow, User: who, Target: obj, Process: proc}
+	if !failed && op != "delete" && exportPiece(proc, obj) {
+		e.Fields = map[string]string{event.ExportPieceFlag: "1"}
+	}
 	switch {
 	case failed:
 		e.Action, e.Severity, e.Outcome = "file_access_denied", event.SevMedium, "failure"
