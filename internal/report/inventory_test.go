@@ -1,6 +1,7 @@
 package report
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,5 +93,39 @@ func TestInventoryMissingWhy(t *testing.T) {
 	}
 	if !versionBefore("v0.12", 0, 13) || versionBefore("0.13.0", 0, 13) || versionBefore("1.0", 0, 13) || versionBefore("dev", 0, 13) {
 		t.Error("versionBefore")
+	}
+}
+
+// UI15: the Inventory page has Systems, Drives and Accounts tabs; each
+// system's drives and accounts open under its own row (no panel whose
+// accounts change); the tiles open their tab.
+func TestInventoryTabs(t *testing.T) {
+	end := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	mk := func(host, serial string, admin bool) CheckSet {
+		cs := NewCheckSet(host, end.Add(-time.Hour), nil)
+		cs.Inventory = &inventory.Inventory{Manufacturer: "Dell Inc.", Model: "OptiPlex 7090", Serial: serial,
+			Drives:   []inventory.Drive{{Model: "Samsung SSD", Serial: "SN-" + host, Size: 512110190592}},
+			Accounts: []inventory.Account{{Name: "localadmin", ID: "…1001", Enabled: true, Admin: admin, Kind: "Local"}, {Name: "guest", ID: "…501", Kind: "Local"}}}
+		return cs
+	}
+	r := Build(nil, nil, Options{WindowEnd: end, Location: time.UTC, CheckSets: []CheckSet{mk("WS-01", "AAA", true), mk("WS-02", "BBB", false)}})
+	ip := r.inventoryPage()
+	if ip.DriveN != 2 || ip.AccountN != 4 {
+		t.Errorf("counts: %d drives, %d accounts", ip.DriveN, ip.AccountN)
+	}
+	var b bytes.Buffer
+	if err := r.WriteHTML(&b, nil); err != nil {
+		t.Fatal(err)
+	}
+	h := b.String()
+	for _, want := range []string{`data-invtab="systems"`, `data-invtab="drives"`, `data-invtab="accounts"`, `data-invsys="WS-01"`, `data-invtoggle`,
+		`class="invdetail" hidden`, "Drives on WS-01", "Accounts on WS-02", `data-invacct="admin"`, `data-invitem data-admin data-enabled`,
+		`data-scroll="inv-tab-drives"`, `data-scroll="inv-tab-admin"`, `href="#inventory/WS-02"`, "SN-WS-02"} {
+		if !strings.Contains(h, want) {
+			t.Errorf("Inventory lacks %q", want)
+		}
+	}
+	if strings.Contains(h, `data-pane="WS-01"`) {
+		t.Error("the old one-system-at-a-time panel is still there")
 	}
 }

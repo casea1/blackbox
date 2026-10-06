@@ -590,17 +590,33 @@ func (hp *HealthPage) fold() {
 	hp.Jump = append(hp.Jump, JumpLink{Label: "Audit settings by system", Note: note, Target: "h-matrix", Level: lvl(needs > 0, "bad")},
 		JumpLink{Label: "Gaps", Note: commas(len(hp.Gaps)), Target: "h-gaps", Level: lvl(len(hp.Gaps) > 0, "bad")})
 	if len(hp.AV) > 0 {
-		bad := 0
+		// UI13: "not checked" (no antivirus found, or nothing read) is
+		// counted too, never "all current".
+		bad, unchecked := 0, 0
 		for _, a := range hp.AV {
-			if a.Level == "bad" {
+			switch a.Level {
+			case "bad":
 				bad++
+			case "warn":
+				unchecked++
 			}
 		}
-		n := "all current"
+		var parts []string
 		if bad > 0 {
-			n = fmt.Sprintf("%d out of date", bad)
+			parts = append(parts, fmt.Sprintf("%d out of date", bad))
 		}
-		hp.Jump = append(hp.Jump, JumpLink{Label: "Antivirus", Note: n, Target: "h-av", Level: lvl(bad > 0, "bad")})
+		if unchecked > 0 {
+			parts = append(parts, fmt.Sprintf("%d not checked", unchecked))
+		}
+		n := "all current"
+		if len(parts) > 0 {
+			n = strings.Join(parts, " · ")
+		}
+		level := lvl(unchecked > 0, "warn")
+		if bad > 0 {
+			level = "bad"
+		}
+		hp.Jump = append(hp.Jump, JumpLink{Label: "Antivirus", Note: n, Target: "h-av", Level: level})
 	}
 	if hp.Scap != nil {
 		cat1, missing := 0, len(hp.Scap.Missing)

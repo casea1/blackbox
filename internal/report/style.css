@@ -547,3 +547,17 @@ tr.mxfold button{font:600 12.5px 'Public Sans';color:#0B5FFF;background:none;bor
 .invsn{font-size:11.5px;color:#5A6785;margin-top:2px}
 td.invdr>div+div{margin-top:6px}td.invdr{min-width:220px}
 td.invdr .invm{font-weight:500;color:#0B1630}
+/* Inventory (UI15): tabs, systems that open in place, flat lists. */
+table.inv tr.invrow{cursor:pointer}table.inv tr.invrow:hover td{background:rgba(11,95,255,.04)}
+.invcaret{display:inline-block;width:14px;color:#5A6785;transition:transform .15s}
+tr.invrow[aria-expanded="true"] .invcaret{transform:rotate(90deg)}
+tr.invdetail>td{background:rgba(0,30,98,.025);padding:14px 16px 16px}
+.invgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:18px}
+.invgrid h4{margin:0 0 6px;font-size:13px;font-weight:650;color:#0B1630}
+@media (max-width:1100px){.invgrid{grid-template-columns:1fr}}
+.invhint{margin:0 0 8px}.invhint button{font:600 12.5px 'Public Sans';color:#0B5FFF;background:none;border:0;padding:0;cursor:pointer;margin-left:6px}
+[data-inv] .toolbar{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.jump a.warn{border-left:3px solid #E08A00}.jump a.warn span{color:#8F4F00}
+.invname{display:inline-flex;align-items:center;gap:4px;color:#0B1630;font-size:13.5px}.invname b{display:inline}
+[data-inv] .search{padding:7px 10px;border:1px solid rgba(0,30,98,.12);background:rgba(255,255,255,.7);font-size:12.5px;color:#8A96B3;display:flex;gap:8px;align-items:center;min-width:280px}
+[data-inv] .search input{border:0;background:none;outline:0;font:inherit;color:#0B1630;width:100%}

@@ -18,6 +18,8 @@ type InventoryPage struct {
 	Stats   []EventCard
 	Rows    []*InvRow
 	Missing []InvMissing // systems in the report with no inventory yet
+	// DriveN and AccountN count the Drives and Accounts tabs.
+	DriveN, AccountN int
 }
 
 // InvMissing is a system with no inventory, and why (UI2).
@@ -107,11 +109,12 @@ func (r *Report) inventoryPage() *InventoryPage {
 	if len(ip.Missing) > 0 {
 		lvl = "warn"
 	}
+	ip.DriveN, ip.AccountN = drives, accounts
 	ip.Stats = []EventCard{
-		{Icon: "server", Label: "Systems inventoried", Value: fmt.Sprintf("%d / %d", len(ip.Rows), len(ip.Rows)+len(ip.Missing)), Note: missingNote(missing), Level: lvl, Scroll: "inv-systems"},
-		{Icon: "hard-drive", Label: "Drives", Value: commas(drives), Note: "with serials", Scroll: "inv-systems"},
-		{Icon: "users", Label: "Accounts", Value: commas(accounts), Note: "local and domain", Scroll: "inv-systems"},
-		{Icon: "key-round", Label: "Administrators", Value: commas(admins), Note: "admin rights", Scroll: "inv-systems"},
+		{Icon: "server", Label: "Systems inventoried", Value: fmt.Sprintf("%d / %d", len(ip.Rows), len(ip.Rows)+len(ip.Missing)), Note: missingNote(missing), Level: lvl, Scroll: "inv-tab-systems"},
+		{Icon: "hard-drive", Label: "Drives", Value: commas(drives), Note: "with serials", Scroll: "inv-tab-drives"},
+		{Icon: "users", Label: "Accounts", Value: commas(accounts), Note: "local and domain", Scroll: "inv-tab-accounts"},
+		{Icon: "key-round", Label: "Administrators", Value: commas(admins), Note: "admin rights", Scroll: "inv-tab-admin"},
 	}
 	return ip
 }
