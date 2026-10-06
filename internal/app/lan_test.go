@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -343,5 +344,69 @@ func TestResendIsRecorded(t *testing.T) {
 func TestSeqRange(t *testing.T) {
 	if got := seqRange([]uint64{214, 215, 216, 219}); got != "214-216,219" {
 		t.Errorf("got %q", got)
+	}
+}
+
+// L13b: an administrator accepts a known gap. It stops being missing (and
+// stops making "blackbox status" exit 4), is listed with who, when and
+// why, and is recorded like a setting change for the next report.
+func TestAcceptGap(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	at := time.Date(2026, 10, 6, 9, 0, 0, 0, time.UTC)
+	st.State.Senders = map[string]*store.SenderState{"u1": {Host: "ubuntu-server", LastSeq: 300, FirstSeen: at.AddDate(0, 0, -5),
+		Missing: []store.SeqGap{{From: 1, To: 280, Noted: at.AddDate(0, 0, -5)}, {From: 290, To: 291, Noted: at.AddDate(0, 0, -1)}}}}
+	st.Save()
+	inbox := filepath.Join(t.TempDir(), "inbox")
+	if err := lan.PrepareInbox(inbox, "WIN11-COL"); err != nil {
+		t.Fatal(err)
+	}
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, Inbox: inbox}, Version: "test", Loc: time.UTC, Now: func() time.Time { return at }}
+	var recorded []event.SelfChange
+	a.RecordSelf = func(dir string, c event.SelfChange, now time.Time) error { recorded = append(recorded, c); return nil }
+
+	var out bytes.Buffer
+	err := a.Status(&out)
+	var na *NeedsAttention
+	if !errors.As(err, &na) || !strings.Contains(strings.Join(na.What, ";"), "batches from ubuntu-server never arrived") {
+		t.Fatalf("an open gap needs attention: %v", err)
+	}
+	if err := a.AcceptGap("UBUNTU-SERVER", 1, 280, "went to the previous collector"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.AcceptGap("ubuntu-server", 500, 510, "x"); err == nil {
+		t.Error("accepted batches that are not missing")
+	}
+	if err := a.AcceptGap("ubuntu-server", 290, 291, " "); err == nil {
+		t.Error("accepted without a reason")
+	}
+	st2, _ := store.Open(st.Dir)
+	snd := st2.State.Senders["u1"]
+	if len(snd.Missing) != 1 || snd.Missing[0].From != 290 || len(snd.Accepted) != 1 || snd.Accepted[0].Reason != "went to the previous collector" || snd.Accepted[0].Who == "" {
+		t.Fatalf("after accepting: missing %+v accepted %+v", snd.Missing, snd.Accepted)
+	}
+	if len(recorded) != 1 || recorded[0].Kind != "gap_accepted" || recorded[0].New != "1-280" || recorded[0].Setting != "ubuntu-server" {
+		t.Errorf("recorded: %+v", recorded)
+	}
+	e := recorded[0].Event()
+	if e.Action != "blackbox_gap_accepted" || !strings.Contains(e.Summary, "accepted that Blackbox batches 1-280 from ubuntu-server will not arrive: went to the previous collector") {
+		t.Errorf("row: %+v", e)
+	}
+	if c, ok := event.ParseSelfChange(recorded[0].Message()); !ok || c.Kind != "gap_accepted" || c.Old != "went to the previous collector" || c.New != "1-280" {
+		t.Errorf("system log copy: %q -> %+v", recorded[0].Message(), c)
+	}
+	// The last open gap accepted: status no longer needs attention for it.
+	a.AcceptGap("ubuntu-server", 290, 291, "lost in a disk failure on the sender")
+	out.Reset()
+	err = a.Status(&out)
+	if errors.As(err, &na) && strings.Contains(strings.Join(na.What, ";"), "never arrived") {
+		t.Errorf("accepted gaps still need attention: %v", err)
+	}
+	if !strings.Contains(out.String(), "Accepted: batches 1-280 from ubuntu-server will not arrive (went to the previous collector") {
+		t.Errorf("status:\n%s", out.String())
+	}
+	out.Reset()
+	a.Gaps(&out)
+	if !strings.Contains(out.String(), "Accepted  ubuntu-server") || strings.Contains(out.String(), "Missing ") {
+		t.Errorf("gaps:\n%s", out.String())
 	}
 }

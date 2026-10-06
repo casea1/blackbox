@@ -199,6 +199,12 @@ func (a *App) Status(w io.Writer) error {
 	if a.Cfg.Inbox != "" {
 		fmt.Fprintln(w)
 		a.writeSystems(w, st, now)
+		// Batches that never arrived, unless accepted (L13b).
+		for _, snd := range st.State.Senders {
+			if len(snd.Missing) > 0 {
+				attention = append(attention, "batches from "+snd.Host+" never arrived (see blackbox gaps)")
+			}
+		}
 	}
 	if len(attention) > 0 {
 		return &NeedsAttention{What: attention}
@@ -235,9 +241,9 @@ func (a *App) writeSystems(w io.Writer, st *store.Store, now time.Time) {
 	fmt.Fprintf(w, "Systems (%d)\n", len(list))
 	if len(list) == 0 {
 		fmt.Fprintln(w, "  none yet")
-		return
+	} else {
+		fmt.Fprintf(w, "  %-20s %-8s %-18s %-18s %s\n", "NAME", "OS", "LAST COLLECTION", "LAST RECEIVED", "NOTE")
 	}
-	fmt.Fprintf(w, "  %-20s %-8s %-18s %-18s %s\n", "NAME", "OS", "LAST COLLECTION", "LAST RECEIVED", "NOTE")
 	self := store.SystemKey(collect.LocalHost())
 	off := map[string]bool{}
 	for h := range auditOffNow(st, now) {
@@ -272,6 +278,10 @@ func (a *App) writeSystems(w io.Writer, st *store.Store, now time.Time) {
 		for _, g := range snd.Missing {
 			fmt.Fprintf(w, "  Missing: batches %d-%d from %s never arrived (noticed %s). %s\n",
 				g.From, g.To, snd.Host, stampLocal(g.Noted, a.loc()), ResendAdvice(snd, g))
+		}
+		for _, g := range snd.Accepted {
+			fmt.Fprintf(w, "  Accepted: batches %d-%d from %s will not arrive (%s, by %s on %s)\n",
+				g.From, g.To, snd.Host, g.Reason, g.Who, stampLocal(g.When, a.loc()))
 		}
 		if snd.StartSeq > 1 && snd.Earlier != "" {
 			fmt.Fprintf(w, "  %s: batches start at %d here; earlier ones went to %s\n", snd.Host, snd.StartSeq, snd.Earlier)

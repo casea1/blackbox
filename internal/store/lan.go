@@ -68,6 +68,19 @@ type SenderState struct {
 	Kept *SeqRange `json:"kept,omitempty"`
 	// Former are names the sender's computer had before (W1b).
 	Former []string `json:"former,omitempty"`
+	// Accepted are gaps an administrator accepted as never arriving
+	// ("blackbox gaps accept"): no longer missing, and kept with who,
+	// when and why.
+	Accepted []AcceptedGap `json:"accepted,omitempty"`
+}
+
+// AcceptedGap is a range of batches accepted as never arriving.
+type AcceptedGap struct {
+	From   uint64    `json:"from"`
+	To     uint64    `json:"to"`
+	Reason string    `json:"reason"`
+	Who    string    `json:"who"`
+	When   time.Time `json:"when"`
 }
 
 // SeqRange is a range of batch numbers; From 0 means none.

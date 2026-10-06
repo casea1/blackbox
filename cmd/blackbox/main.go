@@ -43,6 +43,9 @@ Usage:
   blackbox send --resend 214-219 Send batches again that the collector reports missing (kept keep_sent_days after delivery)
   blackbox systems               List the computers whose events this collector reports on
   blackbox systems remove NAME   Stop listing a retired computer
+  blackbox gaps                  List batches that never arrived (collector)
+  blackbox gaps accept NAME FROM-TO "why"
+                                 Accept that those batches will not arrive
   blackbox report [options]      Collect and produce a report now
   blackbox report --xml FILE     Produce a report from exported Windows event logs (any OS)
   blackbox report --audit FILE --syslog FILE
@@ -101,6 +104,8 @@ func main() {
 		err = cmdSend(args)
 	case "systems":
 		err = cmdSystems(args)
+	case "gaps":
+		err = cmdGaps(args)
 	case "verify":
 		err = cmdVerify(args)
 	case "uninstall":
@@ -611,6 +616,41 @@ func cmdSystems(args []string) error {
 		return nil
 	}
 	return errors.New("usage: blackbox systems              (list)\n       blackbox systems remove NAME  (stop listing a retired computer)")
+}
+
+// cmdGaps lists batches that never arrived, or accepts a known gap (L13b).
+func cmdGaps(args []string) error {
+	fs := flag.NewFlagSet("gaps", flag.ContinueOnError)
+	var c common
+	c.register(fs)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := c.load()
+	if err != nil {
+		return err
+	}
+	a := newApp(cfg, nil)
+	rest := fs.Args()
+	switch {
+	case len(rest) == 0:
+		return a.Gaps(os.Stdout)
+	case len(rest) >= 4 && rest[0] == "accept":
+		if err := install.RequireAdmin(); err != nil {
+			return err
+		}
+		from, to, err := lan.ParseRange(rest[2])
+		if err != nil {
+			return err
+		}
+		reason := strings.Join(rest[3:], " ")
+		if err := a.AcceptGap(rest[1], from, to, reason); err != nil {
+			return err
+		}
+		fmt.Printf("Batches %d-%d from %s are accepted as not arriving: %s\nThey no longer count as missing; the next report shows who accepted them, when and why.\n", from, to, rest[1], reason)
+		return nil
+	}
+	return errors.New("usage: blackbox gaps                                  (list)\n       blackbox gaps accept NAME FROM-TO \"why\"  (accept that those batches will not arrive)")
 }
 
 // cmdRun is what the scheduled task runs. Output goes to a log file in

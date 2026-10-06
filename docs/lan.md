@@ -50,11 +50,15 @@ A computer is one or the other: it sends to a collector, or it is one.
   new collector says "batches start at 281 here; earlier ones went to
   WIN-498EC8UMUEL". A batch made for the old collector but not delivered
   yet goes to the new one.
-- **A collector (or standalone computer) that becomes a sender.** Before
+- **A collector (or standalone computer) that becomes a sender.** If it
+  made a scheduled report since it last sent to a collector, then before
   its first send it makes a **final report**, in its reports folder with
   `_final` at the end of the folder name: everything it had collected and
   received and not yet reported, with every original log it held (its own
-  and other computers'). Setup gives its path. From then on it sends only
+  and other computers'). Setup gives its path. If it made no scheduled
+  report in that time (for example, it was standalone for a few hours),
+  there is nothing to finalise: what it collected meanwhile is sent to
+  the collector with its next batches, and setup says so. From then on it sends only
   its own new events. It never passes on what other computers sent it, so
   the new collector neither gets their events twice nor lists them as
   coming "via" this computer. Point the computers that sent to it at the
@@ -365,6 +369,19 @@ A sender keeps everything until the collector has it.
   batch says which batches the sender still keeps, so the collector only
   suggests `--resend` for those, and otherwise says the sender no longer
   keeps them.
+- **Gaps that will never be filled.** `blackbox gaps` on the collector
+  lists the missing batches, and any that were accepted. When batches are
+  known not to be coming (they went to a previous collector, or the
+  sender lost them), an administrator can say so:
+  `blackbox gaps accept ubuntu-server 1-280 "went to the previous collector"`.
+  They are then no longer missing: they stop making `blackbox status`
+  exit 4, `status` and `gaps` list them as accepted with who, when and
+  why, and the next report has a row saying who accepted them and why
+  (recorded like a setting change, in the system log too). Open gaps make
+  `blackbox status` exit 4. A gap from batch 1, noticed when the
+  collector first heard from a sender, clears by itself once that
+  sender's batches say where its earlier batches went (a gap recorded
+  before 0.14 marked that).
 
 In a re-test, 114 batches and 2 log archives queued over 27 hours were
 delivered in 47 seconds, with nothing rejected.

@@ -175,3 +175,28 @@ func TestSenderSaysVM(t *testing.T) {
 		t.Errorf("a PC was marked a VM: %+v", s)
 	}
 }
+
+// L13b: a gap from batch 1 noted when the collector first heard from a
+// sender (recorded before L13 marked where earlier batches went) clears
+// once the sender's batches say where its earlier batches went. A gap
+// that opened later stays.
+func TestFirstContactGapClears(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	st.State.Senders = map[string]*store.SenderState{}
+	at := t0
+	b := &Batch{Header: Header{Sender: "ubuntu-server", SenderID: "u1", Seq: 281, Created: at}}
+	if _, _, err := importBatch(st, b, at); err != nil {
+		t.Fatal(err)
+	}
+	b = &Batch{Header: Header{Sender: "ubuntu-server", SenderID: "u1", Seq: 290, Created: at.Add(time.Hour)}}
+	importBatch(st, b, at.Add(time.Hour)) // 282-289 missing: a real gap
+	snd := st.State.Senders["u1"]
+	if len(snd.Missing) != 2 || snd.Missing[0].From != 1 || snd.Missing[0].To != 280 {
+		t.Fatalf("gaps: %+v", snd.Missing)
+	}
+	b = &Batch{Header: Header{Sender: "ubuntu-server", SenderID: "u1", Seq: 291, Created: at.Add(2 * time.Hour), Earlier: "WIN-498EC8UMUEL"}}
+	importBatch(st, b, at.Add(2*time.Hour))
+	if len(snd.Missing) != 1 || snd.Missing[0].From != 282 || snd.Missing[0].To != 289 {
+		t.Errorf("after the sender said where its earlier batches went: %+v", snd.Missing)
+	}
+}
