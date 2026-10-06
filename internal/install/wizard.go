@@ -41,6 +41,10 @@ type Answers struct {
 	ShareWriters []string // Windows: accounts allowed to deliver over the network share (S11)
 
 	Tray bool // Windows collector or standalone: the status icon for administrators
+
+	// ScapResults is where this computer's SCC or OpenSCAP results are
+	// saved ("" = the scap folder in the data folder, "none" = off).
+	ScapResults string
 }
 
 // RoleOf infers the role from settings.
@@ -177,9 +181,26 @@ func (w *wizard) run(cur Answers, defaultReports string, reinstall bool) (Answer
 		title = brand.Name + " setup (already installed: your current settings are shown as the defaults)"
 	}
 	w.printf("\n%s\n%s\n", title, strings.Repeat("-", len(title)))
-	w.printf("Press Enter to keep the value in [brackets].\n")
 
 	var err error
+	// An upgrade (or a run over an installed Blackbox) with the settings
+	// as they are: one answer, no questions.
+	if reinstall {
+		w.printf("\nCurrent settings\n")
+		for _, l := range Summary(a, defaultReports, w.isWindows) {
+			w.printf("   %-18s%s\n", l.Label+":", l.Value)
+		}
+		w.printf("\n")
+		keep, err := w.yes("Keep these settings and "+QQuickVerb+" now?", true)
+		if err != nil {
+			return a, err
+		}
+		if keep {
+			return a, nil
+		}
+	}
+	w.printf("Press Enter to keep the value in [brackets].\n")
+
 	if a.Role, err = w.askRole(a.Role); err != nil {
 		return a, err
 	}
@@ -212,6 +233,9 @@ func (w *wizard) run(cur Answers, defaultReports string, reinstall bool) (Answer
 		if a.Tray, err = w.yes("Show it?", tray); err != nil {
 			return a, err
 		}
+	}
+	if err := w.askScap(&a); err != nil {
+		return a, err
 	}
 
 	// Summary.
@@ -331,6 +355,51 @@ func (w *wizard) askReports(a *Answers, defaultReports string) error {
 }
 
 // askArchiveDir asks where the original logs wait for the next report.
+// askScap asks where this computer's SCAP results are saved (optional).
+func (w *wizard) askScap(a *Answers) error {
+	w.question(QScap)
+	w.note(NoteScap)
+	def := DefaultScapDir()
+	for {
+		show := a.ScapResults
+		if show == "" {
+			show = def
+		}
+		s, err := w.ask(show)
+		if err != nil {
+			return err
+		}
+		switch {
+		case s == def:
+			a.ScapResults = ""
+			return nil
+		case strings.EqualFold(s, "none"):
+			a.ScapResults = "none"
+			return nil
+		}
+		if err := ReportDirError(s); err != nil {
+			w.note(err.Error())
+			continue
+		}
+		ok, err := w.dirExists(s)
+		if err != nil {
+			w.note(err.Error())
+			continue
+		}
+		if !ok {
+			use, err := w.yes(s+" does not exist yet. Use it anyway (Blackbox reads it once scans are saved there)?", true)
+			if err != nil {
+				return err
+			}
+			if !use {
+				continue
+			}
+		}
+		a.ScapResults = s
+		return nil
+	}
+}
+
 func (w *wizard) askArchiveDir(a *Answers) error {
 	w.question(QArchiveDir)
 	w.note(NoteArchive)

@@ -27,11 +27,14 @@ const (
 	QSendTo     = "Where is the collector's inbox?"
 	QInterval   = "How often should events be collected from the logs?"
 	QTray       = "Show Blackbox's status in the notification area (system tray) for administrators?"
+	QScap       = "Where are this computer's SCAP scan results (SCC or OpenSCAP) saved?"
+	QQuickVerb  = "upgrade"
 
 	NoteAtWeekly = "The week ends then. \"Wednesday 00:00\" covers the week up to Tuesday night,\nso auditors have a fresh report on Wednesday morning."
 	NoteReport   = "Use a folder you have locked down if you like; Blackbox only needs to write to it."
 	NoteArchive  = "The raw logs (.evtx, audit logs) of this computer and every sender are kept here until each scheduled report moves them into its folder. Allow a few MB a day per computer; choose a larger drive for many computers."
 	NoteInbox    = "Blackbox imports what arrives there every time it collects."
+	NoteScap     = "Optional. Blackbox reads the latest scan of each benchmark in this folder and its subfolders (SCC's Sessions folder works as it is) for the report's STIG compliance; a sender sends its latest scans to the collector. It never runs a scan. Type none to turn this off."
 	NoteKeep     = "Use it anyway? The data waits here until the collector can be reached."
 )
 
@@ -204,11 +207,23 @@ func Summary(a Answers, defaultReports string, windows bool) []SummaryLine {
 		}
 	}
 	l = append(l, SummaryLine{"Collect events", EveryText(a.CollectEvery)})
+	scap := a.ScapResults
+	switch {
+	case scap == "":
+		scap = DefaultScapDir()
+	case strings.EqualFold(scap, "none"):
+		scap = "not read"
+	}
+	l = append(l, SummaryLine{"SCAP results", scap})
 	if windows && a.Role != RoleSender {
 		l = append(l, SummaryLine{"Status icon", map[bool]string{true: "shown to administrators", false: "not shown"}[a.Tray]})
 	}
 	return l
 }
+
+// DefaultScapDir is where SCAP results are read when scap_results is not
+// set: the scap folder in the data folder.
+func DefaultScapDir() string { return filepath.Join(config.DefaultDataDir(), "scap") }
 
 // SplitList splits a comma-separated list of names.
 func SplitList(s string) []string {

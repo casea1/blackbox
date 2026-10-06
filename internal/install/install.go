@@ -28,16 +28,18 @@ type Options struct {
 func writeConfig(path string, opt Options, crlf bool) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		text := config.Render(opt.Site, opt.ReportEvery, opt.ReportAt, opt.ReportDir, opt.CollectEvery)
-		for _, kv := range [][2]string{{"send_to", opt.SendTo}, {"share_user", opt.ShareUser}, {"inbox", opt.Inbox}, {"archive_dir", opt.ArchiveDir}} {
-			text = strings.Replace(text, "\n"+kv[0]+" = \n", "\n"+kv[0]+" = "+kv[1]+"\n", 1)
-		}
 		if crlf {
 			text = strings.ReplaceAll(text, "\n", "\r\n") // friendly for Notepad
 		}
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return err
 		}
-		return os.WriteFile(path, []byte(text), 0o640)
+		if err := os.WriteFile(path, []byte(text), 0o640); err != nil {
+			return err
+		}
+		// The template's "archive_dir =" and "scap_results =" lines have
+		// no value, so the settings below are set in it like in an
+		// existing file (a first install lost a chosen archive_dir).
 	}
 	return config.SetValues(path, [][2]string{
 		{"site_name", opt.Site},
@@ -49,6 +51,7 @@ func writeConfig(path string, opt Options, crlf bool) error {
 		{"send_to", opt.SendTo},
 		{"share_user", opt.ShareUser},
 		{"inbox", opt.Inbox},
+		{"scap_results", opt.ScapResults},
 	})
 }
 

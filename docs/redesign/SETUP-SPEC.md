@@ -45,7 +45,7 @@ The pages ask exactly the console setup's questions, in the same order, with the
 
 1. **Welcome.**
    - First install: "Blackbox <version> will be installed on this computer."
-   - Upgrade: "Blackbox <installed version> is installed. This will upgrade it to <version>. Your current settings are kept and shown on the next pages."
+   - Upgrade: "Blackbox <installed version> is installed. This will upgrade it to <version>." An **Upgrade now, keep current settings** button (the default) upgrades in one click without the other pages, with the current settings listed under it; **Next** goes through them to change any. The console setup asks the same first: "Keep these settings and upgrade now? (Y/n)", after listing them.
    - Same version already installed (from **Change settings…** or **Modify**): "Blackbox <version> is installed. Change any settings on the next pages, then click Apply."
    - A first install also says in a short paragraph what Blackbox does, and lists the program and data folders in grey (owner decision, 3 Oct 2026).
 2. **This computer.** How will this computer's audit events be reviewed? Three radio buttons, each with the console setup's description:
@@ -79,8 +79,9 @@ The pages ask exactly the console setup's questions, in the same order, with the
    - the current setting, if it is none of these.
 
    On a collector or standalone computer this page also has ☑ **Show Blackbox's status in the notification area for administrators** (on by default).
-7. **Summary.** The console's summary lines, and an **Install** button (**Apply** when already installed).
-8. **Installing.**
+7. **SCAP results** (every role). Where this computer's SCC or OpenSCAP results are saved, with **Browse…**; the default is the `scap` folder in the data folder, and `none` turns it off. A folder that doesn't exist yet is accepted after asking (SCC may create it later). Collectors and standalone computers read the latest scan of each benchmark there; a sender sends its latest scans to the collector.
+8. **Summary.** The console's summary lines, and an **Install** button (**Apply** when already installed).
+9. **Installing.**
    - A progress bar and a read-only box showing the same lines the console prints: the install steps, the audit-settings check, then the first report or first send. This keeps the existing rule that an upgrade doesn't produce a report or move the schedule.
    - When finished: "Done" with **Open report** (when one was made), **Open reports folder** (collector or standalone) and **Finish**.
    - On failure: the error in plain words, with **Close**.

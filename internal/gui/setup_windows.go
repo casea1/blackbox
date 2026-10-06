@@ -173,6 +173,8 @@ func (s *setupWin) header() (title, sub string) {
 		return "Collector", "Where this computer sends its events"
 	case pCollect:
 		return "Collection", install.QInterval
+	case pScap:
+		return "SCAP results", "Where this computer's SCC or OpenSCAP scan results are saved"
 	case pSummary:
 		if s.installed != "" {
 			return "Ready to apply", "Check the settings, then click Apply."
@@ -214,6 +216,22 @@ func (s *setupWin) build() {
 	case pWelcome:
 		s.label(welcomeText(s.installed, s.version), x, y, w, 100)
 		s.note("Program folder: "+filepath.Dir(install.ProgramPath())+"\nSettings and collected events: "+config.DefaultDataDir(), x, y+130, w, 40)
+		if quickUpgrade(s.installed, s.version) {
+			// One click: the settings as they are (shown under the button).
+			s.c["quick"] = s.control("BUTTON", "Upgrade now, keep current settings", wsTabStop|bsDefPushButton, 0, x, y+184, 290, 32, false)
+			s.on(s.c["quick"], func(code uint16) {
+				if code == bnClicked {
+					s.page = pInstall
+					s.start()
+					s.build()
+				}
+			})
+			var cur []string
+			for _, l := range install.Summary(s.final(), s.defaultReports, true) {
+				cur = append(cur, l.Label+": "+l.Value)
+			}
+			s.note(strings.Join(cur, " · "), x, y+224, w, 60)
+		}
 	case pRole:
 		var ch []choiceText
 		for _, c := range install.RoleChoices {
@@ -328,6 +346,15 @@ func (s *setupWin) build() {
 			s.c["tray"] = s.check("Show Blackbox's status in the notification area for administrators", s.tray, x, y+200, w)
 			s.note("An icon by the clock: collecting on schedule, something to look at, or stopped. Only members of Administrators see it.", x+20, y+224, w-20, 34)
 		}
+	case pScap:
+		s.label(install.QScap, x, y, w, 20)
+		dir := s.a.ScapResults
+		if dir == "" {
+			dir = install.DefaultScapDir()
+		}
+		s.c["scap"] = s.edit(dir, x, y+22, w-100, false)
+		s.button("Browse…", x+w-92, y+20, 92, false, func() { s.browse("scap", install.QScap) })
+		s.note(install.NoteScap, x, y+52, w, 76)
 	case pSummary:
 		a := s.final()
 		for _, l := range install.Summary(a, s.defaultReports, true) {
@@ -428,6 +455,15 @@ func (s *setupWin) save() {
 		s.a.SendTo = strings.Trim(get("sendto"), `"`)
 		s.a.ShareUser = get("user")
 		s.a.SharePassword = getText(s.c["pw"])
+	case pScap:
+		switch d := strings.Trim(get("scap"), `"`); {
+		case d == install.DefaultScapDir():
+			s.a.ScapResults = ""
+		case strings.EqualFold(d, "none"):
+			s.a.ScapResults = "none"
+		default:
+			s.a.ScapResults = d
+		}
 	case pCollect:
 		if len(s.radios) > 0 {
 			s.a.CollectEvery = s.ints[selected(s.radios)]
@@ -535,6 +571,21 @@ func (s *setupWin) check_() bool {
 		}
 		if s.a.ShareInbox && len(s.a.ShareWriters) == 0 && !s.reinstall {
 			return warn("swriters", "Enter the account other computers deliver as (for example bbsend), or untick sharing.")
+		}
+	case pScap:
+		if strings.TrimSpace(getText(s.c["scap"])) == "" {
+			return warn("scap", install.ReportDirError("").Error()+" Type none to turn SCAP results off.")
+		}
+		if d := s.a.ScapResults; d != "" && d != "none" {
+			if err := install.ReportDirError(d); err != nil {
+				return warn("scap", err.Error())
+			}
+			if ok, err := dirExists(d); err != nil {
+				return warn("scap", err.Error())
+			} else if !ok && messageBox(s.hwnd, d+" does not exist yet. Use it anyway? Blackbox reads it once scans are saved there.", "Blackbox setup", mbYesNo|mbIconQuestion) != idYes {
+				pSetFocus.Call(s.c["scap"])
+				return false
+			}
 		}
 	case pSendTo:
 		v, err := install.SendToAnswer(s.a.SendTo, true)

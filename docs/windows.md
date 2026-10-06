@@ -77,8 +77,9 @@ Open **Settings → Apps**, find **Blackbox** and choose **Modify**, or pick
 current settings filled in, so change only what you need.
 
 **To upgrade,** double-click the newer `Blackbox-Setup-<version>.exe`. It
-says which version is installed, keeps your settings, and doesn't move
-the report schedule. A collection running at that moment, or an open
+says which version is installed and lists your current settings; click
+**Upgrade now, keep current settings** to upgrade in one click, or **Next**
+to go through them. It doesn't move the report schedule. A collection running at that moment, or an open
 status icon, doesn't block it. Setup then checks the new program starts,
 and puts the previous one back if it doesn't.
 
