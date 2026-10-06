@@ -91,7 +91,7 @@ each report's `summary.json`.
 | Possible password guessing | High | 5 or more failed logons for one account on one computer within 15 minutes |
 | One source tried several accounts | High | Failures for 3 or more accounts from one address within 15 minutes |
 | Same account failing on several computers | High | Failed logons for one account on 3 or more computers within 30 minutes (a collector sees every computer) |
-| Possible covering of tracks | High | An account created, someone added to a privileged group, or sudo rules changed, then within 24 hours on the same computer a log cleared or altered, auditing stopped, an audit rule added, removed or refused, auditing on an object changed, anti-malware turned off or an exclusion added, the firewall stopped, or Blackbox stopped, removed or its exclusions or retention changed, by a person |
+| Possible covering of tracks | High | An account created, someone added to a privileged group, or sudo rules changed, then within 24 hours on the same computer a log cleared or altered, auditing stopped, an audit rule added, removed or refused, auditing on an object changed, anti-malware turned off or an exclusion added, the firewall stopped, or Blackbox stopped, removed or its exclusions or retention changed, by a person. Blackbox's own installer (`Blackbox-Setup-<version>.exe`) writing its data folder is not a step when Blackbox recorded that install or upgrade on the same computer; those writes are not rows either |
 | Account created and deleted within a day | High | The same account created and deleted on one computer within 24 hours |
 | Auditing was switched off | High | The audit service stopped by a person, with how long it stayed off |
 | Successful logon after failures | Medium | 3 or more failures, then a success, within 30 minutes |
@@ -391,8 +391,9 @@ its daily settings check by Blackbox 0.13 or later:
 
 Click a system for its drives and accounts; click an account to search its
 events. **Export > Inventory as CSV** saves every system, drive and
-account, one per line. Systems with no inventory yet (an older Blackbox,
-or no settings check since) are named under the table.
+account, one per line. Systems with no inventory yet are named under the
+table with the reason: it has sent nothing since a given time, it runs a
+Blackbox from before 0.13, or it has sent no settings check yet.
 
 How it is read: on Windows, one PowerShell query of CIM
 (`Win32_ComputerSystem`, `Win32_BIOS`, `Win32_DiskDrive`,
@@ -412,6 +413,16 @@ The Overview flags a report as incomplete when:
 - auditing was switched off
 - a Linux log was rotated away before it was read, or the kernel dropped
   audit records
+
+**A computer that sent nothing.** A system with no collection in the
+period is **Silent**, with the time it last sent. A virtual machine is
+treated more gently, because it sends only while it is on: one that was
+off for part of the period is fine, and one that sent nothing all period
+is **Worth a look: nothing received since** that time. Blackbox calls a
+system a virtual machine only when it says so itself, which a sender does
+when it sends through a VirtualBox shared folder (`/media/sf_…` or
+`\\VBOXSVR\…`); data relayed through another computer does not make it
+one. A VM that sends over the network shows as a workstation.
 
 The **Audit health** page shows every system against every STIG audit
 check (logon, account management, policy change, privilege use, process

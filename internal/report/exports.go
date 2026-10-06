@@ -141,7 +141,7 @@ func (r *Report) printOut(o *Overview, hp *HealthPage) PrintOut {
 	p.Sub = c
 	rep := 0
 	for _, s := range r.SystemRows {
-		if s.Status != "silent" {
+		if s.reporting() {
 			rep++
 		}
 	}

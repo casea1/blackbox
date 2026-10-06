@@ -605,6 +605,54 @@ func versionAtLeast(v string, min [3]int) bool {
 	return true
 }
 
+// isBlackboxSetup reports whether program is Blackbox's own installer
+// (Blackbox-Setup-0.15.0.exe, from any folder).
+func isBlackboxSetup(program string) bool {
+	base := strings.ToLower(program)
+	if i := strings.LastIndexAny(base, `/\`); i >= 0 {
+		base = base[i+1:]
+	}
+	return strings.HasPrefix(base, "blackbox-setup") && strings.HasSuffix(base, ".exe")
+}
+
+// installerWrites drops what Blackbox's own installer wrote to its data
+// folder (C:\ProgramData\Blackbox, blackbox.conf.new) when the same
+// computer has Blackbox's record of that install or upgrade close by
+// (UI4): the install is the row, not every file it wrote, and its writes
+// are no step of "Possible covering of tracks". A program named like the
+// installer with no such record stays a High row. A deleted report is
+// never the installer's to drop.
+func installerWrites(events []*event.Event) []*event.Event {
+	var installs []*event.Event
+	for _, e := range events {
+		if k := e.Fields[event.SelfFlag]; (k == "installed" || k == "upgraded") && e.Fields["program"] == "setup" {
+			installs = append(installs, e)
+		}
+	}
+	if len(installs) == 0 {
+		return events
+	}
+	out := events[:0]
+	for _, e := range events {
+		if (e.Action == "blackbox_files_changed" || e.Action == "blackbox_config_changed") && e.Fields[event.SelfFlag] == "" &&
+			detail(e, "Report") == "" && isBlackboxSetup(e.Process) {
+			matched := false
+			for _, in := range installs {
+				// Setup writes its files, then records the install.
+				if strings.EqualFold(in.Host, e.Host) && !e.Time.Before(in.Time.Add(-30*time.Minute)) && !e.Time.After(in.Time.Add(5*time.Minute)) {
+					matched = true
+					break
+				}
+			}
+			if matched {
+				continue
+			}
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
 // selfChanges joins each "blackbox config set" command line to the record
 // Blackbox made of the change (A15): the record says who, which setting,
 // and the value before and after, so the command row is dropped and its

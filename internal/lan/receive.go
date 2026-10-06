@@ -366,10 +366,11 @@ func importBatch(st *store.Store, b *Batch, now time.Time) (int, bool, error) {
 	for _, r := range runList {
 		st.NoteSystem(r.Host, r.OS, r.Version, b.Sender, r.Time, now, now)
 	}
-	if b.Former != nil {
-		if sys := st.State.Systems[store.SystemKey(b.Sender)]; sys != nil {
+	if sys := st.State.Systems[store.SystemKey(b.Sender)]; sys != nil {
+		if b.Former != nil {
 			sys.Former = b.Former
 		}
+		sys.VM = b.VM
 	}
 	// Systems are only the computers that collect (they send runs), not
 	// every host name in the events: old events can carry a computer's

@@ -283,6 +283,7 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	events = mergeAdminLogons(events)
 	events = r.dedupe(events)
 	events = selfChanges(events, runs)
+	events = installerWrites(events)
 	events = r.appPackageRules(events)
 	events = r.defenderState(events)
 	events = r.windowsSetup(events)

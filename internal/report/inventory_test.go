@@ -9,6 +9,7 @@ import (
 
 	"github.com/casea1/blackbox/internal/event"
 	"github.com/casea1/blackbox/internal/inventory"
+	"github.com/casea1/blackbox/internal/store"
 )
 
 // The Inventory page: each system's make, model and serial number, its
@@ -32,7 +33,7 @@ func TestInventoryPage(t *testing.T) {
 	cs.Inventory = inv
 	r := Build(evs, nil, Options{WindowEnd: end, Location: time.UTC, CheckSets: []CheckSet{cs}})
 	ip := r.inventoryPage()
-	if len(ip.Rows) != 1 || len(ip.Missing) != 1 || ip.Missing[0] != "ubu-01" || ip.Stats[0].Value != "1 / 2" {
+	if len(ip.Rows) != 1 || len(ip.Missing) != 1 || ip.Missing[0].Host != "ubu-01" || ip.Stats[0].Value != "1 / 2" {
 		t.Fatalf("page: %+v", ip)
 	}
 	row := ip.Rows[0]
@@ -56,9 +57,40 @@ func TestInventoryPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-	for _, want := range []string{`data-view="inventory"`, `href="#inventory"`, "Drives on WS-07", "S5GXNX0T123456A", "No inventory yet from: ubu-01", `data-act="invcsv"`, `href="#search?user=jsmith"`} {
+	for _, want := range []string{`data-view="inventory"`, `href="#inventory"`, "Drives on WS-07", "S5GXNX0T123456A", "<b>ubu-01</b>: it has sent no settings check yet", `data-act="invcsv"`, `href="#search?user=jsmith"`} {
 		if !strings.Contains(string(html), want) {
 			t.Errorf("report lacks %q", want)
 		}
+	}
+}
+
+// "No inventory yet" gives the real reason for each system (UI2): it sent
+// nothing since a time, it runs a version from before inventory, or it has
+// sent no settings check.
+func TestInventoryMissingWhy(t *testing.T) {
+	end := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	runs := []*store.Run{{Time: end.Add(-time.Hour), Host: "old", OS: "linux"}, {Time: end.Add(-time.Hour), Host: "nocheck", OS: "linux"},
+		{Time: end.Add(-time.Hour), Host: "WS-07", OS: "windows"}}
+	r := Build(nil, runs, Options{WindowStart: end.AddDate(0, 0, -1), WindowEnd: end, Location: time.UTC, Source: "Live collection", Collector: true,
+		Systems: []SystemInfo{{Name: "ubuntu-server", OS: "linux", LastRun: time.Date(2026, 10, 3, 6, 31, 0, 0, time.UTC)},
+			{Name: "old", OS: "linux", Version: "0.12.1"}, {Name: "nocheck", OS: "linux", Version: "0.15.0"},
+			{Name: "WS-07", OS: "windows", Version: "0.15.0"}},
+		CheckSets: []CheckSet{NewCheckSet("WS-07", end.Add(-2*time.Hour), nil)}})
+	why := map[string]string{}
+	for _, m := range r.inventoryPage().Missing {
+		why[m.Host] = m.Why
+	}
+	for host, want := range map[string]string{
+		"ubuntu-server": "it has sent nothing since 3 Oct 06:31",
+		"old":           "it runs Blackbox 0.12.1; inventory is sent from version 0.13 on",
+		"nocheck":       "it has sent no settings check yet; inventory is read with the daily settings check",
+		"WS-07":         "its last settings check (5 Oct 10:00) had no inventory",
+	} {
+		if why[host] != want {
+			t.Errorf("%s: %q, want %q", host, why[host], want)
+		}
+	}
+	if !versionBefore("v0.12", 0, 13) || versionBefore("0.13.0", 0, 13) || versionBefore("1.0", 0, 13) || versionBefore("dev", 0, 13) {
+		t.Error("versionBefore")
 	}
 }

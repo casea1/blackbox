@@ -41,7 +41,7 @@ func (r *Report) metrics() map[string]int {
 	}
 	reporting := 0
 	for _, s := range r.SystemRows {
-		if s.Status != "silent" {
+		if s.reporting() {
 			reporting++
 		}
 	}
@@ -50,6 +50,12 @@ func (r *Report) metrics() map[string]int {
 	}
 	m[MSystems] = reporting
 	return m
+}
+
+// reporting says whether a system sent anything this period: not silent,
+// and not a virtual machine that sent nothing (UI2).
+func (s SystemRow) reporting() bool {
+	return s.Status != "silent" && !(s.VM && s.Runs == 0)
 }
 
 // addRowMetrics counts one event row into m.

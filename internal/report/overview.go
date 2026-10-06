@@ -242,10 +242,10 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	// System map or (standalone) system cards.
 	if o.Standalone {
 		for _, s := range systems {
-			c := SystemCard{Name: s.Name, OS: osLabel(s), VM: s.Via != "", Events: commas(s.Events)}
+			c := SystemCard{Name: s.Name, OS: osLabel(s), VM: s.VM, Events: commas(s.Events)}
 			c.Role = "standalone"
-			if s.Via != "" {
-				c.Role = "virtual machine on " + s.Via
+			if s.VM {
+				c.Role = "virtual machine on " + r.MainSystem()
 			}
 			c.Bad = level[s.Name] != "ok"
 			c.Status = map[bool]string{true: "Needs attention", false: "Healthy"}[c.Bad]
@@ -259,7 +259,9 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 			c.Collected = "this period"
 			if s.Status == "silent" {
 				c.Collected = "nothing received"
-			} else if s.Via != "" {
+			} else if s.VM && s.Runs == 0 {
+				c.Collected = "nothing received"
+			} else if s.VM {
 				c.Collected = "while on"
 			}
 			c.Settings = "not checked"
@@ -275,13 +277,13 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	} else {
 		groups := []*MapGroup{{Title: "Servers"}, {Title: "Workstations"}, {Title: "Virtual machines"}}
 		for _, s := range systems {
-			t := MapTile{Name: s.Name, OS: shortOS(s), Level: level[s.Name], VM: s.Via != ""}
+			t := MapTile{Name: s.Name, OS: shortOS(s), Level: level[s.Name], VM: s.VM}
 			if t.Level == "ok" {
 				t.Level = ""
 			}
 			g := groups[1]
 			switch {
-			case s.Via != "":
+			case s.VM:
 				g = groups[2]
 			case isServer(s):
 				g = groups[0]
@@ -362,12 +364,20 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string]int) []CheckL
 		lines = append(lines, CheckLine{Level: "bad", Icon: "clock-alert", Title: "Every system reporting", Who: strings.Join(who, ", "), What: since, Count: frac(len(who))})
 	} else {
 		what := "Every system sent its events"
+		var quiet []string
 		for _, s := range systems {
-			if s.Via != "" {
+			if s.VM && s.Runs == 0 {
+				quiet = append(quiet, s.Name)
+			} else if s.VM {
 				what = "VMs reported whenever they were on"
 			}
 		}
-		lines = append(lines, CheckLine{Level: "ok", Icon: "clock-alert", Title: "Every system reporting", What: what, Count: frac(0)})
+		if len(quiet) > 0 {
+			lines = append(lines, CheckLine{Level: "warn", Icon: "clock-alert", Title: "Every system reporting", Who: strings.Join(quiet, ", "),
+				What: "Worth a look: a virtual machine sent nothing this period", Count: frac(len(quiet))})
+		} else {
+			lines = append(lines, CheckLine{Level: "ok", Icon: "clock-alert", Title: "Every system reporting", What: what, Count: frac(0)})
+		}
 	}
 
 	if r.Late > 0 {
@@ -469,7 +479,7 @@ func times(n int) string {
 func silentNote(systems []SystemRow) string {
 	var silent []string
 	for _, s := range systems {
-		if s.Status == "silent" {
+		if !s.reporting() {
 			silent = append(silent, s.Name)
 		}
 	}
@@ -477,9 +487,9 @@ func silentNote(systems []SystemRow) string {
 	case 0:
 		return "all reporting"
 	case 1:
-		return silent[0] + " silent"
+		return silent[0] + ": nothing received"
 	}
-	return fmt.Sprintf("%d silent", len(silent))
+	return fmt.Sprintf("%d sent nothing", len(silent))
 }
 
 // average is the mean of the earlier values in a series (not the last),

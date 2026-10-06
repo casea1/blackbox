@@ -44,6 +44,9 @@ type SendState struct {
 	// Since is when this computer last started sending after making
 	// reports itself (AR3): what it had by then went into a final report.
 	Since time.Time `json:"since,omitzero"`
+	// VM: send_to is a VirtualBox shared folder, so this computer is a
+	// virtual machine on the collector's PC (UI2).
+	VM bool `json:"vm,omitempty"`
 }
 
 // SenderState is what a collector knows about one sender.
@@ -98,6 +101,9 @@ type System struct {
 	// Former are names this computer had before (W1b): data recorded
 	// under them is its own.
 	Former []string `json:"former,omitempty"`
+	// VM: it says it is a virtual machine sending through a VirtualBox
+	// shared folder (UI2).
+	VM bool `json:"vm,omitempty"`
 }
 
 // SystemKey is the registry key for a host name (names are compared

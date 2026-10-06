@@ -64,7 +64,7 @@ func Export(st *store.Store, host, version string, now time.Time) (int, error) {
 			return nil
 		}
 		b.Header = Header{Sender: host, SenderID: s.ID, Seq: s.NextSeq, Created: now, Version: version, OS: runtime.GOOS,
-			FirstSeq: s.FirstSeq, Earlier: s.Earlier, Kept: kept, Former: former}
+			FirstSeq: s.FirstSeq, Earlier: s.Earlier, Kept: kept, Former: former, VM: s.VM}
 		data, err := b.Bytes()
 		if err != nil {
 			return err
@@ -459,6 +459,16 @@ func InboxCollector(inbox string) string {
 		}
 	}
 	return ""
+}
+
+// NoteVM records whether this computer is a VM sending through a VirtualBox
+// shared folder (UI2); its batches say so, and only that makes it a VM in
+// the collector's reports.
+func NoteVM(st *store.Store, vm bool) {
+	if st.State.Send == nil {
+		st.State.Send = &store.SendState{ID: store.NewID(), NextSeq: 1}
+	}
+	st.State.Send.VM = vm
 }
 
 // NoteDestination records where batches now go: dest is send_to, and

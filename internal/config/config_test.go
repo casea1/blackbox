@@ -260,3 +260,19 @@ func TestArchivesDir(t *testing.T) {
 		t.Error("a relative archive_dir was accepted")
 	}
 }
+
+// UI2: sending through a VirtualBox shared folder is what marks a VM.
+func TestIsVirtualBoxShare(t *testing.T) {
+	for p, want := range map[string]bool{
+		"/media/sf_blackbox":           true,
+		`\\VBOXSVR\blackbox`:           true,
+		`\\vboxsrv\share\in`:           true,
+		`\\WIN11-COL\BlackboxInbox`:    false,
+		"/mnt/blackbox":                false,
+		"sftp://collector/blackbox/in": false,
+	} {
+		if got := IsVirtualBoxShare(p); got != want {
+			t.Errorf("%s: %v", p, got)
+		}
+	}
+}

@@ -17,7 +17,12 @@ import (
 type InventoryPage struct {
 	Stats   []EventCard
 	Rows    []*InvRow
-	Missing []string // systems in the report with no inventory yet
+	Missing []InvMissing // systems in the report with no inventory yet
+}
+
+// InvMissing is a system with no inventory, and why (UI2).
+type InvMissing struct {
+	Host, Why string
 }
 
 // InvRow is one system's inventory.
@@ -91,9 +96,11 @@ func (r *Report) inventoryPage() *InventoryPage {
 		ip.Rows = append(ip.Rows, row)
 	}
 	sort.SliceStable(ip.Rows, func(i, j int) bool { return naturalLess(ip.Rows[i].Host, ip.Rows[j].Host) })
+	var missing []string
 	for _, h := range r.Hosts {
 		if !have[strings.ToLower(h)] {
-			ip.Missing = append(ip.Missing, h)
+			missing = append(missing, h)
+			ip.Missing = append(ip.Missing, InvMissing{Host: h, Why: r.noInventoryWhy(h)})
 		}
 	}
 	lvl := ""
@@ -101,7 +108,7 @@ func (r *Report) inventoryPage() *InventoryPage {
 		lvl = "warn"
 	}
 	ip.Stats = []EventCard{
-		{Icon: "server", Label: "Systems inventoried", Value: fmt.Sprintf("%d / %d", len(ip.Rows), len(ip.Rows)+len(ip.Missing)), Note: missingNote(ip.Missing), Level: lvl, Scroll: "inv-systems"},
+		{Icon: "server", Label: "Systems inventoried", Value: fmt.Sprintf("%d / %d", len(ip.Rows), len(ip.Rows)+len(ip.Missing)), Note: missingNote(missing), Level: lvl, Scroll: "inv-systems"},
 		{Icon: "hard-drive", Label: "Drives", Value: commas(drives), Note: "with serials", Scroll: "inv-systems"},
 		{Icon: "users", Label: "Accounts", Value: commas(accounts), Note: "local and domain", Scroll: "inv-systems"},
 		{Icon: "key-round", Label: "Administrators", Value: commas(admins), Note: "admin rights", Scroll: "inv-systems"},
@@ -157,6 +164,40 @@ func driveSize(b uint64) string {
 		return fmt.Sprintf("%.0f GB", float64(b)/1e9)
 	}
 	return fmt.Sprintf("%.0f MB", float64(b)/1e6)
+}
+
+// noInventoryWhy says why a system has no inventory: it sent nothing, it
+// runs a Blackbox from before inventory, or it has sent no settings check.
+func (r *Report) noInventoryWhy(host string) string {
+	var row *SystemRow
+	for i := range r.SystemRows {
+		if strings.EqualFold(r.SystemRows[i].Name, host) {
+			row = &r.SystemRows[i]
+		}
+	}
+	switch {
+	case row == nil:
+		return "it has sent no settings check yet"
+	case row.Runs == 0 && row.LastRun.IsZero():
+		return "it has sent nothing yet"
+	case row.Runs == 0:
+		return "it has sent nothing since " + r.since(row.LastRun)
+	case row.Version != "" && versionBefore(row.Version, 0, 13):
+		return "it runs Blackbox " + row.Version + "; inventory is sent from version 0.13 on"
+	case row.Checks == nil:
+		return "it has sent no settings check yet; inventory is read with the daily settings check"
+	}
+	return "its last settings check (" + r.since(row.Checks.Time) + ") had no inventory"
+}
+
+// versionBefore reports whether v ("0.12.1", "v0.12") is older than
+// major.minor. A version it can't read is not older.
+func versionBefore(v string, major, minor int) bool {
+	var a, b int
+	if n, _ := fmt.Sscanf(strings.TrimPrefix(v, "v"), "%d.%d", &a, &b); n < 2 {
+		return false
+	}
+	return a < major || a == major && b < minor
 }
 
 func missingNote(missing []string) string {

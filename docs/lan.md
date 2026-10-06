@@ -105,7 +105,10 @@ needed.
    Press Enter.
 
 Done. The VM's events appear in the Windows PC's next report. Its
-Systems page lists both computers.
+Systems page lists both computers. Because the VM sends through a VirtualBox shared
+folder, it says it is a virtual machine and the report lists it as one
+("Virtual machine on" the PC). Being off for part of the week is not a
+problem; sending nothing all week is "Worth a look".
 
 ## Scenario 2: LAN workstations that host Linux VMs
 
