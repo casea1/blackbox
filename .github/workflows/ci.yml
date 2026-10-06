@@ -43,6 +43,8 @@ jobs:
           go-version-file: go.mod
       - name: Test
         run: go test ./...
+      - name: Tray dialogs open on the first click (TRAY1)
+        run: go test ./internal/gui -run TestFirstDialogShows -v -count=1
       - name: Smoke test against this runner's live event logs
         shell: pwsh
         run: |
