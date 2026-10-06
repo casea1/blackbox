@@ -331,6 +331,28 @@ the report folders elsewhere first.
 Expect a few MB a day per Windows computer (much less for Linux),
 compressed. It depends on how busy the Security log is.
 
+**Deleting a report folder.** What is lost depends on the folder:
+
+- **A scheduled report** holds the only copy of its period's original
+  logs (they were moved out of `archive_dir` into it), its hashes
+  (`manifest.sha256`), and its day-by-day counts for Trends
+  (`summary.json`). The collected events stay in the data folder (kept
+  for good unless `retention_days` is set), so `blackbox report` can make
+  a report for that period again, but without the original logs, and as
+  a manual report that Trends do not count. All reports no longer lists
+  it, Trends show a gap for its weeks, and if it was the latest, the next
+  scheduled report says it does not start where the previous one ended.
+- **A manual report** holds nothing that is not kept elsewhere: its
+  original logs still wait in `archive_dir` for the scheduled report,
+  which also covers the same time. Only that snapshot of the report is
+  gone.
+
+On Windows, deleting a report under `C:\ProgramData\Blackbox` is a High
+row ("deleted the report …") in the next report when that folder has an
+auditing entry (see [windows.md](windows.md)); a `report_dir` elsewhere
+needs its own. On Linux, Blackbox's audit rules watch `/var/lib/blackbox`;
+a `report_dir` elsewhere is not watched unless you add a rule for it.
+
 ## STIG compliance (SCAP)
 
 An assessor asks two things: is what the STIG audits reviewed, and is the
@@ -359,6 +381,14 @@ no operating-system scan shows its other scans in the main table. A scan
 older than `scap_max_age_days` (30 by default) is marked **Stale**, and
 the computers with no scan are named in one **No scan found** line. The
 open-rules CSV still lists every benchmark.
+
+**Where the score is.** Besides the table: the bar at the top of Audit
+health ("lowest score 40% · 1 open CAT I"); each system's own Audit
+health view, as **SCAP score** next to its checks (on a one-computer
+report, that view is the whole of Audit health); and each system's
+health list on the Systems page (**STIG compliance (SCAP)**, or **Open
+CAT I findings (SCAP)** when it has them). Each uses the system's
+operating-system scan.
 
 - CAT comes from each rule's severity: high is CAT I, medium CAT II, low
   CAT III. Open means `fail` or `error`, as STIG Viewer and SCC count
