@@ -124,8 +124,20 @@ type HealthPage struct {
 	Single  string // a report of one system opens its table directly
 	Checked int
 	Other   []OtherRow // Security-log events Blackbox doesn't translate
-	Scap    []ScapRow  // STIG compliance from SCAP scans
+	Scap    *ScapView  // STIG compliance from SCAP scans
 	AV      []AVRow    // antivirus definitions and protection, by system
+
+	// The grid lists systems with a gap or warning; those that match on
+	// every check are folded away (Passing), so the sections below are
+	// in reach. Jump links to each section.
+	Attention, Passing []HealthGroup
+	PassingN           int
+	Jump               []JumpLink
+}
+
+// JumpLink is one section of the Audit health page in the bar at its top.
+type JumpLink struct {
+	Label, Note, Target, Level string
 }
 
 // OtherRow is one Security-log event ID Blackbox has no translation for,
@@ -178,7 +190,7 @@ func (r *Report) healthPage() *HealthPage {
 			return nil
 		}
 	}
-	hp := &HealthPage{Cols: healthHeadings(), Other: r.otherEvents(), Scap: r.scapTable, AV: r.avRows()}
+	hp := &HealthPage{Cols: healthHeadings(), Other: r.otherEvents(), Scap: r.scapView(), AV: r.avRows()}
 	cleared := map[string][]*Row{}
 	for _, row := range r.rows {
 		if row.Action == "log_cleared" {
@@ -496,6 +508,7 @@ func (r *Report) healthPage() *HealthPage {
 		{Icon: "circle-check", Label: "Events lost to rollover", Scroll: "h-gaps", Value: commas(int(totalLost)), Note: plural(r.Health.Runs, "run"), Level: lvl(totalLost > 0, "bad")},
 		{Icon: "hard-drive", Label: "Log size and space settings", Scroll: "h-gaps", Value: commas(small), Note: short(set(smallWho), 1), Level: lvl(small > 0, "warn")},
 	}
+	hp.fold()
 	return hp
 }
 
@@ -519,4 +532,73 @@ func stampOrDash(t time.Time, loc *time.Location) string {
 		return "never"
 	}
 	return t.In(loc).Format("2 Jan 15:04")
+}
+
+// fold splits the grid into systems that need attention and those that
+// match on every check, and builds the jump bar.
+func (hp *HealthPage) fold() {
+	needs := 0
+	for _, g := range hp.Groups {
+		var att, pass []*HealthRow
+		for _, row := range g.Rows {
+			ok := true
+			for _, c := range row.Cells {
+				if c.Class == "bad" || c.Class == "warn" {
+					ok = false
+				}
+			}
+			if ok {
+				pass = append(pass, row)
+			} else {
+				att = append(att, row)
+			}
+		}
+		if len(att) > 0 {
+			hp.Attention = append(hp.Attention, HealthGroup{Title: g.Title, Rows: att})
+		}
+		if len(pass) > 0 {
+			hp.Passing = append(hp.Passing, HealthGroup{Title: g.Title, Rows: pass})
+		}
+		needs += len(att)
+		hp.PassingN += len(pass)
+	}
+	lvl := func(bad bool, l string) string {
+		if bad {
+			return l
+		}
+		return ""
+	}
+	note := "all match"
+	if needs > 0 {
+		note = fmt.Sprintf("%d of %d need attention", needs, needs+hp.PassingN)
+	}
+	hp.Jump = append(hp.Jump, JumpLink{Label: "Audit settings by system", Note: note, Target: "h-matrix", Level: lvl(needs > 0, "bad")},
+		JumpLink{Label: "Gaps", Note: commas(len(hp.Gaps)), Target: "h-gaps", Level: lvl(len(hp.Gaps) > 0, "bad")})
+	if len(hp.AV) > 0 {
+		bad := 0
+		for _, a := range hp.AV {
+			if a.Level == "bad" {
+				bad++
+			}
+		}
+		n := "all current"
+		if bad > 0 {
+			n = fmt.Sprintf("%d out of date", bad)
+		}
+		hp.Jump = append(hp.Jump, JumpLink{Label: "Antivirus", Note: n, Target: "h-av", Level: lvl(bad > 0, "bad")})
+	}
+	if hp.Scap != nil {
+		cat1, missing := 0, len(hp.Scap.Missing)
+		for _, row := range hp.Scap.Main {
+			cat1 += row.Cat[1]
+		}
+		n := fmt.Sprintf("%d open CAT I", cat1)
+		if missing > 0 {
+			n += fmt.Sprintf(" · %d not scanned", missing)
+		}
+		hp.Jump = append(hp.Jump, JumpLink{Label: "STIG compliance (SCAP)", Note: n, Target: "h-scap", Level: lvl(cat1 > 0, "bad")})
+	}
+	if len(hp.Other) > 0 {
+		hp.Jump = append(hp.Jump, JumpLink{Label: "Other Security-log events", Note: commas(len(hp.Other)) + " kinds", Target: "h-other"})
+	}
 }

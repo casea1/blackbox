@@ -169,7 +169,7 @@ jobs:
           if ($sum.systems | Where-Object { $_.status -eq "silent" }) { throw "a system is wrongly reported as silent" }
           if (-not (Select-String -Path "$dir\report.html" -Pattern 'data-view="systems"' -Quiet)) { throw "report has no Systems page" }
           # The inventory read with the settings check (PowerShell CIM, as SYSTEM).
-          if (-not (Select-String -Path "$dir\report.html" -Pattern "Drives on $env:COMPUTERNAME" -SimpleMatch -Quiet)) { throw "no inventory for this computer in the report" }
+          if (-not (Select-String -Path "$dir\report.html" -Pattern "Accounts on $env:COMPUTERNAME" -SimpleMatch -Quiet)) { throw "no inventory for this computer in the report" }
           if (Get-ChildItem C:\BlackboxInbox -Filter *.bbx) { throw "batches left in the inbox after import" }
           # The report folder holds the original logs: this computer's own
           # (.evtx, exported as SYSTEM) and the Linux one's.
@@ -296,7 +296,9 @@ jobs:
           # folder. Stop it and start from no data, so the run below is due
           # to make the first report, in the new folder.
           sudo systemctl stop blackbox.timer
-          while systemctl is-active --quiet blackbox.service; do sleep 1; done
+          # A oneshot run the timer started is "activating", which
+          # is-active does not count: wait until it is neither.
+          while case "$(systemctl is-active blackbox.service)" in active|activating|deactivating) true;; *) false;; esac; do sleep 1; done
           sudo rm -rf /var/lib/blackbox /srv/bb-reports/*
           sudo ./blackbox config set report_dir /srv/bb-reports-2
           grep -q "ReadWritePaths=.*/srv/bb-reports-2" /etc/systemd/system/blackbox.service
@@ -306,7 +308,7 @@ jobs:
           sudo find /srv/bb-reports-2 -name report.html | grep -q report.html || { sudo journalctl -u blackbox.service --no-pager | tail -30; exit 1; }
           echo "Sandboxed service wrote a report to /srv/bb-reports-2"
           # The inventory read with the settings check, from inside the sandbox.
-          sudo sh -c "grep -q 'Drives on $(hostname)' /srv/bb-reports-2/*/report.html" || { echo "no inventory in the report"; exit 1; }
+          sudo sh -c "grep -q 'Accounts on $(hostname)' /srv/bb-reports-2/*/report.html" || { echo "no inventory in the report"; exit 1; }
           # The report folder holds the original logs, in its manifest.
           sudo sh -c 'ls /srv/bb-reports-2/*/logs-*.zip' || { sudo journalctl -u blackbox.service --no-pager | tail -30; exit 1; }
           sudo sh -c 'unzip -l /srv/bb-reports-2/*/logs-*.zip' | grep -q audit.log

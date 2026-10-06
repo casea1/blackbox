@@ -72,7 +72,7 @@ The header on every page has the breadcrumb line, the page title, and three butt
 
    Red or amber top edge when it needs a look; greyed when zero.
 4. Left: **Systems** panel.
-   - Health bar (OK / warnings / problems counts) and the six-line health checklist (Logs intact, Every system reporting, Reports on time, Audit settings match STIG, No events lost to rollover, Original logs archived), each with an "n/total" count and the failing system named in one line.
+   - Health bar (OK / warnings / problems counts) and the six-line health checklist (Logs intact, Every system reporting, Reports on time, Audit settings match STIG, No events lost to rollover, Original logs archived), each with an "n/total" count and the failing system named in one line. A failing line is titled with what went wrong (Logs cleared, Not every system reporting, Events arrived late, Audit settings to fix, Events lost to log rollover, Original logs missing), never with the passing wording.
    - Below the checklist: the system map with tiles grouped Servers / Workstations / Virtual machines. Problem tiles are solid red and warning tiles amber; VMs have dashed borders.
 5. Right: **Detections**. Cards grouped by day; each has a severity edge, title, one-line plain explanation, and system + time.
 6. Bottom: **Trends · last 12 weeks** (three small charts):

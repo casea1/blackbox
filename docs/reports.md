@@ -349,11 +349,16 @@ each. The files are copied, never moved or changed.
 
 **What the report shows.** Once any scan is found (or `scap_results` is
 set), Audit health has a **STIG compliance (SCAP)** table: for each
-computer and benchmark, the version and profile, when it was scanned,
-the score, pass and fail counts, open CAT I, II and III findings, and
-what changed since the previous scan (newly open, fixed, score). A scan
-older than `scap_max_age_days` (30 by default) is marked **Stale**, and a
-computer in the report with no scan says **No scan found**.
+computer's operating-system STIG (Windows, Ubuntu, RHEL, Alma and so
+on), the version and profile, when it was scanned, the score, pass and
+fail counts, open CAT I, II and III findings, and what changed since the
+previous scan (newly open, fixed, score), open CAT I first. Other
+benchmarks scanned on the same computers (Edge, Firefox, Defender, …)
+are under **Other benchmarks** below it, one click away; a computer with
+no operating-system scan shows its other scans in the main table. A scan
+older than `scap_max_age_days` (30 by default) is marked **Stale**, and
+the computers with no scan are named in one **No scan found** line. The
+open-rules CSV still lists every benchmark.
 
 - CAT comes from each rule's severity: high is CAT I, medium CAT II, low
   CAT III. Open means `fail` or `error`, as STIG Viewer and SCC count
@@ -391,7 +396,7 @@ its daily settings check by Blackbox 0.13 or later:
   with a key or through sudo; one whose shell refuses logons, or that has
   expired, is disabled. Nothing about passwords is read or kept.
 
-Click a system for its drives and accounts; click an account to search its
+Each system's drives, with their serial numbers, are in its row. Click a system for its accounts; click an account to search its
 events. **Export > Inventory as CSV** saves every system, drive and
 account, one per line. Systems with no inventory yet are named under the
 table with the reason: it has sent nothing since a given time, it runs a
@@ -434,7 +439,12 @@ table. Blackbox only reports audit settings; it never changes them.
 The grid takes the page's full width, with short headings (hover one for
 its full name) and the System column always in view; on a narrow screen
 it scrolls sideways and says **more →** until its last column is in view.
-The gaps follow below it. **Log size and space settings** counts the
+Systems that match on every check are folded under **Show the N systems
+that match on every check**, so the sections below stay in reach; a bar
+at the top of the page links to each section (the grid, Gaps, Antivirus,
+STIG compliance, other Security-log events) with what needs attention.
+In the **Antivirus** table, systems with current definitions are folded
+the same way. The gaps follow below the grid. **Log size and space settings** counts the
 systems whose logs are smaller than the STIG asks, or, on Linux, whose
 auditd space and disk actions differ from it.
 "How to fix" gives the Group Policy location and setting for each gap
@@ -449,7 +459,7 @@ than 30 days ago, or protection turned off, show as a gap. It is read once
 a day with `Get-MpComputerStatus`.
 
 **Where to find the definitions date.** Audit health has an **Antivirus**
-table, one row per system, out-of-date ones first: the antivirus, the
+table (linked from the bar at the top), one row per system, out-of-date ones first: the antivirus, the
 date its definitions were made, how old they are, the version, real-time
 protection (or the ClamAV service), and the result. The Overview's
 checklist has an **Antivirus definitions** line with the oldest date and

@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"html/template"
+	"slices"
 	"sort"
 	"strings"
 
@@ -342,7 +343,7 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string]int) []CheckL
 		}
 	}
 	if len(who) > 0 {
-		lines = append(lines, CheckLine{Level: "bad", Icon: "file-warning", Title: "Logs intact", Who: strings.Join(who, ", "), What: "Security log cleared", Count: frac(len(who))})
+		lines = append(lines, CheckLine{Level: "bad", Icon: "file-warning", Title: "Logs cleared", Who: strings.Join(who, ", "), What: "Security log cleared", Count: frac(len(who))})
 	} else {
 		lines = append(lines, CheckLine{Level: "ok", Icon: "file-warning", Title: "Logs intact", What: "No logs cleared", Count: frac(0)})
 	}
@@ -361,7 +362,7 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string]int) []CheckL
 		if since == "" || len(who) > 1 {
 			since = "no data in this period"
 		}
-		lines = append(lines, CheckLine{Level: "bad", Icon: "clock-alert", Title: "Every system reporting", Who: strings.Join(who, ", "), What: since, Count: frac(len(who))})
+		lines = append(lines, CheckLine{Level: "bad", Icon: "clock-alert", Title: "Not every system reporting", Who: strings.Join(who, ", "), What: since, Count: frac(len(who))})
 	} else {
 		what := "Every system sent its events"
 		var quiet []string
@@ -373,7 +374,7 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string]int) []CheckL
 			}
 		}
 		if len(quiet) > 0 {
-			lines = append(lines, CheckLine{Level: "warn", Icon: "clock-alert", Title: "Every system reporting", Who: strings.Join(quiet, ", "),
+			lines = append(lines, CheckLine{Level: "warn", Icon: "clock-alert", Title: "Not every system reporting", Who: strings.Join(quiet, ", "),
 				What: "Worth a look: a virtual machine sent nothing this period", Count: frac(len(quiet))})
 		} else {
 			lines = append(lines, CheckLine{Level: "ok", Icon: "clock-alert", Title: "Every system reporting", What: what, Count: frac(0)})
@@ -381,7 +382,7 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string]int) []CheckL
 	}
 
 	if r.Late > 0 {
-		lines = append(lines, CheckLine{Level: "warn", Icon: "history", Title: "Reports on time", What: fmt.Sprintf("%s arrived late · nothing lost", plural(r.Late, "event")), Count: ""})
+		lines = append(lines, CheckLine{Level: "warn", Icon: "history", Title: "Events arrived late", What: fmt.Sprintf("%s arrived late · nothing lost", plural(r.Late, "event")), Count: ""})
 	} else {
 		lines = append(lines, CheckLine{Level: "ok", Icon: "history", Title: "Reports on time", What: "All on time", Count: frac(0)})
 	}
@@ -400,20 +401,27 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string]int) []CheckL
 	}
 	switch {
 	case len(who) > 0:
-		lines = append(lines, CheckLine{Level: "warn", Icon: "shield-check", Title: "Audit settings match STIG", Who: strings.Join(who, ", "),
+		lines = append(lines, CheckLine{Level: "warn", Icon: "shield-check", Title: "Audit settings to fix", Who: strings.Join(who, ", "),
 			What: fmt.Sprintf("%s to fix · see Audit health", plural(gaps, "setting")), Count: frac(len(who))})
 	case checked == 0:
-		lines = append(lines, CheckLine{Level: "warn", Icon: "shield-check", Title: "Audit settings match STIG", What: "Not checked in this period", Count: ""})
+		lines = append(lines, CheckLine{Level: "warn", Icon: "shield-check", Title: "Audit settings not checked", What: "Not checked in this period", Count: ""})
 	default:
 		lines = append(lines, CheckLine{Level: "ok", Icon: "shield-check", Title: "Audit settings match STIG", What: "All systems checked", Count: frac(0)})
 	}
 
 	lost := uint64(0)
+	var lostOn []string
 	for _, g := range r.Health.Gaps {
 		lost += g.Lost
+		if g.Lost > 0 && !slices.Contains(lostOn, g.Host) {
+			lostOn = append(lostOn, g.Host)
+		}
 	}
 	if lost > 0 {
-		lines = append(lines, CheckLine{Level: "bad", Icon: "circle-check", Title: "No events lost to log rollover", What: commas(lost) + " events were overwritten before they were collected", Count: ""})
+		// A failing line says what went wrong, not what was checked: never
+		// "No events lost" above "95,229 events were overwritten".
+		lines = append(lines, CheckLine{Level: "bad", Icon: "circle-check", Title: "Events lost to log rollover", Who: strings.Join(lostOn, ", "),
+			What: plural(int(lost), "event") + " overwritten before they were collected", Count: frac(len(lostOn))})
 	} else {
 		lines = append(lines, CheckLine{Level: "ok", Icon: "circle-check", Title: "No events lost to log rollover", What: fmt.Sprintf("%s collection runs", commas(r.Health.Runs)), Count: frac(0)})
 	}
@@ -433,7 +441,7 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string]int) []CheckL
 	}
 
 	if len(r.NoArchive) > 0 {
-		lines = append(lines, CheckLine{Level: "warn", Icon: "hard-drive", Title: "Original logs archived", Who: strings.Join(r.NoArchive, ", "), What: "no original logs for this period", Count: frac(len(r.NoArchive))})
+		lines = append(lines, CheckLine{Level: "warn", Icon: "hard-drive", Title: "Original logs missing", Who: strings.Join(r.NoArchive, ", "), What: "no original logs for this period", Count: frac(len(r.NoArchive))})
 	} else if len(r.Archives) > 0 {
 		var size uint64
 		for _, a := range r.Archives {
@@ -625,22 +633,22 @@ func digits(s string) string {
 func checklistLink(l CheckLine) string {
 	first := strings.SplitN(l.Who, ", ", 2)[0]
 	switch l.Title {
-	case "Logs intact":
+	case "Logs intact", "Logs cleared":
 		if first != "" {
 			return searchLink("page", "integrity", "host", first)
 		}
 		return "#integrity"
-	case "Every system reporting":
+	case "Every system reporting", "Not every system reporting":
 		if first != "" {
 			return "#systems/" + first
 		}
 		return "#systems"
-	case "Audit settings match STIG":
+	case "Audit settings match STIG", "Audit settings to fix", "Audit settings not checked":
 		if first != "" && !strings.Contains(l.Who, ", ") {
 			return "#health/" + first
 		}
 		return "#health"
-	case "Original logs archived":
+	case "Original logs archived", "Original logs missing":
 		if first != "" {
 			return "#logs/" + first
 		}

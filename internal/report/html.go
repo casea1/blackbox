@@ -56,8 +56,14 @@ type headData struct {
 func (r *Report) IsLAN() bool { return r.Collector || len(r.Hosts) > 3 }
 
 // MainSystem is a standalone report's computer (not its VMs), or the
-// collector: a computer whose data did not come through another one.
+// collector: a computer whose data did not come through another one, and
+// that reported (not a silent one listed first).
 func (r *Report) MainSystem() string {
+	for _, s := range r.SystemRows {
+		if !s.VM && s.Via == "" && s.reporting() {
+			return s.Name
+		}
+	}
 	for _, s := range r.SystemRows {
 		if !s.VM && s.Via == "" {
 			return s.Name
@@ -105,6 +111,18 @@ func funcs(loc *time.Location) template.FuncMap {
 		"minus":    func(a, b int) int { return a - b },
 		"gridCols": gridCols,
 		"css2":     func(s string) template.CSS { return template.CSS(s) },
+		// avOK counts the antivirus rows that are current, folded under a
+		// button when others need attention.
+		"sub": func(a, b int) int { return a - b },
+		"avOK": func(rows []AVRow) int {
+			n := 0
+			for _, a := range rows {
+				if a.Level == "ok" {
+					n++
+				}
+			}
+			return n
+		},
 		"plural": func(n int, unit string) string {
 			if n == 1 {
 				return unit
