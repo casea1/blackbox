@@ -17,6 +17,7 @@ const (
 	pInbox
 	pSendTo
 	pCollect
+	pScap
 	pSummary
 	pInstall
 )
@@ -26,11 +27,11 @@ const (
 func pagesFor(role string) []page {
 	switch role {
 	case install.RoleSender:
-		return []page{pWelcome, pRole, pSendTo, pCollect, pSummary, pInstall}
+		return []page{pWelcome, pRole, pSendTo, pCollect, pScap, pSummary, pInstall}
 	case install.RoleCollector:
-		return []page{pWelcome, pRole, pReports, pArchive, pInbox, pCollect, pSummary, pInstall}
+		return []page{pWelcome, pRole, pReports, pArchive, pInbox, pCollect, pScap, pSummary, pInstall}
 	}
-	return []page{pWelcome, pRole, pReports, pArchive, pCollect, pSummary, pInstall}
+	return []page{pWelcome, pRole, pReports, pArchive, pCollect, pScap, pSummary, pInstall}
 }
 
 // step moves from p by delta (+1 next, -1 back) in the role's order.
@@ -60,8 +61,12 @@ func welcomeText(installed, version string) string {
 	case version:
 		return "Blackbox " + version + " is installed. Change any settings on the next pages, then click Apply."
 	}
-	return "Blackbox " + installed + " is installed. This will upgrade it to " + version + ".\n\nYour current settings are kept and shown on the next pages; change any of them, or just click Next on each page."
+	return "Blackbox " + installed + " is installed. This will upgrade it to " + version + ".\n\nClick Upgrade now to keep your current settings and upgrade straight away, or Next to go through them and change any."
 }
+
+// quickUpgrade says whether the Welcome page offers "Upgrade now": an
+// upgrade from an earlier version, whose settings can be kept as they are.
+func quickUpgrade(installed, version string) bool { return installed != "" && installed != version }
 
 // applyVerb is the Summary button: Apply when Blackbox is installed (the
 // program, not just settings left by an earlier uninstall), else Install.

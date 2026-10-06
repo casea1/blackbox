@@ -11,9 +11,9 @@ import (
 // The window asks what the console asks, in the same order.
 func TestPagesFor(t *testing.T) {
 	for role, want := range map[string][]page{
-		install.RoleStandalone: {pWelcome, pRole, pReports, pArchive, pCollect, pSummary, pInstall},
-		install.RoleCollector:  {pWelcome, pRole, pReports, pArchive, pInbox, pCollect, pSummary, pInstall},
-		install.RoleSender:     {pWelcome, pRole, pSendTo, pCollect, pSummary, pInstall},
+		install.RoleStandalone: {pWelcome, pRole, pReports, pArchive, pCollect, pScap, pSummary, pInstall},
+		install.RoleCollector:  {pWelcome, pRole, pReports, pArchive, pInbox, pCollect, pScap, pSummary, pInstall},
+		install.RoleSender:     {pWelcome, pRole, pSendTo, pCollect, pScap, pSummary, pInstall},
 	} {
 		if got := pagesFor(role); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: got %v, want %v", role, got, want)
@@ -52,5 +52,16 @@ func TestFolderAccessQuestion(t *testing.T) {
 	q := folderAccessQuestion(`C:\ProgramData\Blackbox\reports`, `DSK1\Austin`)
 	if !strings.Contains(q, `Give DSK1\Austin read access`) || strings.Contains(q, "No:") || strings.Contains(q, "Cancel") {
 		t.Errorf("question: %q", q)
+	}
+}
+
+// One click to upgrade: offered on an upgrade from an earlier version,
+// not on a first install or when the same version is installed.
+func TestQuickUpgrade(t *testing.T) {
+	if !quickUpgrade("0.16.1", "0.17.0") || quickUpgrade("", "0.17.0") || quickUpgrade("0.17.0", "0.17.0") {
+		t.Error("quickUpgrade")
+	}
+	if w := welcomeText("0.16.1", "0.17.0"); !strings.Contains(w, "Upgrade now") || !strings.Contains(w, "0.16.1") {
+		t.Errorf("welcome: %s", w)
 	}
 }
