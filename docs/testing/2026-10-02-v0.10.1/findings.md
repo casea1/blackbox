@@ -211,6 +211,23 @@ Re-tested live on a Windows 11 Pro 25H2 collector (standalone before), Ubuntu 26
 
 Still to re-test live: a fresh Windows 11 install (A13/A16/A17 noise), the SFTP outage end to end (L12), the role-change flows (L13, L14, AR3), and exporting at every collection on a busy Windows Security log (AR2).
 
+## UI/UX review (0.15.0)
+
+Before and after screenshots at 1280 and 1440 are in `shots/ui/` and in each pull request.
+
+| # | Finding | Status | Fixed in |
+|---|---|---|---|
+| UI1 | **Trends counted one value per report**, so a 2.7-day first report, daily reports and a manual report were compared as equals. Wanted: calendar weeks from day data; no manual reports; the current week "so far" against the same share of the average; the first report as partial weeks only; dated or ISO-week axes; "Not enough history yet: trends start after 2 full weeks", also in What changed. | Confirmed | 0.16.0 (#58): each report keeps day counts (`days` in `summary.json`); Monday-to-Sunday weeks, only fully covered ones compared; "so far this week (2.5 of 7 days)" against that share of the average |
+| UI2 | **A computer that stopped sending showed as Healthy, as a VM that was off.** Only call something a VM when the sender says so; a system that sent nothing all period is at least "Worth a look: nothing received since <time>"; Inventory's "No inventory yet … from version 0.13 on" should give the real reason. | Confirmed | 0.16.0 (#59): a sender using a VirtualBox shared folder marks its batches as a VM; a VM that sent nothing is "Worth a look: nothing received since 5 Oct 06:31" and not counted as reporting; a relayed PC that sent nothing is Silent; Inventory gives each system's reason |
+| UI3 | **Audit health's "Every system, every check" hid columns** (Reporting, Logs intact cut off at 1280). | Confirmed | 0.16.0 (#60): full width with Gaps below, short headings with full names on hover, sticky System column, a "more →" cue while it scrolls; all columns fit at 1280, 1440 and 1920 |
+| UI4 | **Blackbox's own installer raised "Possible covering of tracks"**: `Blackbox-Setup-0.15.0.exe` writing `C:\ProgramData\Blackbox` and `blackbox.conf.new` after a delivery account was created. | Confirmed | 0.16.0 (#59): with Blackbox's own record of that install or upgrade on the same computer, those writes are neither rows nor a step; without it they stay High |
+| UI5 | **A manual report's Original logs page showed zero tiles and "made without keeping the original logs".** | Confirmed | 0.16.0 (#60): it says where the logs wait (`archive_dir`), the period and size so far, from how many systems, and when the scheduled report that holds them is due |
+| UI6 | **All reports' Period column**: a single day shown as a range, no times for periods under a day; numbers formatted two ways ("95229 events lost" next to "3,130"). | Confirmed | 0.16.0 (#60): "5 Oct 2026", "5 Oct 00:00 – 06:44"; thousands separators everywhere |
+| UI7 | Minor: Trends' after-hours card without `working_hours`; Inventory and Audit health header buttons not beside the title; Overview tiles cut names off; Audit health's "Logs too small" also counted auditd's space actions. | Confirmed (minor) | 0.16.0: "Set working_hours to see this" (#58); buttons beside the title, tiles wrap with the full name on hover, "Log size and space settings" (#60) |
+| UI8 | **All reports' "Detections per week" drew one bar per report**, manual reports included. | Confirmed | 0.16.0 (#58): one bar per calendar week with its dates, "This week (so far)", no manual reports, nothing drawn until 2 complete weeks, "Last N weeks" |
+
+Not verified live: the VM flag on a real VirtualBox shared folder (senders before 0.16 send none, so their VMs show as workstations until upgraded); a reinstall of the *same* version records no install, so its data-folder writes would still show (UI4). Still to re-test live from earlier rounds: a fresh Windows 11 install, the SFTP outage end to end (L12), the role-change flows (L13, L14, AR3), and exporting at every collection on a busy Windows Security log (AR2).
+
 ## ISSO / ISSM review: audit coverage (AU-2, AU-6, AU-12)
 
 Looked at as an ISSO doing the weekly audit review, and as an assessor checking that what the STIG makes you audit is actually reviewed. Owner decisions respected and not re-raised: no review/sign-off section (reviews are recorded on a separate platform) and no classification banner (`design.md` §13).

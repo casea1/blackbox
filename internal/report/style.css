@@ -517,3 +517,21 @@ a.panel.ec{color:inherit;text-decoration:none}
 .otime{display:grid;grid-template-columns:320px 1fr;gap:20px;align-items:start}.otc{padding-top:6px}
 @media (max-width:1100px){.otime{grid-template-columns:1fr}.otc{max-width:360px}}
 @media (max-width:900px){.chg{grid-template-columns:1fr}}
+
+/* UI3: the health grid takes the full width, keeps the System column in
+   view, and says when there is more to the right. */
+.mxwrap{overflow-x:auto}
+table.mxs th{white-space:nowrap}
+table.mxs td.nm,table.mxs th:first-child{position:sticky;left:0;z-index:1;background:#F8FAFE}
+table.mxs tr.g td{position:sticky;left:0;background:transparent}
+.mxbox{position:relative}
+.morecue{display:none;position:absolute;top:0;right:0;z-index:2;padding:2px 8px 2px 28px;font-size:11.5px;font-weight:650;color:#0B5FFF;background:linear-gradient(90deg,rgba(248,250,254,0),#F8FAFE 35%)}
+.mxbox.scrolls .morecue{display:inline-block}
+.mxbox.scrolls.end .morecue{display:none}
+.gapgrid{grid-template-columns:repeat(auto-fill,minmax(360px,1fr));align-items:start}
+/* UI7: a long subtitle wraps under the title; the buttons stay beside it. */
+.head>div:first-child{flex:1 1 320px;min-width:0}.tools{flex:none}
+/* UI7: Overview system tiles fit their names: as many columns as fit,
+   and a long name wraps rather than being cut. */
+.map.mapfit{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.mapfit .m{white-space:normal;overflow-wrap:anywhere;line-height:1.3}

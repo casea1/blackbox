@@ -34,7 +34,9 @@ schedule. The next scheduled report still covers its whole period. A
 manual report shows everything collected so far, even an event stamped
 a little after the moment it was made (as happens just after the clock
 is corrected). Manual reports do not include the original logs; those
-go with the scheduled report.
+go with the scheduled report. A manual report's **Original logs** page
+says where they wait (`archive_dir`), the period and size so far, from
+how many systems, and when the scheduled report that holds them is due.
 
 **A report for any period.** `blackbox report` run by hand asks which
 period to cover: press Enter for the time since the last report, type a
@@ -429,6 +431,12 @@ check (logon, account management, policy change, privilege use, process
 creation, removable storage, PowerShell logging, log size, reporting, logs
 intact), the gaps with how to fix them, and each system's own settings
 table. Blackbox only reports audit settings; it never changes them.
+The grid takes the page's full width, with short headings (hover one for
+its full name) and the System column always in view; on a narrow screen
+it scrolls sideways and says **more →** until its last column is in view.
+The gaps follow below it. **Log size and space settings** counts the
+systems whose logs are smaller than the STIG asks, or, on Linux, whose
+auditd space and disk actions differ from it.
 "How to fix" gives the Group Policy location and setting for each gap
 (for example Computer Configuration > Policies > Windows Settings >
 Security Settings > Advanced Audit Policy Configuration > Audit Policies >
@@ -496,8 +504,12 @@ the original logs. Tables draw only the rows on screen, so a page with
 hundreds of thousands of events still scrolls smoothly.
 
 The folder of reports has an `index.html`, **All reports**: detections per
-week over the last twelve reports, and each report with its period,
-systems, events, detections and whether its audit trail is complete. The
+calendar week (manual reports not included, and nothing drawn until 2
+full weeks), and each report with its period, systems, events,
+detections and whether its audit trail is complete. A period of one whole
+day is one date ("5 Oct 2026"); one that starts or ends during a day shows
+the times ("5 Oct 00:00 – 06:44"). Numbers have thousands separators
+everywhere ("95,229 events lost"). The
 newest is marked **Latest**; click a row to open it. In a report, the
 **All reports** button at the top of every page (and in the menu) opens
 it. The date range next to it only shows the report's period.

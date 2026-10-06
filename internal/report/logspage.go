@@ -35,6 +35,39 @@ type LogsPage struct {
 	Groups   []LogGroup
 	Range    string
 	Kept     bool
+	// Manual: a manual report keeps no original logs; Waiting says where
+	// they wait instead (UI5).
+	Manual  bool
+	Waiting string
+}
+
+// WaitingLogs is what of the original logs waits in archive_dir for the
+// next scheduled report: the folder, the period and size so far, how many
+// systems, and when that report is due (zero: at the next scheduled run).
+type WaitingLogs struct {
+	Dir      string
+	From, To time.Time
+	Bytes    uint64
+	Systems  int
+	Next     time.Time
+}
+
+// waitingText is the manual report's Original logs page in one paragraph.
+func (r *Report) waitingText() string {
+	w := r.Waiting
+	next := "the next scheduled report"
+	if w != nil && !w.Next.IsZero() {
+		next = "the scheduled report due " + w.Next.In(r.Location).Format("Mon 2 Jan 15:04")
+	}
+	if w == nil || w.From.IsZero() {
+		where := "where Blackbox keeps them"
+		if w != nil && w.Dir != "" {
+			where = "in " + w.Dir
+		}
+		return fmt.Sprintf("A manual report does not take the original logs: they stay %s, and %s holds them in its folder.", where, next)
+	}
+	return fmt.Sprintf("A manual report does not take the original logs: they wait in %s. So far they cover %s to %s, %s from %s. %s holds them in its folder.",
+		w.Dir, r.stamp(w.From), r.stamp(w.To), humanBytes(w.Bytes), plural(w.Systems, "system"), capitalize(next))
 }
 
 // LogGroup is a group of systems in the O3 list.
@@ -45,6 +78,10 @@ type LogGroup struct {
 
 func (r *Report) logsPage() *LogsPage {
 	lp := &LogsPage{Kept: r.ArchivesKept || len(r.Archives) > 0}
+	if r.Interim && len(r.Archives) == 0 {
+		lp.Manual, lp.Waiting = true, r.waitingText()
+		return lp
+	}
 	byHost := map[string]*LogArchive{}
 	osOf := map[string]SystemRow{}
 	for _, s := range r.SystemRows {

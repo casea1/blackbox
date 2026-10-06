@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -314,6 +315,51 @@ func (a *App) logStates() []archive.LogState {
 		return a.LogStates()
 	}
 	return archive.LogStates()
+}
+
+// waitingLogs is what of the original logs waits for the next scheduled
+// report, for a manual report to say (UI5): the daily archives and the
+// exports not yet packed, their period, size and computers, and when the
+// scheduled report that takes them is due.
+func (a *App) waitingLogs(st *store.Store) *report.WaitingLogs {
+	w := &report.WaitingLogs{Dir: a.pendingLogsDir()}
+	hosts := map[string]bool{}
+	span := func(from, to time.Time, host string, size uint64) {
+		if w.From.IsZero() || from.Before(w.From) {
+			w.From = from
+		}
+		if to.After(w.To) {
+			w.To = to
+		}
+		hosts[strings.ToLower(host)] = true
+		w.Bytes += size
+	}
+	for _, dir := range a.waitingLogsDirs() {
+		l, _ := archive.List(dir)
+		for _, s := range l {
+			span(s.From, s.To, s.Host, uint64(s.Bytes))
+		}
+	}
+	pieces, _ := a.allPieces()
+	for _, p := range pieces {
+		var size uint64
+		filepath.WalkDir(p.Dir, func(_ string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() {
+				if fi, err := d.Info(); err == nil {
+					size += uint64(fi.Size())
+				}
+			}
+			return nil
+		})
+		host := p.Info.Host
+		if host == "" {
+			host = collect.LocalHost()
+		}
+		span(p.Info.From, p.Info.To, host, size)
+	}
+	w.Systems = len(hosts)
+	w.Next, _ = nextReport(a.Cfg.ReportEvery, a.Cfg.ReportAt, st.State.LastWindowEnd, a.now(), a.loc())
+	return w
 }
 
 // bundleLogs combines, for each computer, the pending daily archives that
@@ -949,6 +995,10 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 			}
 		}()
 	}
+	var waiting *report.WaitingLogs
+	if !advance {
+		waiting = a.waitingLogs(st)
+	}
 	context := contextEvents(all, events, windowStart)
 	runsSince := prevGen
 	if runsSince.After(generated) {
@@ -990,7 +1040,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		KnownDevices: st.State.KnownDevices, CheckSets: sets,
 		Context: context, Baseline: st.State.Baseline, BaselineHosts: st.State.BaselineHosts,
 		WorkingHours: a.Cfg.WorkingHours,
-		Archives:     logs, ArchivesKept: advance,
+		Archives:     logs, ArchivesKept: advance, Waiting: waiting,
 		Systems: systemsFor(st, prevEnd), Collector: a.Cfg.Inbox != "",
 		LANWarnings:   append(lanWarnings(st, prevGen, generated, a.loc()), a.inboxWarnings()...),
 		RetentionDays: a.Cfg.RetentionDays,
