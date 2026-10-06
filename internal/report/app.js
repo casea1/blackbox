@@ -152,6 +152,21 @@
     }
     if (to) to.scrollIntoView();
     else window.scrollTo(0, 0);
+    scrollCues();
+  }
+
+  // A wide table that still scrolls sideways says "more →" until its end
+  // is in view (UI3).
+  function scrollCues() {
+    document.querySelectorAll('[data-scrollcue]').forEach(function (w) {
+      var box = w.parentNode;
+      var mark = function () {
+        box.classList.toggle('scrolls', w.scrollWidth > w.clientWidth + 2);
+        box.classList.toggle('end', w.scrollLeft + w.clientWidth >= w.scrollWidth - 2);
+      };
+      if (!w._cue) { w._cue = true; w.addEventListener('scroll', mark); window.addEventListener('resize', mark); }
+      mark();
+    });
   }
 
   // ---- List pages (Systems, Detections, People): one item shown at a

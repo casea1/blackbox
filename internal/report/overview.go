@@ -234,7 +234,7 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	}
 	card("lock", "Lockouts", MLockouts, "warn", lockNote, "#failed")
 	card("moon", "After-hours admin", MAfterHours, "warn", afterHoursNote(r), "#privileged")
-	card("usb", "New USB devices", MNewUSB, "", fmt.Sprintf("%d events", m[MUSB]), "#usb")
+	card("usb", "New USB devices", MNewUSB, "", commas(m[MUSB])+" events", "#usb")
 
 	// Health checklist.
 	o.Checks = r.checklist(systems, byHost)
@@ -441,7 +441,11 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string]int) []CheckL
 		}
 		lines = append(lines, CheckLine{Level: "ok", Icon: "hard-drive", Title: "Original logs archived", What: fmt.Sprintf("%s · %s · SHA-256 in manifest", plural(len(r.Archives), "zip"), humanBytes(size)), Count: frac(0)})
 	} else {
-		lines = append(lines, CheckLine{Level: "ok", Icon: "hard-drive", Title: "Original logs archived", What: "Kept with the scheduled report", Count: ""})
+		what := "Kept with the scheduled report"
+		if w := r.Waiting; w != nil && w.Dir != "" {
+			what = "Waiting in " + w.Dir + " for the next scheduled report"
+		}
+		lines = append(lines, CheckLine{Level: "ok", Icon: "hard-drive", Title: "Original logs archived", What: what, Count: ""})
 	}
 	for i := range lines {
 		lines[i].Href = checklistLink(lines[i])

@@ -177,7 +177,7 @@ Per page:
 - **Events within 2 minutes either side** on the same system.
 
 ### 7. Audit health (A1 + A3)
-**Four stat cards:** Systems matching STIG, Logs cleared, Events lost to rollover, Logs too small.
+**Four stat cards:** Systems matching STIG, Logs cleared, Events lost to rollover, Log size and space settings (log sizes, and on Linux auditd's space and disk actions).
 
 The header line says Blackbox only reports and never changes settings.
 

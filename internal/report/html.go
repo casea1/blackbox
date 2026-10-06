@@ -195,6 +195,9 @@ func funcs(loc *time.Location) template.FuncMap {
 				crumb = p.Crumb()
 			}
 			rng := p.PeriodStart().In(loc).Format("2 Jan") + " – " + p.WindowEnd.In(loc).Format("2 Jan 2006")
+			if l := periodLabel(p.PeriodStart(), p.WindowEnd, loc); strings.Contains(l, ":") {
+				rng = l // a period that starts or ends during a day: "7 Oct 00:00 – 12:30" (UI6)
+			}
 			return headData{Crumb: crumb, Title: title, Range: rng, Index: p.InReportsDir}
 		},
 		"brandName": func() string { return brand.Name },
@@ -272,10 +275,13 @@ func funcs(loc *time.Location) template.FuncMap {
 }
 
 func plural(n int, unit string) string {
-	if n == 1 {
+	switch {
+	case n == 1:
 		return "1 " + unit
+	case n < 0:
+		return fmt.Sprintf("%d %ss", n, unit)
 	}
-	return fmt.Sprintf("%d %ss", n, unit)
+	return commas(n) + " " + unit + "s" // 95,229 events, as everywhere (UI6)
 }
 
 // Crumb is the line above each page title, e.g. "Weekly report · 24

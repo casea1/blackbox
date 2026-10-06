@@ -511,6 +511,31 @@ type IndexRow struct {
 	Interim, Incomplete                  bool
 }
 
+// periodLabel is a report's period on the index (UI6): one date for one
+// whole day ("5 Oct 2026"), times when it starts or ends during a day
+// ("5 Oct 00:00 – 06:44", "14 Sep 13:40 – 15 Sep 00:00"), else dates
+// ("28 Sep – 4 Oct 2026").
+func periodLabel(start, end time.Time, loc *time.Location) string {
+	a, z := start.In(loc), end.In(loc)
+	b := z.Add(-time.Second)
+	midnight := func(t time.Time) bool { return t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0 }
+	if !midnight(a) || !midnight(z) {
+		if a.Year() == z.Year() && a.YearDay() == z.YearDay() {
+			return a.Format("2 Jan 15:04") + " – " + z.Format("15:04")
+		}
+		return a.Format("2 Jan 15:04") + " – " + z.Format("2 Jan 15:04")
+	}
+	switch {
+	case a.Year() == b.Year() && a.YearDay() == b.YearDay():
+		return a.Format("2 Jan 2006")
+	case a.Year() != b.Year():
+		return a.Format("2 Jan 2006") + " – " + b.Format("2 Jan 2006")
+	case a.Month() != b.Month():
+		return a.Format("2 Jan") + " – " + b.Format("2 Jan 2006")
+	}
+	return a.Format("2") + " – " + b.Format("2 Jan 2006")
+}
+
 // indexRow describes one report: its week and whether its audit trail is
 // complete (nothing lost, no log cleared, every system reporting).
 func indexRow(e IndexEntry, loc *time.Location) IndexRow {
@@ -518,14 +543,7 @@ func indexRow(e IndexEntry, loc *time.Location) IndexRow {
 	if start.IsZero() {
 		start = e.WindowEnd.AddDate(0, 0, -7)
 	}
-	a, b := start.In(loc), e.WindowEnd.Add(-time.Second).In(loc)
-	week := a.Format("2") + " – " + b.Format("2 Jan 2006")
-	switch {
-	case a.Year() != b.Year():
-		week = a.Format("2 Jan 2006") + " – " + b.Format("2 Jan 2006")
-	case a.Month() != b.Month():
-		week = a.Format("2 Jan") + " – " + b.Format("2 Jan 2006")
-	}
+	week := periodLabel(start, e.WindowEnd, loc)
 	row := IndexRow{Week: week, Dir: e.Dir, Systems: len(e.Hosts), Events: e.Events, Interim: e.Interim}
 	for _, d := range e.Detections { // detections by severity, as in the chart
 		if d.Severity == "high" {
@@ -551,10 +569,10 @@ func indexRow(e IndexEntry, loc *time.Location) IndexRow {
 		}
 	}
 	if silent > 0 {
-		bad = append(bad, fmt.Sprintf("%d silent", silent))
+		bad = append(bad, commas(silent)+" silent")
 	}
 	if n := e.Metrics["late_events"]; n > 0 {
-		warn = append(warn, fmt.Sprintf("%d late", n))
+		warn = append(warn, commas(n)+" late")
 	}
 	switch {
 	case len(bad) > 0:

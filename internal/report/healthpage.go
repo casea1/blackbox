@@ -20,6 +20,32 @@ import (
 var healthCols = []string{"Logon", "Account mgmt", "Policy change", "Privilege use", "Process creation",
 	"Removable storage", "PowerShell logging", "Antivirus", "Log size", "Reporting", "Logs intact"}
 
+// HealthCol is one of the grid's column headings: short enough that every
+// column fits at 1280 pixels, with the full name on hover (UI3).
+type HealthCol struct{ Short, Full string }
+
+var healthShort = map[string]string{"Account mgmt": "Accounts", "Policy change": "Policy", "Privilege use": "Privilege",
+	"Process creation": "Process", "Removable storage": "USB", "PowerShell logging": "PS log", "Antivirus": "AV", "Logs intact": "Intact"}
+
+// healthFull is a heading's name on hover, where it says more than the column.
+var healthFull = map[string]string{"Log size": "Log size and space settings"}
+
+func healthHeadings() []HealthCol {
+	var out []HealthCol
+	for _, c := range healthCols {
+		short := healthShort[c]
+		if short == "" {
+			short = c
+		}
+		full := healthFull[c]
+		if full == "" {
+			full = c
+		}
+		out = append(out, HealthCol{Short: short, Full: full})
+	}
+	return out
+}
+
 // healthColumn says which grid column a check result belongs to ("" for
 // checks only listed in the system's own table).
 func healthColumn(res check.Result) string {
@@ -92,7 +118,7 @@ type GapCard struct {
 // HealthPage is the Audit health page.
 type HealthPage struct {
 	Stats   []EventCard
-	Cols    []string
+	Cols    []HealthCol
 	Groups  []HealthGroup
 	Gaps    []GapCard
 	Single  string // a report of one system opens its table directly
@@ -152,7 +178,7 @@ func (r *Report) healthPage() *HealthPage {
 			return nil
 		}
 	}
-	hp := &HealthPage{Cols: healthCols, Other: r.otherEvents(), Scap: r.scapTable, AV: r.avRows()}
+	hp := &HealthPage{Cols: healthHeadings(), Other: r.otherEvents(), Scap: r.scapTable, AV: r.avRows()}
 	cleared := map[string][]*Row{}
 	for _, row := range r.rows {
 		if row.Action == "log_cleared" {
@@ -468,7 +494,7 @@ func (r *Report) healthPage() *HealthPage {
 			Note: plural(gaps, "gap") + " · " + plural(warns, "warning"), Level: lvl(matching < total, "bad")},
 		{Icon: "eraser", Label: "Logs cleared", Href: searchLink("page", "integrity", "text", "cleared"), Value: commas(clearedN), Note: short(set(clearedWho), 2), Level: lvl(clearedN > 0, "bad")},
 		{Icon: "circle-check", Label: "Events lost to rollover", Scroll: "h-gaps", Value: commas(int(totalLost)), Note: plural(r.Health.Runs, "run"), Level: lvl(totalLost > 0, "bad")},
-		{Icon: "hard-drive", Label: "Logs too small", Scroll: "h-gaps", Value: commas(small), Note: short(set(smallWho), 1), Level: lvl(small > 0, "warn")},
+		{Icon: "hard-drive", Label: "Log size and space settings", Scroll: "h-gaps", Value: commas(small), Note: short(set(smallWho), 1), Level: lvl(small > 0, "warn")},
 	}
 	return hp
 }

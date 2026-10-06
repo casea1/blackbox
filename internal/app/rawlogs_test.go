@@ -292,3 +292,45 @@ func TestArchiveDirElsewhere(t *testing.T) {
 		t.Errorf("bundled %d archives (%d used), want this computer's and the one left in the data folder", len(refs), len(used))
 	}
 }
+
+// UI5: a manual report keeps no original logs; its Original logs page says
+// where they wait (archive_dir), the period and size so far, and which
+// scheduled report will hold them. The logs stay where they are.
+func TestManualReportSaysWhereLogsWait(t *testing.T) {
+	base := t.TempDir()
+	day := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	auditFixture(t, base, day.Add(5*time.Hour), day.Add(6*time.Hour))
+	st, _ := store.Open(filepath.Join(base, "data"))
+	now := day.Add(6*time.Hour + 44*time.Minute)
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportDir: filepath.Join(base, "reports"), ArchiveDir: filepath.Join(base, "bigdisk"),
+		ReportEvery: "daily", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute}, Version: "test", Loc: time.UTC,
+		Now: func() time.Time { return now }, LogStates: func() []archive.LogState { return nil }}
+	st.State.LastWindowEnd, st.State.LastGenerated = day, day.Add(5*time.Minute)
+	pendingLogs(t, a, "ubuntu-server", day) // a daily archive from a sender
+	st.State.ArchivedUntil = day            // exported up to midnight, then since
+	a.saveLogPiece(st, auditRun(now, 2, 0, day.Add(5*time.Hour)), day)
+
+	dir, err := a.report(st, now, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
+	h := string(html)
+	for _, want := range []string{"Where the original logs are", "they wait in " + a.Cfg.ArchiveDir,
+		"So far they cover 2026-10-04 00:00 to 2026-10-05 06:44", "from 2 systems", "The scheduled report due Tue 6 Oct 00:00 holds them",
+		"Waiting in " + a.Cfg.ArchiveDir + " for the next scheduled report",
+		"5 Oct 00:00 – 06:44", "the raw Windows and Linux logs wait for the next scheduled report"} {
+		if !strings.Contains(h, want) {
+			t.Errorf("manual report lacks %q", want)
+		}
+	}
+	if strings.Contains(h, "made without keeping the original logs") || strings.Contains(h, "Hashes verified") {
+		t.Error("the manual report still shows the empty archive page")
+	}
+	if p, _ := archive.Pieces(a.piecesDir()); len(p) != 1 {
+		t.Errorf("the manual report moved the waiting exports: %d left", len(p))
+	}
+	if l, _ := archive.List(a.pendingLogsDir()); len(l) != 1 {
+		t.Errorf("the manual report moved the waiting archives: %d left", len(l))
+	}
+}

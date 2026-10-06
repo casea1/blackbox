@@ -72,6 +72,9 @@ type Options struct {
 	// archived, so a computer without them is pointed out.
 	Archives     []ArchiveRef
 	ArchivesKept bool
+	// Waiting, on a manual report, is what of the original logs waits for
+	// the next scheduled report (UI5).
+	Waiting *WaitingLogs
 
 	// CheckSets are the latest audit settings check of each computer.
 	CheckSets []CheckSet
