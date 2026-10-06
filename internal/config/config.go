@@ -85,6 +85,14 @@ func (c *Config) ReportsDir() string {
 	return filepath.Join(c.DataDir, "reports")
 }
 
+// IsVirtualBoxShare says whether a send_to folder is a VirtualBox shared
+// folder (/media/sf_… on Linux, \\VBOXSVR\… on Windows): the sender is a
+// virtual machine on the collector's PC.
+func IsVirtualBoxShare(p string) bool {
+	lo := strings.ToLower(strings.ReplaceAll(p, `\`, "/"))
+	return strings.HasPrefix(lo, "/media/sf_") || strings.HasPrefix(lo, "//vboxsvr/") || strings.HasPrefix(lo, "//vboxsrv/")
+}
+
 // ArchivesDir is where the original logs (see package archive) wait until
 // the next scheduled report moves them into its folder: this computer's
 // and, on a collector, every sender's.

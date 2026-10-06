@@ -117,15 +117,21 @@ func (r *Report) systemsPage() *SystemsPage {
 		role := "Workstation"
 		g := groups[1]
 		switch {
-		case s.Via != "":
-			role, g = "Virtual machine on "+s.Via, groups[2]
+		case s.VM:
+			role, g = "Virtual machine", groups[2]
+			if host := r.vmHost(s); host != "" {
+				role += " on " + host
+			}
 		case isServer(s):
 			role, g = "Server", groups[0]
 		}
-		if !r.IsLAN() && s.Via == "" {
+		if !r.IsLAN() && !s.VM {
 			role = "Standalone"
 		}
 		v.Line = osLabel(s) + " · " + role
+		if s.Via != "" && !s.VM {
+			v.Line += " · data via " + s.Via
+		}
 		if r.Collector && s.Via == "" && strings.EqualFold(s.Name, r.collectorName()) {
 			v.Line += " · collector"
 		}
@@ -173,15 +179,13 @@ func (r *Report) systemsPage() *SystemsPage {
 		}
 		on, days, total := r.coverage(s)
 		collected := fmt.Sprintf("%d of %d days", days, total)
-		if s.Via != "" {
+		if s.VM {
 			collected = fmt.Sprintf("on %d%%", on)
 			v.Tag = collected
 		}
 		switch {
-		case s.Status == "silent":
+		case s.Status == "silent", s.VM && len(s.runTimes) == 0:
 			collected = "nothing"
-		case s.Via != "" && len(s.runTimes) == 0:
-			collected, v.Tag = "off", "off"
 		}
 		settings, settingsBad := "not checked", false
 		if s.Checks != nil {
@@ -200,7 +204,7 @@ func (r *Report) systemsPage() *SystemsPage {
 		v.Facts = []Fact{
 			{Label: "Events", Value: commas(s.Events), Href: searchLink("host", s.Name)},
 			{Label: "Detections", Value: det, Bad: high+med > 0, Scroll: "sysdet-" + s.Name},
-			{Label: "Collected", Value: collected, Bad: s.Status == "silent" || (s.Via == "" && days < total), Href: "#logs/" + s.Name},
+			{Label: "Collected", Value: collected, Bad: s.Status == "silent" || (!s.VM && days < total) || (s.VM && len(s.runTimes) == 0), Href: "#logs/" + s.Name},
 			{Label: "Audit settings", Value: settings, Bad: settingsBad, Href: "#health/" + s.Name},
 			{Label: "Last report", Value: last, Bad: s.Status != "ok" && s.Status != "warn", Href: "#logs/" + s.Name},
 		}
@@ -262,6 +266,23 @@ func (r *Report) systemsPage() *SystemsPage {
 		}
 	}
 	return sp
+}
+
+// vmHost is the PC a VM runs on: the computer it sent through, else the
+// collector, or a standalone report's own computer.
+func (r *Report) vmHost(s SystemRow) string {
+	if s.Via != "" {
+		return s.Via
+	}
+	if c := r.collectorName(); r.Collector && c != "" {
+		return c
+	}
+	return r.MainSystem()
+}
+
+// since is a short time for "nothing received since …": "5 Oct 06:31".
+func (r *Report) since(t time.Time) string {
+	return t.In(r.Location).Format("2 Jan 15:04")
 }
 
 // collectorName is the collector computer's name: the one other systems'
@@ -416,7 +437,9 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 	switch {
 	case s.Status == "silent":
 		lines = append(lines, CheckLine{Level: "bad", Icon: "clock-alert", Title: "Reporting", What: s.StatusMsg})
-	case s.Via != "":
+	case s.VM && len(s.runTimes) == 0:
+		lines = append(lines, CheckLine{Level: "warn", Icon: "clock-alert", Title: "Reporting", What: s.StatusMsg})
+	case s.VM:
 		lines = append(lines, CheckLine{Level: "ok", Icon: "clock-alert", Title: "Reporting",
 			What: fmt.Sprintf("On %d%% of the period; collected whenever it was on (%s)", on, plural(len(s.runTimes), "run"))})
 	default:

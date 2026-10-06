@@ -55,10 +55,16 @@ type headData struct {
 // any virtual machines on it.
 func (r *Report) IsLAN() bool { return r.Collector || len(r.Hosts) > 3 }
 
-// MainSystem is a standalone report's computer (not its VMs).
+// MainSystem is a standalone report's computer (not its VMs), or the
+// collector: a computer whose data did not come through another one.
 func (r *Report) MainSystem() string {
 	for _, s := range r.SystemRows {
-		if s.Via == "" {
+		if !s.VM && s.Via == "" {
+			return s.Name
+		}
+	}
+	for _, s := range r.SystemRows {
+		if !s.VM {
 			return s.Name
 		}
 	}
@@ -281,7 +287,7 @@ func (r *Report) Crumb() string {
 	} else {
 		vms := 0
 		for _, s := range r.SystemRows {
-			if s.Via != "" {
+			if s.VM {
 				vms++
 			}
 		}
@@ -346,7 +352,7 @@ func (r *Report) WriteHTML(w io.Writer, pages []*EventPage) error {
 	kinds := map[string]string{}
 	for _, sr := range r.SystemRows {
 		switch {
-		case sr.Via != "":
+		case sr.VM:
 			kinds[sr.Name] = "vm"
 		case isServer(sr):
 			kinds[sr.Name] = "server"

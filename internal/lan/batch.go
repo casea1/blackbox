@@ -65,6 +65,9 @@ type Header struct {
 	Kept *store.SeqRange `json:"kept,omitempty"`
 	// Former are names the sender's computer had before (W1b).
 	Former []string `json:"former,omitempty"`
+	// VM: the sender is a virtual machine sending through a VirtualBox
+	// shared folder, on only while its host runs it (UI2).
+	VM bool `json:"vm,omitempty"`
 }
 
 // record is one line after the header. Exactly one field is set.

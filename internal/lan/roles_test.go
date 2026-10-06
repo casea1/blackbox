@@ -154,3 +154,24 @@ func TestResentDuplicateCounted(t *testing.T) {
 		t.Errorf("resent duplicate: %+v", res)
 	}
 }
+
+// UI2: a sender says it is a VM (it sends through a VirtualBox shared
+// folder); the collector records that, and only that makes it a VM.
+func TestSenderSaysVM(t *testing.T) {
+	vm := system(t, "WIN11-VM", "windows", 1, t0)
+	NoteVM(vm, true)
+	ws := system(t, "WS-02", "windows", 1, t0)
+	in := inboxOf(t, "WIN11-COL")
+	send(t, vm, "WIN11-VM", in, t0)
+	send(t, ws, "WS-02", in, t0)
+	col, _ := store.Open(t.TempDir())
+	if _, err := Import(col, in, Dirs{}, t0.Add(time.Minute), nil); err != nil {
+		t.Fatal(err)
+	}
+	if s := col.State.Systems["WIN11-VM"]; s == nil || !s.VM {
+		t.Errorf("the VM's flag did not arrive: %+v", s)
+	}
+	if s := col.State.Systems["WS-02"]; s == nil || s.VM {
+		t.Errorf("a PC was marked a VM: %+v", s)
+	}
+}

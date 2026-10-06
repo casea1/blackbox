@@ -565,6 +565,7 @@ func (a *App) send(st *store.Store) SendResult {
 	var r SendResult
 	host := collect.LocalHost()
 	r.FinalReport = a.handover(st)
+	lan.NoteVM(st, config.IsVirtualBoxShare(a.Cfg.SendTo))
 	r.Made, r.Err = lan.Export(st, host, a.Version, a.now())
 	// This computer's latest SCAP results go to the collector too.
 	if dir := a.Cfg.ScapDir(); dir != "" && r.Err == nil {
@@ -1092,7 +1093,7 @@ func systemsFor(st *store.Store, start time.Time) []report.SystemInfo {
 			continue
 		}
 		out = append(out, report.SystemInfo{Name: s.Name, OS: s.OS, Version: s.Version, Via: s.Via,
-			FirstSeen: s.FirstSeen, LastRun: s.LastRun, LastReceived: s.LastReceived, Former: s.Former})
+			FirstSeen: s.FirstSeen, LastRun: s.LastRun, LastReceived: s.LastReceived, Former: s.Former, VM: s.VM})
 	}
 	return out
 }

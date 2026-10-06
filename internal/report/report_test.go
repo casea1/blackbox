@@ -350,7 +350,7 @@ func TestSystemsPage(t *testing.T) {
 		WindowStart: start, WindowEnd: end, Generated: end, Location: time.UTC, Source: "Live collection", Collector: true,
 		Systems: []SystemInfo{
 			{Name: "WS-01", OS: "windows", FirstSeen: start.AddDate(0, -1, 0)},
-			{Name: "UBUNTU-VM", OS: "linux", Via: "WS-01", FirstSeen: start.AddDate(0, -1, 0)},
+			{Name: "UBUNTU-VM", OS: "linux", Via: "WS-01", VM: true, FirstSeen: start.AddDate(0, -1, 0)},
 			{Name: "WS-03", OS: "windows", FirstSeen: start.AddDate(0, -1, 0), LastRun: start.Add(-72 * time.Hour)},
 		},
 		CheckSets: []CheckSet{
@@ -496,19 +496,35 @@ func TestSizeSafeguard(t *testing.T) {
 	}
 }
 
-// A VM is on only part of the week; being off is never a problem.
+// A VM is on only part of the week; being off for some of it is not a
+// problem, but sending nothing at all is worth a look (UI2). Only a system
+// whose sender says so is a VM: a relayed computer that sent nothing is
+// silent.
 func TestVMOffIsNotFlagged(t *testing.T) {
 	end := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
 	runs := []*store.Run{{Time: end.Add(-time.Hour), Host: "WS-03", OS: "windows"}, {Time: end.AddDate(0, 0, -5), Host: "WS-03-VM1", OS: "windows"}}
 	r := Build(nil, runs, Options{WindowStart: end.AddDate(0, 0, -7), WindowEnd: end, Generated: end, Location: time.UTC, Source: "Live collection",
-		Systems: []SystemInfo{{Name: "WS-03", OS: "windows"}, {Name: "WS-03-VM1", OS: "windows", Via: "WS-03"}, {Name: "WS-03-VM2", OS: "windows", Via: "WS-03"}}})
+		Systems: []SystemInfo{{Name: "WS-03", OS: "windows"}, {Name: "WS-03-VM1", OS: "windows", Via: "WS-03", VM: true},
+			{Name: "WS-03-VM2", OS: "windows", Via: "WS-03", VM: true, LastRun: end.AddDate(0, 0, -9)},
+			{Name: "WS-04", OS: "windows", Via: "WS-03", LastRun: end.AddDate(0, 0, -9)}}})
+	got := map[string]SystemRow{}
 	for _, s := range r.SystemRows {
-		if s.Status != "ok" {
-			t.Errorf("%s flagged for being off: %s %s", s.Name, s.Status, s.StatusMsg)
-		}
+		got[s.Name] = s
 	}
-	if len(r.Silent) != 0 {
+	if s := got["WS-03-VM1"]; s.Status != "ok" {
+		t.Errorf("a VM that was off for part of the week was flagged: %s %s", s.Status, s.StatusMsg)
+	}
+	if s := got["WS-03-VM2"]; s.Status != "warn" || !strings.Contains(s.StatusMsg, "Worth a look: nothing received since 21 Sep") {
+		t.Errorf("a VM that sent nothing all period: %s %q", s.Status, s.StatusMsg)
+	}
+	if s := got["WS-04"]; s.Status != "silent" {
+		t.Errorf("a relayed computer that sent nothing must not pass as a VM: %s %q", s.Status, s.StatusMsg)
+	}
+	if len(r.Silent) != 1 || r.Silent[0].Name != "WS-04" {
 		t.Errorf("silent: %+v", r.Silent)
+	}
+	if k := r.overview(nil).KPIs[0]; k.Value != "2 / 4" || !k.Bad || k.Note != "2 sent nothing" {
+		t.Errorf("systems reporting: %+v", k)
 	}
 }
 

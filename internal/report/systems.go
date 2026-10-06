@@ -23,6 +23,10 @@ type SystemInfo struct {
 	LastRun      time.Time
 	LastReceived time.Time
 	Former       []string // names it had before (W1b)
+	// VM: the system says it is a virtual machine that sends through a
+	// VirtualBox shared folder, so on only while its host PC runs it (UI2).
+	// Data relayed through another computer (Via) does not make a VM.
+	VM bool
 }
 
 // CheckSet is the latest audit settings check of one computer.
@@ -179,11 +183,18 @@ func (r *Report) buildSystems(runs []*store.Run, events []*event.Event) {
 	live := r.Source == "" || strings.HasPrefix(r.Source, "Live")
 	for _, s := range idx {
 		s.Status = "ok"
-		vm := s.Via != ""
+		vm := s.VM
 		switch {
 		case !live:
 		case vm && s.Runs == 0:
-			// A VM is on only part of the time; being off is not a problem.
+			// A VM is on only part of the time, but one that sent nothing
+			// all period is worth a look (UI2).
+			s.Status = "warn"
+			if s.LastRun.IsZero() {
+				s.StatusMsg = "Worth a look: nothing received from this virtual machine yet."
+			} else {
+				s.StatusMsg = fmt.Sprintf("Worth a look: nothing received since %s. A virtual machine sends only while it is on.", r.since(s.LastRun))
+			}
 		case s.Runs == 0 && r.WindowEnd.Sub(r.PeriodStart()) <= 2*expectedInterval && !s.LastRun.IsZero():
 			// A short report (an interim one run by hand) can end before a
 			// computer's next collection is due; that is not silence.

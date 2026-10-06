@@ -271,7 +271,7 @@ func (r *Report) logsPage() *LogsPage {
 		g := groups[1]
 		if s, ok := osOf[strings.ToLower(la.Host)]; ok {
 			switch {
-			case s.Via != "":
+			case s.VM:
 				g = groups[2]
 			case isServer(s):
 				g = groups[0]

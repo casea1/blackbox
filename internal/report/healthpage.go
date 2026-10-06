@@ -192,7 +192,7 @@ func (r *Report) healthPage() *HealthPage {
 		row := &HealthRow{Name: s.Name}
 		g := groups[1]
 		switch {
-		case s.Via != "":
+		case s.VM:
 			g = groups[2]
 		case isServer(s):
 			g = groups[0]
@@ -230,7 +230,9 @@ func (r *Report) healthPage() *HealthPage {
 					// Not collected live (a report from saved logs).
 				case s.Status == "silent":
 					c = Cell{Mark: "✕", Class: "bad", Title: "No collection received in this period"}
-				case s.Via != "":
+				case s.VM && s.Runs == 0:
+					c = Cell{Mark: "!", Class: "warn", Title: s.StatusMsg}
+				case s.VM:
 					c = Cell{Mark: "✓", Class: "ok", Title: "A VM reports whenever it is on"}
 				case r.WindowEnd.Sub(s.LastRun) > silentAfter:
 					c = Cell{Mark: "!", Class: "warn", Title: "Last collection " + s.LastRun.In(r.Location).Format("2 Jan 15:04")}

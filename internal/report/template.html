@@ -80,7 +80,7 @@
 {{range .Groups}}<div class="grp2">{{.Title}} · {{len .Systems}}</div>{{range .Systems}}<a data-pick="{{.Name}}" href="#systems/{{.Name}}"><i class="{{if .Level}}{{.Level}}{{else}}ok{{end}}"></i><span>{{.Name}}</span><small>{{.Tag}}</small></a>{{end}}{{end}}</div>
 <div style="min-width:0">{{$lan := .LAN}}{{range .Groups}}{{range .Systems}}<div data-pane="{{.Name}}" hidden>
 <div class="panel" style="margin-bottom:12px"><div class="dh"><div><h3>{{.Name}}</h3><p>{{.Line}}</p></div><span class="sv {{if eq .Level "bad"}}high{{else if eq .Level "warn"}}medium{{else}}ok{{end}}">{{.Status}}</span></div>
-{{if .Message}}<div class="alertbar" style="margin-bottom:12px">{{icon "clock-alert" 18}}<span>{{.Message}}</span></div>{{end}}
+{{if .Message}}<div class="alertbar{{if eq .Level "warn"}} interim{{end}}" style="margin-bottom:12px">{{icon "clock-alert" 18}}<span>{{.Message}}</span></div>{{end}}
 <div class="facts4">{{range .Facts}}{{template "fact" .}}{{end}}</div>
 <div class="sub2">Collection this period</div>{{.Bar}}</div>
 <div class="row" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
@@ -160,7 +160,7 @@
 {{if not .Rows}}<div class="panel"><p class="pm" style="margin:0">No inventory yet. Each system reads its make, model, serial numbers, drives and accounts with its daily settings check, from version 0.13 on; they appear here in the next report.</p></div>{{else}}
 <div class="panel" id="inv-systems" style="overflow-x:auto;margin-bottom:12px"><div class="ph"><h2>{{icon "server" 17}}Systems · {{len .Rows}}</h2><span class="pm">Click a system for its drives and accounts</span></div>
 <table class="stig"><thead><tr><th>System</th><th>Make and model</th><th>Serial number</th><th>Operating system</th><th>Processor · memory</th><th>Drives</th><th>Accounts</th><th>Inventoried</th></tr></thead><tbody>{{range .Rows}}<tr><td><b><a class="link" style="color:inherit" data-pick="{{.Host}}" href="#inventory/{{.Host}}">{{.Host}}</a></b></td><td>{{or .Make "—"}}</td><td class="mono">{{or .Serial "—"}}</td><td>{{or .OS "—"}}</td><td>{{or .CPU "—"}}{{if .Memory}} · {{.Memory}}{{end}}</td><td>{{len .Drives}}</td><td>{{len .Accounts}}{{if .Admins}} · {{.Admins}} admin{{end}}</td><td class="mute">{{.Checked}}</td></tr>{{end}}</tbody></table>
-{{if .Missing}}<p class="pm" style="margin:10px 0 0">No inventory yet from: {{range $i, $m := .Missing}}{{if $i}}, {{end}}{{$m}}{{end}}. It is read with each system's daily settings check, from version 0.13 on.</p>{{end}}</div>
+{{if .Missing}}<p class="pm" style="margin:10px 0 0">No inventory yet from:</p><ul class="pm" style="margin:4px 0 0">{{range .Missing}}<li><b>{{.Host}}</b>: {{.Why}}.</li>{{end}}</ul>{{end}}</div>
 {{range .Rows}}<div data-pane="{{.Host}}" hidden><div class="row" style="grid-template-columns:1fr 1fr">
 <div class="panel" style="overflow-x:auto"><div class="ph"><h2>{{icon "hard-drive" 17}}Drives on {{.Host}} · {{len .Drives}}</h2><span class="pm">{{or .Make "Make unknown"}}{{if .Serial}} · SN {{.Serial}}{{end}}{{if .BIOS}} · BIOS {{.BIOS}}{{end}}</span></div>
 {{if .Drives}}<table class="stig"><thead><tr><th>Model</th><th>Serial number</th><th>Size</th><th>Type</th></tr></thead><tbody>{{range .Drives}}<tr><td>{{or .Model "—"}}</td><td class="mono">{{or .Serial "—"}}</td><td>{{.Size}}</td><td>{{.Interface}}{{if .Media}} · {{.Media}}{{end}}</td></tr>{{end}}</tbody></table>{{else}}<p class="pm" style="margin:0">No drives were read.</p>{{end}}
