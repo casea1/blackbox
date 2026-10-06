@@ -52,6 +52,12 @@ type Summary struct {
 	// People are per-account counts, for each person's activity over time
 	// (see peopletrends.go). Nil in reports made before they were kept.
 	People []PersonSummary `json:"people"`
+	// Days are the same counts day by day, so trends can add them up by
+	// calendar week (see weeks.go). Nil before 0.16.
+	Days []DayCounts `json:"days,omitempty"`
+	// First marks the first scheduled report, which reads back through
+	// the logs from before Blackbox was installed.
+	First bool `json:"first,omitempty"`
 }
 
 // ArchiveJSON is one archive of original logs in summary.json.
@@ -93,7 +99,8 @@ type SystemStatus struct {
 func (r *Report) summary() Summary {
 	s := Summary{Site: r.Site, WindowStart: r.WindowStart, WindowEnd: r.WindowEnd,
 		Generated: r.Generated, Hosts: r.Hosts, Events: len(r.Events), ByCategory: map[string]int{}, Interim: r.Interim,
-		LogClears: r.Health.LogClears, Version: r.Version, Source: r.Source, Metrics: r.metrics(), People: r.peopleTotals()}
+		LogClears: r.Health.LogClears, Version: r.Version, Source: r.Source, Metrics: r.metrics(), People: r.peopleTotals(),
+		Days: r.days(), First: r.WindowStart.IsZero() && !r.Interim}
 	if s.People == nil {
 		s.People = []PersonSummary{} // kept, but nobody active: not "before people were kept"
 	}
@@ -466,6 +473,9 @@ type IndexEntry struct {
 
 // History reads the summaries of the scheduled reports in reportsDir that
 // ended before end, oldest first, keeping the last n.
+//
+// Reports from before day counts were kept (0.16) do not say which was the
+// first; the oldest one in the folder is taken to be it.
 func History(reportsDir string, end time.Time, n int) []Summary {
 	matches, _ := filepath.Glob(filepath.Join(reportsDir, "*", "summary.json"))
 	var out []Summary
@@ -481,11 +491,18 @@ func History(reportsDir string, end time.Time, n int) []Summary {
 		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].WindowEnd.Before(out[j].WindowEnd) })
+	if len(out) > 0 && out[0].Days == nil {
+		out[0].First = true
+	}
 	if len(out) > n {
 		out = out[len(out)-n:]
 	}
 	return out
 }
+
+// HistoryWeeks is how many earlier reports trends read: enough daily
+// reports for the weeks the charts show.
+const HistoryWeeks = 7 * shownWeeks
 
 // IndexRow is one report's line on the index page.
 type IndexRow struct {
@@ -586,47 +603,60 @@ func WriteIndex(reportsDir, site, schedule string, loc *time.Location) error {
 		}
 		rows = append(rows, row)
 	}
-	// Detections per week: the last twelve scheduled reports.
-	var weekly []IndexEntry
-	for _, e := range entries {
-		if !e.Interim && len(weekly) < 12 {
-			weekly = append([]IndexEntry{e}, weekly...)
-		}
-	}
-	var chart template.HTML
-	if len(weekly) > 1 {
-		var labels []string
-		hi, md := Series{Name: "High", Color: colBad}, Series{Name: "Medium", Color: colWarn}
-		for i, e := range weekly {
-			l := weekLabel(e.WindowEnd)
-			if i == len(weekly)-1 {
-				l = "Latest"
-			} else if i%2 == 1 {
-				l = ""
-			}
-			labels = append(labels, l)
-			h, m := 0, 0
-			for _, d := range e.Detections {
-				if d.Severity == "high" {
-					h++
-				} else {
-					m++
-				}
-			}
-			hi.Values, md.Values = append(hi.Values, h), append(md.Values, m)
-		}
-		chart = stackedBars(labels, []Series{hi, md}, nil, true, 820, 100)
-	}
+	// Detections per week (UI8): by calendar week, from the scheduled
+	// reports only, once there are minWeeks complete weeks.
+	chart, weeks := indexChart(entries, loc)
 	latest := ""
 	if len(rows) > 0 {
 		latest = rows[0].Dir
 	}
 	err = t.Execute(&buf, map[string]any{"Site": site, "Entries": entries, "Rows": rows, "Incomplete": incomplete, "Latest": latest,
-		"Chart": chart, "Weeks": len(weekly), "Schedule": schedule})
+		"Chart": chart, "Weeks": weeks, "Schedule": schedule})
 	if err != nil {
 		return err
 	}
 	return store.WriteFileAtomic(filepath.Join(reportsDir, "index.html"), buf.Bytes(), 0o640)
+}
+
+// indexChart is the list of reports' "Detections per week": High and
+// Medium detections by calendar week, the current week "so far". Manual
+// reports never add a bar. Nothing is drawn before minWeeks complete
+// weeks. It returns the chart and how many weeks it shows.
+func indexChart(entries []IndexEntry, loc *time.Location) (template.HTML, int) {
+	var sums []Summary
+	for _, e := range entries {
+		if !e.Interim {
+			sums = append(sums, e.Summary)
+		}
+	}
+	if len(sums) == 0 {
+		return "", 0
+	}
+	sort.Slice(sums, func(i, j int) bool { return sums[i].WindowEnd.Before(sums[j].WindowEnd) })
+	if sums[0].Days == nil {
+		sums[0].First = true
+	}
+	ws := buildWeeks(sums[:len(sums)-1], sums[len(sums)-1], loc)
+	complete := 0
+	for _, w := range ws[:len(ws)-1] {
+		if w.Complete {
+			complete++
+		}
+	}
+	if complete < minWeeks {
+		return "", 0
+	}
+	var labels []string
+	hi, md := Series{Name: "High", Color: colBad}, Series{Name: "Medium", Color: colWarn}
+	for _, w := range ws {
+		l := WeekLabel(w.Start, loc)
+		if w.Current {
+			l = "This week (so far)"
+		}
+		labels = append(labels, l)
+		hi.Values, md.Values = append(hi.Values, w.High), append(md.Values, w.Med)
+	}
+	return stackedBars(labels, []Series{hi, md}, nil, true, 820, 100), len(ws)
 }
 
 // fileSHA256 hashes a file in pieces, so large log zips are not read into

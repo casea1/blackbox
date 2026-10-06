@@ -488,17 +488,20 @@ func (r *Report) periodDays() []string {
 	return out
 }
 
-// normalRange is "normal: a–b" from the metric's earlier weeks.
+// normalRange is "normal: a–b" from the metric's complete calendar weeks,
+// shown only for a report that covers about a week, which those numbers
+// can be compared with (UI1).
 func (r *Report) normalRange(metric string) string {
-	if metric == "" {
+	if metric == "" || r.WindowEnd.Sub(r.PeriodStart()) < 6*24*time.Hour {
 		return ""
 	}
 	lo, hi, n := 0, 0, 0
-	for _, s := range r.History {
-		v, ok := s.Metrics[metric]
-		if !ok {
+	ws := r.weeks()
+	for _, w := range ws[:len(ws)-1] {
+		if !w.Complete {
 			continue
 		}
+		v := w.value(metric)
 		if n == 0 || v < lo {
 			lo = v
 		}
@@ -511,19 +514,20 @@ func (r *Report) normalRange(metric string) string {
 	case n < 3:
 		return ""
 	case lo == hi:
-		return "normal: " + commas(lo)
+		return "normal: " + commas(lo) + " a week"
 	}
-	return "normal: " + commas(lo) + "–" + commas(hi)
+	return "normal: " + commas(lo) + "–" + commas(hi) + " a week"
 }
 
+// aboveNormal says whether a count for this report's period is well above
+// the average complete week, scaled to the period's length.
 func (r *Report) aboveNormal(metric string, v int) bool {
-	sum, n := 0, 0
-	for _, s := range r.History {
-		if x, ok := s.Metrics[metric]; ok {
-			sum, n = sum+x, n+1
-		}
+	t := r.metricTrend(metric)
+	if !t.OK || t.Complete < 3 {
+		return false
 	}
-	return n >= 3 && float64(v) > float64(sum)/float64(n)*1.4 && v > 2
+	days := r.WindowEnd.Sub(r.PeriodStart()).Hours() / 24
+	return float64(v) > t.Avg*days/7*1.4 && v > 2
 }
 
 func short(m map[string]bool, max int) string {

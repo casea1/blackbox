@@ -10,57 +10,163 @@ import (
 	"github.com/casea1/blackbox/internal/event"
 )
 
-// Each report keeps per-person counts; later reports show a person's
-// activity over time, privileged actions by person on Trends, and the
-// biggest changes on the Overview.
-func TestPeopleTrendsAndWhatChanged(t *testing.T) {
-	end := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
-	var evs []*event.Event
-	for i := 0; i < 12; i++ { // admin_jd: 12 privileged actions this week
-		evs = append(evs, &event.Event{Time: end.Add(-time.Duration(i+1) * time.Hour), Host: "WS-07", OS: "windows", Category: event.CatPrivileged,
-			Severity: event.SevLow, Action: "special_logon", User: `CORP\admin_jd`, Summary: "admin"})
-	}
-	for i := 0; i < 4; i++ { // tempuser: never privileged before
-		evs = append(evs, &event.Event{Time: end.Add(-time.Duration(i+1) * time.Hour), Host: "WS-07", OS: "windows", Category: event.CatPrivileged,
-			Severity: event.SevLow, Action: "special_logon", User: "tempuser", Summary: "admin"})
-	}
-	week := func(n int, people []PersonSummary) Summary {
-		return Summary{WindowEnd: end.AddDate(0, 0, -7*n), Events: 10, People: people,
-			Metrics: map[string]int{MPrivileged: 3, MFailedLogons: 5, MDetections: 0, MSystems: 1}}
-	}
-	history := []Summary{
-		{WindowEnd: end.AddDate(0, 0, -21), Events: 10}, // before people were kept
-		week(2, []PersonSummary{{Key: "admin_jd", Name: "admin_jd", Privileged: 2}}),
-		week(1, []PersonSummary{{Key: "admin_jd", Name: "admin_jd", Privileged: 4}}),
-	}
-	r := Build(evs, nil, Options{WindowEnd: end, Location: time.UTC, History: history})
+// dayOf is the date of t, as summary.json's days have it.
+func dayOf(t time.Time) string { return t.UTC().Format("2006-01-02") }
 
-	s := r.summary()
-	var jd PersonSummary
-	for _, p := range s.People {
-		if p.Key == "admin_jd" {
-			jd = p
+// dailyReport is a scheduled report covering one day, from its day counts.
+func dailyReport(day time.Time, privileged int, people []PersonSummary) Summary {
+	return Summary{WindowStart: day, WindowEnd: day.AddDate(0, 0, 1), People: people,
+		Days: []DayCounts{{Date: dayOf(day), Metrics: map[string]int{MPrivileged: privileged, MEvents: privileged}, People: people, Hosts: []string{"ubuntu-server"}}}}
+}
+
+// privileged makes n privileged actions by user, spread over [from, to).
+func privileged(n int, user string, from, to time.Time) []*event.Event {
+	var out []*event.Event
+	step := to.Sub(from) / time.Duration(n+1)
+	for i := 0; i < n; i++ {
+		out = append(out, &event.Event{Time: from.Add(step * time.Duration(i+1)), Host: "ubuntu-server", OS: "linux", Category: event.CatPrivileged,
+			Severity: event.SevLow, Action: "sudo", User: user, Summary: user + " ran a command with sudo."})
+	}
+	return out
+}
+
+// UI1: trends add up days by calendar week. The first report reads back
+// 2.7 days and only fills a partial week; daily reports make complete
+// weeks (seven reports, one week); a manual report is not history; the
+// current, manual report is "so far this week" and is compared with the
+// same part of an average week.
+func TestTrendsByCalendarWeek(t *testing.T) {
+	mon := time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC) // a Monday
+	first := Summary{First: true, WindowStart: mon.Add(-4*24*time.Hour + 6*time.Hour), WindowEnd: mon.Add(-24*time.Hour + 13*time.Hour)}
+	for d := 0; d < 3; d++ {
+		first.Days = append(first.Days, DayCounts{Date: dayOf(first.WindowStart.AddDate(0, 0, d)), Metrics: map[string]int{MPrivileged: 605, MEvents: 605}})
+	}
+	hist := []Summary{first}
+	// The rest of that Sunday, then daily reports for three weeks.
+	hist = append(hist, Summary{WindowStart: first.WindowEnd, WindowEnd: mon, Days: []DayCounts{{Date: dayOf(mon.Add(-time.Hour)), Metrics: map[string]int{MPrivileged: 5, MEvents: 5}}}})
+	for d := 0; d < 21; d++ {
+		hist = append(hist, dailyReport(mon.AddDate(0, 0, d), 10, nil))
+	}
+	// A manual report in the middle: never history.
+	hist = append(hist, Summary{Interim: true, WindowStart: mon.AddDate(0, 0, 8), WindowEnd: mon.AddDate(0, 0, 8).Add(12 * time.Hour),
+		Days: []DayCounts{{Date: dayOf(mon.AddDate(0, 0, 8)), Metrics: map[string]int{MPrivileged: 900}}}})
+
+	// Now: a manual report on Wednesday 12:00, two and a half days in.
+	now := mon.AddDate(0, 0, 23).Add(12 * time.Hour)
+	weekStart := mon.AddDate(0, 0, 21)
+	r := Build(privileged(25, "claude", weekStart, now), nil, Options{WindowStart: weekStart, WindowEnd: now, Location: time.UTC, History: hist, Interim: true})
+
+	ws := r.weeks()
+	var complete []string
+	for _, w := range ws {
+		if w.Complete && !w.Current {
+			complete = append(complete, w.Start.Format("2 Jan"))
 		}
 	}
-	if jd.Privileged != 12 || jd.Name != `CORP\admin_jd` {
-		t.Fatalf("summary people: %+v", s.People)
+	if strings.Join(complete, ",") != "14 Sep,21 Sep,28 Sep" {
+		t.Errorf("complete weeks: %v (the first report's week is partial, the current one so far)", complete)
+	}
+	tr := r.metricTrend(MPrivileged)
+	if !tr.OK || tr.Avg != 70 || tr.Now != 25 || tr.Expected != 25 || tr.Complete != 3 { // 70 a week: 25 by Wednesday noon
+		t.Errorf("privileged actions: %+v", tr)
+	}
+	if got := r.nowLabel(); got != "so far this week (2.5 of 7 days)" {
+		t.Errorf("now: %q", got)
+	}
+	if l := r.weekLabels(); l[len(l)-1] != "This week" || l[len(l)-2] != "28 Sep" || l[0] != "7 Sep (part)" {
+		t.Errorf("labels: %v", l)
+	}
+	// Two and a half days against an average week is not "down 96%".
+	for _, c := range r.whatChanged() {
+		if strings.Contains(c.Text, "Privileged actions") {
+			t.Errorf("a normal week so far reported as a change: %s", c.Text)
+		}
+	}
+	tp := r.trendsPage()
+	if tp.NotEnough || tp.Cards[3].Title != "Privileged actions" || tp.Cards[3].Avg != "avg 70/wk" || tp.Cards[3].Class != "flat" ||
+		!strings.Contains(tp.Crumb, "5 weeks · 7 Sep – 11 Oct 2026") {
+		t.Errorf("trends page: %+v %q", tp.Cards[3], tp.Crumb)
 	}
 
-	pt := r.personTrend(jd, r.weekLabels())
-	if pt.Weeks != 3 || pt.Rows[0].Label != "Privileged actions" || pt.Rows[0].Now != "12" || pt.Rows[0].Avg != "3" || pt.Rows[0].Class != "up" || pt.Rows[0].Delta != "+300%" {
-		t.Errorf("person trend: %+v %+v", pt.Weeks, pt.Rows[0])
+	// The manual report's 900 are nowhere.
+	for _, w := range ws {
+		if w.Metrics[MPrivileged] > 300 && !strings.HasPrefix(w.Start.Format("2 Jan"), "7 Sep") {
+			t.Errorf("week of %s has %d: a manual report counted", w.Start.Format("2 Jan"), w.Metrics[MPrivileged])
+		}
+	}
+}
+
+// UI1: with fewer than two complete weeks, every trend says so instead of
+// drawing one or two points.
+func TestTrendsNotEnoughHistory(t *testing.T) {
+	mon := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	hist := []Summary{
+		{First: true, WindowStart: mon.Add(-62 * time.Hour), WindowEnd: mon.Add(2 * time.Hour), Days: []DayCounts{{Date: "2026-10-03", Metrics: map[string]int{MPrivileged: 1814}}}},
+		dailyReport(mon.AddDate(0, 0, 1), 78, nil),
+	}
+	now := mon.AddDate(0, 0, 2).Add(12 * time.Hour)
+	r := Build(privileged(42, "claude", mon.AddDate(0, 0, 2), now), nil, Options{WindowStart: mon.AddDate(0, 0, 2), WindowEnd: now, Location: time.UTC, History: hist, Interim: true})
+	if c := r.whatChanged(); c != nil {
+		t.Errorf("what changed with no complete week: %+v", c)
+	}
+	o := r.overview(nil)
+	if o.HistoryN != 0 || o.Trends[2].Chart != "" || !strings.Contains(o.Trends[2].Note, "120 so far") || !strings.Contains(o.TrendSpan, "2.5 of 7 days so far") || strings.Contains(o.Trends[2].Note, "avg") {
+		t.Errorf("overview: %d %+v", o.HistoryN, o.Trends[2])
+	}
+	if tp := r.trendsPage(); !tp.NotEnough || tp.Cards[3].Note != notEnoughHistory || tp.Cards[3].Chart != "" {
+		t.Errorf("trends page: %+v", tp.Cards[3])
+	}
+	dir := filepath.Join(t.TempDir(), "rep")
+	if err := r.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
+	if strings.Count(string(html), "Not enough history yet: trends start after 2 full weeks") < 3 {
+		t.Error("the report does not say there is not enough history")
+	}
+}
+
+// Each report keeps per-person counts by day; later reports show a
+// person's activity over time, privileged actions by person on Trends, and
+// the biggest changes on the Overview, by calendar week.
+func TestPeopleTrendsAndWhatChanged(t *testing.T) {
+	mon := time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC)
+	jd := func(n int) []PersonSummary {
+		return []PersonSummary{{Key: "admin_jd", Name: "admin_jd", Privileged: n}}
+	}
+	var hist []Summary
+	for d := 0; d < 21; d++ { // three complete weeks, admin_jd 2 a day
+		hist = append(hist, dailyReport(mon.AddDate(0, 0, d), 3, jd(2)))
+	}
+	// A whole scheduled week to Sunday night: this week has ended.
+	weekStart := mon.AddDate(0, 0, 21)
+	end := weekStart.AddDate(0, 0, 7)
+	evs := append(privileged(60, `CORP\admin_jd`, weekStart, end), privileged(4, "tempuser", weekStart, end)...)
+	r := Build(evs, nil, Options{WindowStart: weekStart, WindowEnd: end, Location: time.UTC, History: hist})
+
+	s := r.summary()
+	if len(s.Days) != 7 || s.First {
+		t.Fatalf("summary days: %d, first %v", len(s.Days), s.First)
+	}
+	var jdNow PersonSummary
+	for _, p := range s.People {
+		if p.Key == "admin_jd" {
+			jdNow = p
+		}
+	}
+	pt := r.personTrend(jdNow, r.weekLabels())
+	if pt.Weeks != 3 || pt.Rows[0].Now != "60" || pt.Rows[0].Avg != "14" || pt.Rows[0].Class != "up" {
+		t.Errorf("person trend: %d %+v", pt.Weeks, pt.Rows[0])
 	}
 
-	changes := r.whatChanged()
 	var texts []string
-	for _, c := range changes {
+	for _, c := range r.whatChanged() {
 		texts = append(texts, c.Class+" "+c.Text)
 	}
 	all := strings.Join(texts, "\n")
 	for _, want := range []string{
-		"up Privileged actions: 16 this week, up 433% on the average of the last 3 reports (3)",
-		`up CORP\admin_jd: 12 privileged actions this week (average 3)`,
-		"new tempuser: 4 privileged actions, none in the last 3 reports",
+		`up CORP\admin_jd: 60 privileged actions in the week to 11 Oct (average 14 by this point of a week)`,
+		"new tempuser: 4 privileged actions in the week to 11 Oct, none in the 3 complete weeks before",
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("what changed lacks %q:\n%s", want, all)
@@ -68,11 +174,9 @@ func TestPeopleTrendsAndWhatChanged(t *testing.T) {
 	}
 
 	tp := r.trendsPage()
-	if len(tp.People) != 2 || tp.People[0].Name != `CORP\admin_jd` || tp.People[0].Href != "#people/admin_jd" || !tp.PeopleOld ||
-		tp.People[0].Cells[0].N != 0 || tp.People[0].Cells[1].N != 2 || tp.People[0].Cells[3].N != 12 {
-		t.Errorf("people by week: %+v (old %v)", tp.People, tp.PeopleOld)
+	if len(tp.People) != 2 || tp.People[0].Href != "#people/admin_jd" || tp.People[0].Cells[0].N != 14 || tp.People[0].Cells[3].N != 60 {
+		t.Errorf("people by week: %+v", tp.People)
 	}
-
 	dir := filepath.Join(t.TempDir(), "rep")
 	if err := r.Write(dir); err != nil {
 		t.Fatal(err)
@@ -83,9 +187,42 @@ func TestPeopleTrendsAndWhatChanged(t *testing.T) {
 			t.Errorf("report lacks %q", want)
 		}
 	}
+}
 
-	// The first report: nothing to compare.
-	if c := Build(evs, nil, Options{WindowEnd: end, Location: time.UTC}).whatChanged(); c != nil {
-		t.Errorf("first report: %+v", c)
+// UI8: the list of reports' "Detections per week" has one bar per
+// calendar week, labelled with its dates, the current week "so far", no
+// manual report, and nothing before two complete weeks.
+func TestIndexChartByWeek(t *testing.T) {
+	mon := time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC)
+	det := func(at time.Time, sev string) []Detection {
+		return []Detection{{Severity: sev, Time: at, Host: "WS-07", Title: "x"}}
+	}
+	var entries []IndexEntry
+	add := func(s Summary) {
+		entries = append(entries, IndexEntry{Summary: s, Dir: s.WindowEnd.Format("2006-01-02_1504")})
+	}
+	for d := 0; d < 9; d++ {
+		s := dailyReport(mon.AddDate(0, 0, d), 1, nil)
+		s.Detections = det(mon.AddDate(0, 0, d).Add(time.Hour), "high")
+		add(s)
+	}
+	chart, n := indexChart(entries, time.UTC)
+	if chart != "" || n != 0 {
+		t.Errorf("drawn with one complete week: %d weeks", n)
+	}
+	for d := 9; d < 16; d++ {
+		s := dailyReport(mon.AddDate(0, 0, d), 1, nil)
+		s.Detections = det(mon.AddDate(0, 0, d).Add(time.Hour), "medium")
+		add(s)
+	}
+	// Two manual reports this week, from the tray and from "blackbox report".
+	for i := 0; i < 2; i++ {
+		add(Summary{Interim: true, WindowStart: mon.AddDate(0, 0, 16), WindowEnd: mon.AddDate(0, 0, 16).Add(time.Duration(i+1) * time.Hour),
+			Detections: det(mon.AddDate(0, 0, 16).Add(30*time.Minute), "high")})
+	}
+	chart, n = indexChart(entries, time.UTC)
+	svg := string(chart)
+	if n != 3 || !strings.Contains(svg, "14–20 Sep") || !strings.Contains(svg, "This week (so far)") || strings.Count(svg, "<rect") > 3*2+3 {
+		t.Errorf("chart: %d weeks\n%s", n, svg)
 	}
 }

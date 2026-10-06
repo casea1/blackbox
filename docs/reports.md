@@ -491,18 +491,43 @@ newest is marked **Latest**; click a row to open it. In a report, the
 **All reports** button at the top of every page (and in the menu) opens
 it. The date range next to it only shows the report's period.
 
-**Trends.** Each report keeps a summary (`summary.json`), so later
-reports compare with earlier ones. The Overview's **What changed** panel
-lists the biggest moves this week against the average of the earlier
-reports: a network-wide count (failed logons, privileged actions, …) up
-or down by 25% or more, a system with more detections than usual, and a
-person with more privileged actions than usual or with privileged actions
-for the first time. The Trends page charts the network's counts and has
-detections per system and privileged actions per person, by week. On the
-People page, each person's **Over time** panel compares this week's
-privileged actions, after-hours actions, logons, failed logons and
-detections with their own average. Counts by person are kept from 0.13
-on, so earlier weeks are blank there.
+**Trends.** Each scheduled report keeps its counts day by day in
+`summary.json` (`days`), and later reports add them up by **calendar
+week**, Monday to Sunday, whatever period each report covered: two
+reports in one week make one week, and a report that spans two weeks is
+split between them.
+
+- Only **complete weeks** count: weeks fully covered by scheduled reports.
+  Manual reports are never part of the history. The first report, which
+  reads back through the logs from before Blackbox was installed, only
+  fills partial weeks, which are labelled "(part)" in the tables and left
+  out of charts and averages.
+- The week the report ends in is shown **so far** ("190 so far this
+  week, 2.5 of 7 days") and compared with the same part of an average
+  week, not with a whole one.
+- With fewer than **2 complete weeks**, every trend says "Not enough
+  history yet: trends start after 2 full weeks" instead of drawing a
+  point or two.
+- Charts are labelled with the weeks' dates, and say how many weeks they
+  show (up to 13).
+
+The Overview's **What changed** panel lists the biggest moves: a
+network-wide count (failed logons, privileged actions, …) up or down by
+25% or more on the average week, a system with more detections than
+usual, and a person with more privileged actions than usual or with
+privileged actions for the first time. The Trends page charts the
+network's counts and has detections per system and privileged actions per
+person, by week. On the People page, each person's **Over time** panel
+compares this week's privileged actions, after-hours actions, logons,
+failed logons and detections with their own average week. The list of
+reports has **Detections per week** by the same calendar weeks, without
+manual reports, from 2 complete weeks on.
+
+Reports made before 0.16 did not keep counts by day. A report from then
+whose whole period lies in one calendar week (a daily report) still
+counts; one that spans two weeks (a weekly report ending mid-week) can't
+be split and is left out, except for its detections, which carry their
+times.
 
 **Clicking through.** The boxes at the top of each event page filter the
 table below them: for example **Accounts locked out** shows only the

@@ -115,7 +115,7 @@ func (a *App) reportRange(st *store.Store, from, to time.Time) (string, error) {
 		Site:        a.Cfg.SiteName,
 		WindowStart: from, WindowEnd: to, Generated: generated, Version: a.Version,
 		Source: "Live collection", Location: loc, InReportsDir: true, Interim: true, Range: rng, Period: "range",
-		History:      report.History(a.ReportsDir(), to, 11),
+		History:      report.History(a.ReportsDir(), to, report.HistoryWeeks),
 		ExcludeUsers: a.Cfg.ExcludeUsers, ExcludeProcesses: a.Cfg.ExcludeProcesses,
 		KnownDevices: st.State.KnownDevices, CheckSets: sets,
 		Context: contextEvents(all, events, from), Baseline: st.State.Baseline, BaselineHosts: st.State.BaselineHosts,

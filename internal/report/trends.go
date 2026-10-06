@@ -5,16 +5,16 @@ import (
 	"html/template"
 	"math"
 	"sort"
-	"time"
 )
 
-// The Trends page (design T1): eight small charts of this week against the
-// last twelve, from the summary.json of each earlier report, and
-// detections per system by week.
+// The Trends page (design T1): eight small charts of this week against
+// earlier calendar weeks (see weeks.go), and detections per system and
+// privileged actions per person by week.
 
 // TrendCard is one small chart.
 type TrendCard struct {
 	Title, Value, Avg, Delta, Class string
+	Sub, Note                       string // the current week ("so far this week (3 of 7 days)"); why there is no chart
 	Href                            string
 	Chart                           template.HTML
 }
@@ -42,7 +42,7 @@ type TrendsPage struct {
 	// were kept, so their weeks are blank.
 	PeopleOld bool
 	Crumb     string
-	Weeks1    bool // only this report so far
+	NotEnough bool // fewer than minWeeks complete weeks
 }
 
 var trendMetrics = []struct {
@@ -56,77 +56,45 @@ var trendMetrics = []struct {
 	{"Account changes", MAccountChanges, true, "#accounts"}, {"Systems reporting", MSystems, false, "#systems"},
 }
 
-func weekLabel(end time.Time) string {
-	_, w := end.Add(-time.Hour).ISOWeek()
-	return fmt.Sprintf("W%d", w)
-}
-
-// weekLabels names the earlier reports and this one, for charts.
-func (r *Report) weekLabels() []string {
-	var labels []string
-	for _, s := range r.History {
-		labels = append(labels, weekLabel(s.WindowEnd))
-	}
-	return append(labels, "This wk")
-}
-
 func (r *Report) trendsPage() *TrendsPage {
-	tp := &TrendsPage{Weeks1: len(r.History) == 0}
+	ws := r.weeks()
 	labels := r.weekLabels()
-	tp.Weeks = labels
-	start := r.PeriodStart()
-	if len(r.History) > 0 {
-		start = r.History[0].WindowEnd.AddDate(0, 0, -7)
-	}
-	tp.Crumb = fmt.Sprintf("Last %s · %s – %s · built from the summary in each earlier report", plural(len(labels), "week"),
-		start.In(r.Location).Format("2 Jan"), r.WindowEnd.Add(-time.Second).In(r.Location).Format("2 Jan 2006"))
+	tp := &TrendsPage{Weeks: labels}
+	tp.Crumb = "Last " + r.weeksCrumb() + " · by calendar week (Monday to Sunday) · manual reports not included"
 
-	m := r.metrics()
 	for _, t := range trendMetrics {
-		vals := r.series(t.Metric, m[t.Metric])
-		now := vals[len(vals)-1]
-		c := TrendCard{Title: t.Title, Value: commas(now), Class: "flat", Href: t.Href}
-		if avg := average(vals); avg >= 0 {
-			c.Avg = "avg " + commas(int(math.Round(avg)))
-			if avg > 0 {
-				d := (float64(now) - avg) / avg * 100
-				c.Delta = fmt.Sprintf("%+.0f%%", d)
-				if math.Abs(d) < 0.5 {
-					c.Delta = "0%"
-				}
-				switch {
-				case !t.BadUp || math.Abs(d) < 15:
-				case d > 0:
-					c.Class = "up"
-				default:
-					c.Class = "dn"
-				}
-			}
+		tr := r.metricTrend(t.Metric)
+		c := TrendCard{Title: t.Title, Value: commas(tr.Now), Class: "flat", Href: t.Href, Sub: r.nowLabel()}
+		switch {
+		case t.Metric == MAfterHours && !r.WorkingHours.Set():
+			c.Value, c.Note = "—", "Set working_hours to see this" // UI7
+		case !tr.OK:
+			c.Note = notEnoughHistory
+		default:
+			c.Avg = "avg " + commas(int(math.Round(tr.Avg))) + "/wk"
+			c.Delta, c.Class = trendDelta(float64(tr.Now), tr.Expected, t.BadUp)
 		}
-		c.Chart = weekBars(vals, labels, t.BadUp, 300, 90)
+		if c.Note == "" {
+			c.Chart = weekBars(tr.Values, labels, t.BadUp, 300, 90)
+		}
 		tp.Cards = append(tp.Cards, c)
 	}
+	tp.NotEnough = !r.metricTrend(MEvents).OK
 
 	// Detections per system, by week.
 	counts := map[string][]int{}
-	n := len(r.History) + 1
-	add := func(host string, week int) {
-		if host == "" {
-			return
-		}
-		if counts[host] == nil {
-			counts[host] = make([]int, n)
-		}
-		counts[host][week]++
-	}
-	for w, s := range r.History {
-		for _, d := range s.Detections {
-			add(d.Host, w)
+	for i, w := range ws {
+		for h, n := range w.HostDet {
+			if h == "" {
+				continue
+			}
+			if counts[h] == nil {
+				counts[h] = make([]int, len(ws))
+			}
+			counts[h][i] += n
 		}
 	}
-	for _, f := range r.Findings {
-		add(f.Host, n-1)
-	}
+	n := len(ws)
 	var names []string
 	for h := range counts {
 		names = append(names, h)
@@ -168,10 +136,33 @@ func (r *Report) trendsPage() *TrendsPage {
 		tp.Rows = append(tp.Rows, row)
 	}
 	tp.People = r.peopleByWeek()
-	for _, s := range r.History {
-		tp.PeopleOld = tp.PeopleOld || s.People == nil
+	for _, w := range ws {
+		tp.PeopleOld = tp.PeopleOld || (w.HasData && !w.HasPeople)
 	}
 	return tp
+}
+
+// trendDelta compares a week's count with what the average would be at
+// the same point of a week: "+80%" and up/dn/flat.
+func trendDelta(now, expected float64, badUp bool) (string, string) {
+	if expected <= 0 {
+		if now == 0 {
+			return "0%", "flat"
+		}
+		return "new", map[bool]string{true: "up", false: "flat"}[badUp && now >= 3]
+	}
+	d := (now - expected) / expected * 100
+	text := fmt.Sprintf("%+.0f%%", d)
+	if math.Abs(d) < 0.5 {
+		text = "0%"
+	}
+	switch {
+	case !badUp || math.Abs(d) < 15:
+		return text, "flat"
+	case d > 0:
+		return text, "up"
+	}
+	return text, "dn"
 }
 
 // heatCell shades a count in a by-week table, darker for more.

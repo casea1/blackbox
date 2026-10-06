@@ -30,7 +30,11 @@ type PersonSummary struct {
 const maxPeopleKept = 500
 
 // peopleTotals counts this report's activity by person.
-func (r *Report) peopleTotals() []PersonSummary {
+func (r *Report) peopleTotals() []PersonSummary { return r.peopleCounts(nil) }
+
+// peopleCounts counts activity by person in the rows keep accepts (all
+// rows when keep is nil).
+func (r *Report) peopleCounts(keep func(*Row) bool) []PersonSummary {
 	by := map[string]*PersonSummary{}
 	get := func(u string) *PersonSummary {
 		k := personKey(u)
@@ -49,6 +53,9 @@ func (r *Report) peopleTotals() []PersonSummary {
 	}
 	inFinding := map[string]map[int]bool{}
 	for i, row := range r.rows {
+		if keep != nil && !keep(row) {
+			continue
+		}
 		e := row.Event
 		switch {
 		case e.Category == event.CatFailedLogon:
@@ -103,27 +110,6 @@ func (r *Report) peopleTotals() []PersonSummary {
 	return out
 }
 
-// personSeries is one person's count over the earlier reports and this
-// one; -1 for a report made before people were kept.
-func (r *Report) personSeries(key string, now PersonSummary, field func(PersonSummary) int) []int {
-	out := make([]int, 0, len(r.History)+1)
-	for _, s := range r.History {
-		if s.People == nil {
-			out = append(out, -1)
-			continue
-		}
-		v := 0
-		for _, p := range s.People {
-			if p.Key == key {
-				v = field(p)
-				break
-			}
-		}
-		out = append(out, v)
-	}
-	return append(out, field(now))
-}
-
 // PersonTrend is a person's "Over time" panel.
 type PersonTrend struct {
 	Weeks int // reports with people kept, this one included
@@ -148,29 +134,30 @@ var personMeasures = []struct {
 	{"Detections", func(p PersonSummary) int { return p.Detections }, func(k string) string { return "#detections" }},
 }
 
-// personTrend builds a person's "Over time" panel; nil before any earlier
-// report kept people.
+// personTrend builds a person's "Over time" panel from the calendar
+// weeks that kept counts by person.
 func (r *Report) personTrend(now PersonSummary, labels []string) *PersonTrend {
+	ws := r.weeks()
 	t := &PersonTrend{}
 	for _, m := range personMeasures {
-		vals := r.personSeries(now.Key, now, m.Get)
-		row := PersonTrendRow{Label: m.Label, Now: commas(vals[len(vals)-1]), Class: "flat", Href: m.Href(now.Key)}
-		if avg := average(vals); avg >= 0 {
-			row.Avg = fmt.Sprintf("%.0f", avg)
-			row.Delta, row.Class = change(float64(vals[len(vals)-1]), avg)
-		} else {
-			row.Avg = "—"
+		get := m.Get
+		tr := trendOf(ws, func(w trendWeek) int {
+			if !w.HasPeople {
+				return -1
+			}
+			return get(w.People[now.Key])
+		})
+		row := PersonTrendRow{Label: m.Label, Now: commas(tr.Now), Class: "flat", Href: m.Href(now.Key), Avg: "—"}
+		if tr.OK {
+			row.Avg = fmt.Sprintf("%.0f", tr.Avg)
+			row.Delta, row.Class = change(float64(tr.Now), tr.Expected)
 		}
 		t.Rows = append(t.Rows, row)
 		if m.Label == "Privileged actions" {
-			kept := 0
-			for _, v := range vals {
-				if v >= 0 {
-					kept++
-				}
+			if tr.OK {
+				t.Weeks = tr.Complete
+				t.Chart = weekBars(tr.Values, labels, true, 300, 80)
 			}
-			t.Weeks = kept
-			t.Chart = weekBars(vals, labels, true, 300, 80)
 		}
 	}
 	return t
