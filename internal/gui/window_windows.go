@@ -302,11 +302,23 @@ func (win *window) clear() {
 
 func (win *window) show() {
 	pShowWindow.Call(win.hwnd, swShowNormal)
+	// A process's first ShowWindow can take the show mode the process was
+	// started with (STARTUPINFO) instead of the one asked for: the icon,
+	// started by its task, would then create its first dialog hidden and
+	// leave it behind (TRAY1). Show it again if it is not visible.
+	if v, _, _ := pIsWindowVisible.Call(win.hwnd); v == 0 {
+		pShowWindow.Call(win.hwnd, swShow)
+	}
 	pUpdateWindow.Call(win.hwnd)
 	pSetForegroundWindow.Call(win.hwnd)
 }
 
 func (win *window) close() { pDestroyWindow.Call(win.hwnd) }
+
+// consumeStartupShow makes the process's first ShowWindow call on a window
+// that stays hidden anyway, so the show mode the process was started with
+// (a task's hidden window) does not fall on the first dialog (TRAY1).
+func consumeStartupShow(hwnd uintptr) { pShowWindow.Call(hwnd, swHide) }
 
 // fill paints a rectangle given in unscaled units.
 func (win *window) fill(hdc uintptr, brush uintptr, x, y, w, h int) {

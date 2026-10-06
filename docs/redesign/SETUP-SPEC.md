@@ -95,7 +95,7 @@ The pages ask exactly the console setup's questions, in the same order, with the
 
 ## Tray
 
-- **Starting it.** A scheduled task, **Blackbox Status**, starts `blackboxw.exe tray` when any member of Administrators logs on, with highest privileges. There is no UAC prompt, because the task was registered by an administrator. It runs in that person's session, so only administrators get it.
+- **Starting it.** A scheduled task, **Blackbox Status**, starts `blackboxw.exe tray` when any member of Administrators logs on, with highest privileges. There is no UAC prompt, because the task was registered by an administrator. It runs in that person's session, so only administrators get it. A task can start a program with a hidden show mode, which Windows applies to the program's first `ShowWindow`; the icon spends it on its own hidden window when it starts, and each dialog shows itself again if it is still hidden, so every menu item opens on the first click (TRAY1).
 - **Why elevated.** Blackbox's data folder is readable only by administrators with full rights, and the tray needs it for **Collect now** and **Make an interim report**.
 - **One per person.** Only one tray runs per logged-on person. Closing it doesn't affect collection; it comes back at the next logon.
 - **Where it's installed.**

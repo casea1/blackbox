@@ -105,6 +105,7 @@ func Tray(version string, selftest bool) error {
 		t.exeTime = fi.ModTime()
 	}
 	t.window = newWindow("Blackbox status", 0, 0, 0)
+	consumeStartupShow(t.hwnd) // the menu's windows open on the first click
 	r, _, _ := pRegisterWindowMessageW.Call(ptr("TaskbarCreated"))
 	t.taskbar = uint32(r)
 	t.onApp = t.app
