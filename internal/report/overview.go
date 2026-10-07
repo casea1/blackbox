@@ -466,6 +466,14 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string]int) []CheckL
 			What: strings.Join(parts, "; ") + " · see Audit health", Href: "#health", Count: frac(len(otherOn))})
 	}
 
+	if n := len(r.MissingReports); n > 0 {
+		var names []string
+		for _, m := range r.MissingReports {
+			names = append(names, m.Name)
+		}
+		lines = append(lines, CheckLine{Level: "bad", Icon: "history", Title: "Earlier reports missing or changed",
+			What: plural(n, "scheduled report") + " deleted, moved or changed, with the only copy of their original logs: " + strings.Join(names, ", "), Href: "#health", Count: ""})
+	}
 	if l, ok := r.avCheckLine(r.avRows()); ok {
 		lines = append(lines, l)
 	}

@@ -54,6 +54,10 @@ type Health struct {
 	// Blocked is set while scheduled runs are refused because a run has
 	// held the lock past their wait (LOCK1).
 	Blocked *store.Blocked
+
+	// MissingReports are scheduled reports deleted, moved or changed since
+	// they were written, and not accepted (the report ledger).
+	MissingReports []report.MissingReport
 }
 
 // LostLog is one log losing events to rollover.
@@ -186,6 +190,7 @@ func (a *App) Health() (Health, error) {
 		return h, nil
 	}
 	h.ReportsDir = a.Cfg.ReportsDir()
+	h.MissingReports = reportProblems(st)
 	h.NextReport, _ = nextReport(a.Cfg.ReportEvery, a.Cfg.ReportAt, s.LastWindowEnd, now, a.loc())
 	h.PeriodStart = s.LastWindowEnd
 	if l, ok := report.Latest(h.ReportsDir); ok {

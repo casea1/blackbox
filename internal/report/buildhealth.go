@@ -143,6 +143,13 @@ func (r *Report) buildHealth(runs []*store.Run, events []*event.Event) {
 	}
 
 	// Plain-language warnings.
+	for _, m := range r.MissingReports {
+		what := "is missing (deleted or moved)"
+		if m.Problem == "changed" {
+			what = "was changed after it was written"
+		}
+		h.Warnings = append(h.Warnings, fmt.Sprintf("The scheduled report %s (%s to %s) %s: it held the only copy of that period's original logs.", m.Name, r.stamp(m.From), r.stamp(m.To), what))
+	}
 	for _, b := range h.Blocked {
 		h.Warnings = append(h.Warnings, BlockedText(b, r.stamp))
 	}

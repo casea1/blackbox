@@ -66,7 +66,7 @@ type SelfChange struct {
 	Old     string
 	New     string
 	Version string // the version installed (install and upgrade)
-	Kind    string // "setting", "installed", "upgraded", "removed", "resent", "gap_accepted"
+	Kind    string // "setting", "installed", "upgraded", "removed", "resent", "gap_accepted", "report_accepted"
 	// For "resent": the batches (New, "214-219") and where to (Old).
 }
 
@@ -91,6 +91,8 @@ func (c SelfChange) Message() string {
 		return fmt.Sprintf("Blackbox batches %s were sent again to %s by %s (%s).", c.New, c.Old, who, c.Program)
 	case "gap_accepted":
 		return fmt.Sprintf("Blackbox batches %s from %s were accepted as not arriving by %s (%s): %s", c.New, c.Setting, who, c.Program, c.Old)
+	case "report_accepted":
+		return fmt.Sprintf("Blackbox report %s was accepted as %s by %s (%s): %s", c.Setting, c.New, who, c.Program, c.Old)
 	}
 	return fmt.Sprintf("Blackbox setting %s changed from %q to %q by %s (%s).", c.Setting, c.Old, c.New, who, c.Program)
 }
@@ -109,6 +111,7 @@ var (
 	selfRemoveRE  = regexp.MustCompile(`^Blackbox was removed by (.+) \(([^()]+)\)\.$`)
 	selfResendRE  = regexp.MustCompile(`^Blackbox batches (\S+) were sent again to (.+) by (.+) \(([^()]+)\)\.$`)
 	selfGapRE     = regexp.MustCompile(`^Blackbox batches (\S+) from (\S+) were accepted as not arriving by (.+?) \(([^()]+)\): (.*)$`)
+	selfReportRE  = regexp.MustCompile(`^Blackbox report (\S+) was accepted as (missing|changed) by (.+?) \(([^()]+)\): (.*)$`)
 )
 
 // ParseSelfChange reads a Message back, as found in the operating system's log.
@@ -137,6 +140,9 @@ func ParseSelfChange(msg string) (SelfChange, bool) {
 	}
 	if m := selfGapRE.FindStringSubmatch(msg); m != nil {
 		return SelfChange{Kind: "gap_accepted", New: m[1], Setting: m[2], Who: m[3], Program: m[4], Old: m[5]}, true
+	}
+	if m := selfReportRE.FindStringSubmatch(msg); m != nil {
+		return SelfChange{Kind: "report_accepted", Setting: m[1], New: m[2], Who: m[3], Program: m[4], Old: m[5]}, true
 	}
 	if m := selfResendRE.FindStringSubmatch(msg); m != nil {
 		return SelfChange{Kind: "resent", New: m[1], Old: m[2], Who: m[3], Program: m[4]}, true
@@ -180,6 +186,15 @@ func (c SelfChange) Event() *Event {
 		e.Target = c.Setting
 		e.AddDetail("Batches", c.New)
 		e.AddDetail("From", c.Setting)
+		e.AddDetail("Why", c.Old)
+	case "report_accepted":
+		// A scheduled report (the only copy of its period's original
+		// logs) is gone or changed, and a person said why.
+		e.Action, e.Severity = "blackbox_report_accepted", SevMedium
+		e.Summary = fmt.Sprintf("%s accepted that Blackbox's scheduled report %s is %s: %s", who, c.Setting, c.New, c.Old)
+		e.Target = c.Setting
+		e.AddDetail("Report", c.Setting)
+		e.AddDetail("State", c.New)
 		e.AddDetail("Why", c.Old)
 	case "resent":
 		// L11: recorded like a setting change. Resending only fills a gap

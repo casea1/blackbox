@@ -191,6 +191,7 @@ type trayMemory struct {
 	Version string            `json:"version"` // version last running
 	Lost    string            `json:"lost"`    // report period whose lost events were notified
 	Off     map[string]string `json:"off"`     // host → auditing-off reason notified
+	Missing string            `json:"missing"` // missing or changed scheduled reports notified
 }
 
 // notice is one notification.
@@ -204,7 +205,7 @@ type notice struct {
 // look nothing is notified: only what changes after it.
 func notices(m trayMemory, h app.Health, v trayView, version string, now time.Time) ([]notice, trayMemory) {
 	var out []notice
-	next := trayMemory{Seen: true, Report: m.Report, Stopped: m.Stopped, Quiet: map[string]string{}, Gaps: map[string]bool{}, Version: version, Lost: m.Lost,
+	next := trayMemory{Seen: true, Report: m.Report, Stopped: m.Stopped, Quiet: map[string]string{}, Gaps: map[string]bool{}, Version: version, Lost: m.Lost, Missing: m.Missing,
 		Off: map[string]string{}}
 	first := !m.Seen
 
@@ -265,6 +266,27 @@ func notices(m trayMemory, h app.Health, v trayView, version string, now time.Ti
 			out = append(out, notice{Title: "Blackbox", Text: fmt.Sprintf("%s has not sent its events since %s.", host, when(last, now)), Warn: true})
 		}
 		next.Quiet[host] = key
+	}
+
+	// Scheduled reports deleted, moved or changed: once per set.
+	var gone []string
+	for _, r := range h.MissingReports {
+		gone = append(gone, r.Name+" "+r.Problem)
+	}
+	if key := strings.Join(gone, ","); key != m.Missing {
+		if key != "" && !first {
+			r := h.MissingReports[0]
+			what := "is missing from the reports folder"
+			if r.Problem == "changed" {
+				what = "was changed after it was written"
+			}
+			text := fmt.Sprintf("The scheduled report for %s – %s %s. It held the only copy of that period's original logs.", when(r.From, now), when(r.To, now), what)
+			if len(gone) > 1 {
+				text += fmt.Sprintf(" (%s in all; see blackbox reports.)", plural(len(gone), "report"))
+			}
+			out = append(out, notice{Title: "Blackbox", Text: text, Warn: true})
+		}
+		next.Missing = key
 	}
 
 	// Events lost to rollover: once per report period.

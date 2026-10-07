@@ -46,6 +46,9 @@ Usage:
   blackbox gaps                  List batches that never arrived (collector)
   blackbox gaps accept NAME FROM-TO "why"
                                  Accept that those batches will not arrive
+  blackbox reports               List the scheduled reports made here, and any missing or changed
+  blackbox reports accept NAME "why"
+                                 Accept that a scheduled report is gone or changed on purpose
   blackbox report [options]      Collect and produce a report now
   blackbox report --xml FILE     Produce a report from exported Windows event logs (any OS)
   blackbox report --audit FILE --syslog FILE
@@ -106,6 +109,8 @@ func main() {
 		err = cmdSystems(args)
 	case "gaps":
 		err = cmdGaps(args)
+	case "reports":
+		err = cmdReports(args)
 	case "verify":
 		err = cmdVerify(args)
 	case "uninstall":
@@ -651,6 +656,38 @@ func cmdGaps(args []string) error {
 		return nil
 	}
 	return errors.New("usage: blackbox gaps                                  (list)\n       blackbox gaps accept NAME FROM-TO \"why\"  (accept that those batches will not arrive)")
+}
+
+// cmdReports lists the scheduled reports this computer made and whether
+// each is still in place, or accepts one gone or changed on purpose.
+func cmdReports(args []string) error {
+	fs := flag.NewFlagSet("reports", flag.ContinueOnError)
+	var c common
+	c.register(fs)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := c.load()
+	if err != nil {
+		return err
+	}
+	a := newApp(cfg, nil)
+	rest := fs.Args()
+	switch {
+	case len(rest) == 0:
+		return a.Reports(os.Stdout)
+	case len(rest) >= 3 && rest[0] == "accept":
+		if err := install.RequireAdmin(); err != nil {
+			return err
+		}
+		reason := strings.Join(rest[2:], " ")
+		if err := a.AcceptReport(rest[1], reason); err != nil {
+			return err
+		}
+		fmt.Printf("The report %s is accepted as gone or changed: %s\nIt is no longer pointed out; the next report shows who accepted it, when and why.\n", rest[1], reason)
+		return nil
+	}
+	return errors.New("usage: blackbox reports                        (list the scheduled reports and whether each is in place)\n       blackbox reports accept NAME \"why\"  (accept that a report is gone or changed on purpose)")
 }
 
 // cmdRun is what the scheduled task runs. Output goes to a log file in

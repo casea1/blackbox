@@ -157,6 +157,10 @@ func (a *App) Status(w io.Writer) error {
 	if a.Cfg.MakesReports() {
 		fmt.Fprintln(w)
 		p("Reports:", "%s, saved in %s", a.Cfg.ReportAt.Describe(a.Cfg.ReportEvery), a.Cfg.ReportsDir())
+		for _, m := range reportProblems(st) {
+			attention = append(attention, "a scheduled report is "+m.Problem+" (see blackbox reports)")
+			p("REPORT "+strings.ToUpper(m.Problem)+":", "%s", ReportProblemText(m, a.loc()))
+		}
 		if !s.LastWindowEnd.IsZero() {
 			p("Last report:", "period ending %s", stampLocal(s.LastWindowEnd, a.loc()))
 			if next, due := nextReport(a.Cfg.ReportEvery, a.Cfg.ReportAt, s.LastWindowEnd, now, a.loc()); !due {

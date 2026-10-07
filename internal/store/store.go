@@ -92,6 +92,11 @@ type State struct {
 	// the last scheduled report, which lists them (A9).
 	RemovedReports []string `json:"removed_reports,omitempty"`
 
+	// Reports is every scheduled report this computer made (the report
+	// ledger): one that later goes missing or is changed is pointed out
+	// in status, the status icon, the next report and the index.
+	Reports []ReportRecord `json:"reports,omitempty"`
+
 	// OwnNames are the names this computer has collected under, so a
 	// renamed computer's earlier data is known to be its own (W1b).
 	OwnNames []string `json:"own_names,omitempty"`
@@ -538,4 +543,27 @@ type LogGap struct {
 	From   time.Time `json:"from"`
 	To     time.Time `json:"to"`
 	Noted  time.Time `json:"noted"`
+}
+
+// ReportRecord is one scheduled report in the ledger.
+type ReportRecord struct {
+	Dir  string    `json:"dir"` // the report's folder, where it was written
+	From time.Time `json:"from"`
+	To   time.Time `json:"to"`
+	Made time.Time `json:"made"`
+	// Manifest is the SHA-256 of the report's manifest.sha256, which
+	// lists the hash of every other file in it.
+	Manifest string `json:"manifest"`
+	// Removed is when retention_days removed it (not a problem).
+	Removed time.Time `json:"removed,omitzero"`
+	// Accepted says a person recorded that it is gone or changed on
+	// purpose (moved to an archive drive, for example).
+	Accepted *ReportAcceptance `json:"accepted,omitempty"`
+}
+
+// ReportAcceptance is who accepted a missing or changed report, when and why.
+type ReportAcceptance struct {
+	Who    string    `json:"who"`
+	When   time.Time `json:"when"`
+	Reason string    `json:"reason"`
 }
