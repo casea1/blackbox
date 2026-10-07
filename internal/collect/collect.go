@@ -95,10 +95,12 @@ func Windows(st *store.Store, opt Options) (*store.Run, error) {
 	tr.MapDevicePath = winevt.DevicePathMapper()
 
 	run := &store.Run{Time: start, Host: host, OS: runtime.GOOS, Version: opt.Version}
+	clears := map[string]bool{}
 	for _, ch := range winevt.Channels {
-		cr := collectChannel(st, tr, host, ch, start, opt)
+		cr := collectChannel(st, tr, host, ch, start, opt, clears)
 		run.Channels = append(run.Channels, cr)
 	}
+	ClearedNotLost(run, clears, opt.Logf)
 	run.Duration = opt.Now().Sub(start).Seconds()
 	if b := opt.Blocked; b != nil {
 		b.Until = start
@@ -111,7 +113,7 @@ func Windows(st *store.Store, opt Options) (*store.Run, error) {
 	return run, st.Save()
 }
 
-func collectChannel(st *store.Store, tr *winevt.Translator, host, ch string, now time.Time, opt Options) store.ChannelRun {
+func collectChannel(st *store.Store, tr *winevt.Translator, host, ch string, now time.Time, opt Options, clears map[string]bool) store.ChannelRun {
 	cr := store.ChannelRun{Channel: ch, EventCounts: map[int]int{}}
 	if ls, err := winevt.GetLogSettings(ch); err == nil {
 		cr.MaxSizeBytes = ls.MaxSize
@@ -168,6 +170,9 @@ func collectChannel(st *store.Store, tr *winevt.Translator, host, ch string, now
 		}
 		cr.LastRecord = r.RecordID
 		if e := tr.Translate(r); e != nil {
+			if e.Action == "log_cleared" {
+				clears[strings.ToLower(e.Target)] = true
+			}
 			e.Collected = now
 			OnThisComputer(e, host)
 			batch = append(batch, e)
@@ -188,6 +193,27 @@ func collectChannel(st *store.Store, tr *winevt.Translator, host, ch string, now
 	}
 	opt.Logf("%s: read %d events, kept %d", ch, cr.Read, cr.Kept)
 	return cr
+}
+
+// ClearedNotLost: a log cleared since the last collection skips records,
+// but they were cleared, not overwritten (LC2). Its gap is dropped (the
+// clear is already a High row) and it is marked cleared, so no rollover
+// loss is counted and no size advice given. clears are the logs a clear
+// event (System 104, Security 1102) named in this collection.
+func ClearedNotLost(run *store.Run, clears map[string]bool, logf func(string, ...any)) {
+	for i := range run.Channels {
+		c := &run.Channels[i]
+		if !clears[strings.ToLower(c.Channel)] {
+			continue
+		}
+		c.Cleared = true
+		if c.Gap != nil {
+			if logf != nil {
+				logf("%s: was cleared; the %d records before the clear are not counted as overwritten", c.Channel, c.Gap.Lost)
+			}
+			c.Gap = nil
+		}
+	}
 }
 
 // FromRaw translates events from an export (XML or .evtx) and returns them
