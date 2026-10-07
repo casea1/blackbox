@@ -145,8 +145,11 @@ func funcs(loc *time.Location) template.FuncMap {
 		"searchCols": func() template.CSS { return gridCols(searchCols) },
 		"periodDays": func(p pageData) []string { return p.periodDays() },
 		"periodWord": func(p pageData) string {
-			long := !p.WindowEnd.IsZero() && p.WindowEnd.Sub(p.PeriodStart()) > 8*24*time.Hour
-			if (p.Period == "weekly" || p.Period == "") && !long {
+			// "Week" only for a report that covers about a week: a
+			// one-day manual report on a weekly schedule is a period
+			// (UI18).
+			span := p.WindowEnd.Sub(p.PeriodStart())
+			if (p.Period == "weekly" || p.Period == "") && (p.WindowEnd.IsZero() || span >= 6*24*time.Hour && span <= 8*24*time.Hour) {
 				return "Week"
 			}
 			return "Period"

@@ -1,6 +1,10 @@
 package main
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -85,5 +89,45 @@ func TestResendOutcome(t *testing.T) {
 	}
 	if lines, err := resendOutcome(app.ResendResult{}, nil, "x", 14); err != nil || !strings.Contains(lines[0], "not been delivered yet") {
 		t.Errorf("still waiting: %v %v", lines, err)
+	}
+}
+
+// CLI1: refused its settings, a command says to run it with sudo (or as
+// administrator), not only "permission denied".
+func TestPermissionHint(t *testing.T) {
+	err := fmt.Errorf("open /etc/blackbox/blackbox.conf: %w", fs.ErrPermission)
+	old := geteuid
+	defer func() { geteuid = old }()
+	geteuid = func() int { return 1000 }
+	h := permissionHint(err, "status")
+	if runtime.GOOS == "windows" {
+		if !strings.Contains(h, "administrator prompt") {
+			t.Errorf("hint: %q", h)
+		}
+	} else if h != "Its settings and data are readable by root only: run it with sudo, e.g. sudo blackbox status" {
+		t.Errorf("hint: %q", h)
+	}
+	if permissionHint(errors.New("something else"), "status") != "" {
+		t.Error("hint for another error")
+	}
+}
+
+// CLI1: redirected output on Windows is folded to ASCII, so Windows
+// PowerShell 5.1 does not turn "—" into "ΓÇö".
+func TestCopyFolded(t *testing.T) {
+	var b strings.Builder
+	copyFolded(&b, strings.NewReader("Last attempt:     2026-10-07 13:00 — FAILED: 3 files × 8 MB · next…\nno newline"))
+	if got := b.String(); got != "Last attempt:     2026-10-07 13:00 - FAILED: 3 files x 8 MB - next...\nno newline" {
+		t.Errorf("folded: %q", got)
+	}
+}
+
+// CLI1: keep_sent_days 0 says it ends resends.
+func TestKeepSentZero(t *testing.T) {
+	if s := savedText("keep_sent_days", "0"); !strings.Contains(s, "cannot be sent again") {
+		t.Errorf("%s", s)
+	}
+	if s := savedText("keep_sent_days", "14"); strings.Contains(s, "cannot be sent again") {
+		t.Errorf("%s", s)
 	}
 }

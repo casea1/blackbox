@@ -469,6 +469,14 @@ button.btn{font:inherit;font-size:13px;font-weight:550;cursor:pointer}
   .facts4>*:nth-child(n+3){border-top:1px solid rgba(0,30,98,.08)}
   .drawer{width:min(560px,100vw)}
 }
+/* Phone width (UI18): the page never scrolls sideways; wide tables
+   scroll inside their panels, and the header tools wrap. */
+@media (max-width:640px){
+  main{min-width:0}
+  .panel{max-width:100%;overflow-x:auto}
+  .head,.top,.hd{flex-wrap:wrap}
+  .head .tools{flex:1 1 100%!important;flex-wrap:wrap;min-width:0}
+}
 @media print{
   @page{margin:16mm}
   body{background:#fff!important;display:block!important}

@@ -494,8 +494,10 @@ const Template = `# Blackbox configuration
 site_name = {{SITE}}
 
 # How often a report is produced: daily, weekly or monthly.
-# Events are collected every hour regardless, so nothing is lost to log
-# rollover even with weekly reports.
+# Events are collected every collect_every (15 minutes by default),
+# whatever the report schedule. A log that fills faster than that can
+# still overwrite events before they are collected: blackbox check gives
+# the log sizes, and blackbox status says when it happens.
 report_every = {{REPORT_EVERY}}
 
 # When each report period ends and the report is produced. Weekly: a day
