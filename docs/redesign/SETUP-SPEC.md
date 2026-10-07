@@ -108,19 +108,13 @@ The pages ask exactly the console setup's questions, in the same order, with the
 
 The tray reads the same status as `blackbox status` directly, once a minute. The menu opens at once with the status last read; opening it also starts a fresh read, which updates the icon and the next menu (reading it first took up to 8 seconds on a collector, TRAY2).
 
-| Icon | Means |
-|---|---|
-| Logo, green dot | Collecting on schedule; nothing needs attention |
-| Logo, amber dot | Something to look at: audit settings to fix, antivirus definitions out of date (Defender, or ClamAV on Linux), events lost because a log filled up before it was collected, files set aside in the inbox, or a sender that has gone quiet |
-| Logo, red dot | Collection has stopped (no run for twice the interval plus 15 minutes), the last run failed, or the last collection found auditing off on a system (owner request, 3 Oct 2026, L3), or collection is blocked by a run holding the lock (LOCK1) |
-| Logo, grey | Status can't be read |
+The icon is the Blackbox logo, the same whatever the state (owner decision, 7 Oct 2026: the coloured status dot was removed). The menu's status line and the notifications say how things are.
 
 The tooltip gives the state in a few words, e.g. "Blackbox: collecting · last 14:05".
 
 ### Menu (right-click; left-click opens the same menu)
 
-- Status line, not clickable: "Collecting every hour · last 14:05 · next report Wed 00:00", or what is wrong.
-- When there is something to look at, one line per item, not clickable: e.g. "Audit settings: 2 to fix on WS-13", "WS-09 has not sent since 29 Sep".
+- Status line, not clickable: "Collecting every hour · last 14:05 · next report Wed 00:00", or what is wrong. This is the only status in the menu (owner decision, 7 Oct 2026): what needs fixing on each system is in the report and `blackbox status`.
 - **Open latest report** (bold: the default; greyed out when there is no report yet).
 - **Open all reports** (the reports `index.html`).
 - **Make an interim report…** opens a small window. Choices:
@@ -130,7 +124,7 @@ The tooltip gives the state in a few words, e.g. "Blackbox: collecting · last 1
   - last 90 days.
 
   **Make report** produces it in the background, then a notification says it's ready; clicking the notification opens it (owner decision, 3 Oct 2026: Windows notifications from the tray have no buttons).
-- **Collect now:** runs the scheduled task now.
+- **Collect now:** runs the scheduled task now. The icon watches for the run to end (checking every 5 seconds, for up to 30 minutes), then refreshes the status line and notifies "Collection finished (14:05)."; a run that fails is notified as "the last run failed".
 - **Status details…** opens a window with the text of `blackbox status`.
 - **Change settings…** opens the setup window.
 - **Close this icon:** the notification says it comes back at the next logon.

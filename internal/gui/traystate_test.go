@@ -107,19 +107,35 @@ func TestNotices(t *testing.T) {
 	}
 }
 
+// The icon is the logo whatever the state: no coloured dot (owner, 7 Oct
+// 2026).
 func TestTrayImage(t *testing.T) {
-	for s, want := range map[trayState][3]uint8{stateOK: {0x1E, 0x9E, 0x4A}, stateLook: {0xE0, 0x8A, 0x00}, stateStopped: {0xD0, 0x2B, 0x2B}} {
-		img := trayImage(32, s)
-		c := img.NRGBAAt(32-8, 32-8) // inside the dot
-		if [3]uint8{c.R, c.G, c.B} != want {
-			t.Errorf("state %d: dot is %v", s, c)
+	plain := trayImage(32, stateOK)
+	for _, s := range []trayState{stateLook, stateStopped, stateUnknown} {
+		if img := trayImage(32, s); string(img.Pix) != string(plain.Pix) {
+			t.Errorf("state %d draws a different icon", s)
 		}
 	}
-	g := trayImage(32, stateUnknown)
-	for i := 0; i < len(g.Pix); i += 4 {
-		if g.Pix[i] != g.Pix[i+1] || g.Pix[i+1] != g.Pix[i+2] {
-			t.Fatal("unknown state should be grey")
-		}
+}
+
+// "Collect now" is watched until the run ends: success is notified with
+// its time; a failure is left to the "last run failed" notification.
+func TestCollectDone(t *testing.T) {
+	started := trayNow
+	h := healthy()
+	h.LastRun = app.LastRun{Time: started.Add(-15 * time.Minute)}
+	if _, done, _ := collectDone(h, started); done {
+		t.Error("an earlier run counted as the one started")
+	}
+	h.LastRun = app.LastRun{Time: started.Add(40 * time.Second)}
+	h.LastCollect = started.Add(time.Second)
+	n, done, tell := collectDone(h, started)
+	if !done || !tell || n.Text != "Collection finished ("+clock(h.LastCollect)+")." {
+		t.Errorf("finished: %+v %v %v", n, done, tell)
+	}
+	h.LastRun.Error = "could not read the Security log"
+	if _, done, tell := collectDone(h, started); !done || tell {
+		t.Errorf("failed: done %v, notify %v", done, tell)
 	}
 }
 
