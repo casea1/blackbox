@@ -157,6 +157,7 @@ account read access to that folder. This is the same as Explorer's
 | Settings | `C:\ProgramData\Blackbox\blackbox.conf` ([reference](configuration.md)) |
 | Reports | `C:\ProgramData\Blackbox\reports\` by default, or the folder you chose (open `index.html`) |
 | Log of each run | `C:\ProgramData\Blackbox\blackbox.log` |
+| Lock held by a run | `C:\ProgramData\Blackbox\blackbox.lock` (released when the run ends, even if it is ended in Task Manager; see [One run at a time](configuration.md#one-run-at-a-time)) |
 
 ## What Blackbox reads
 

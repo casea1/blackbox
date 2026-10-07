@@ -81,6 +81,10 @@ func classify(h app.Health, err error, now time.Time) trayView {
 	case h.LastCollect.IsZero() && h.LastRun.Time.IsZero():
 		v.Status = "Waiting for the first collection"
 		v.Tip = "Blackbox: waiting for the first collection"
+	case h.Blocked != nil:
+		v.State, v.Down = stateStopped, true
+		v.Status = fmt.Sprintf("Collection is blocked: a run has held the lock since %s (PID %d)", when(h.Blocked.Holder.Since, now), h.Blocked.Holder.PID)
+		v.Tip = "Blackbox: collection is blocked"
 	case h.LastRun.Error != "" && !h.LastRun.Time.Before(h.LastCollect):
 		v.State, v.Down = stateStopped, true
 		v.Status = "The last run failed (" + when(h.LastRun.Time, now) + "): " + h.LastRun.Error
@@ -245,6 +249,9 @@ func notices(m trayMemory, h app.Health, v trayView, version string, now time.Ti
 
 	if v.Down {
 		key := h.LastCollect.String() + "|" + h.LastRun.Error
+		if h.Blocked != nil {
+			key += "|blocked " + h.Blocked.Holder.String()
+		}
 		if key != m.Stopped && !first {
 			out = append(out, notice{Title: "Blackbox", Text: v.Status, Warn: true})
 		}

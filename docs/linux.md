@@ -217,6 +217,7 @@ system, `/sbin/modprobe` and `/usr/sbin/modprobe` are one file, and
 | Reports | `/var/lib/blackbox/reports/` by default, or the folder you chose (open `index.html`) |
 | Schedule | `systemctl list-timers blackbox.timer` |
 | Log of each run | `journalctl -u blackbox.service` |
+| Lock held by a run | `/var/lib/blackbox/blackbox.lock` (released when the run ends, even if it is killed; see [One run at a time](configuration.md#one-run-at-a-time)) |
 
 ## What Blackbox reads
 

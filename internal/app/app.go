@@ -440,10 +440,12 @@ var runWait, sendWait = 10 * time.Minute, 2 * time.Minute
 func (a *App) gather(st *store.Store, forceCheck bool) error {
 	a.noticeClock(st)
 	prevCollect := st.State.LastCollect
-	run, err := collect.Live(st, collect.Options{Version: a.Version, Now: a.now, Logf: a.Logf})
+	opt := a.liveOptions()
+	run, err := collect.Live(st, opt)
 	if err != nil {
 		return err
 	}
+	a.collected(opt)
 	a.saveLogPiece(st, run, prevCollect)
 	noteOwnName(st, run.Host, run.OS)
 	st.NoteSystem(run.Host, run.OS, a.Version, "", run.Time, time.Time{}, a.now())
@@ -789,6 +791,7 @@ func sentText(r SendResult) string {
 func (a *App) Scheduled() (string, error) {
 	st, unlock, err := a.openWait(runWait)
 	if err != nil {
+		a.noteBlocked(err)
 		return "", err
 	}
 	defer unlock()
@@ -916,8 +919,10 @@ func (a *App) Collect() (*store.Run, error) {
 		return nil, err
 	}
 	defer unlock()
-	run, err := collect.Live(st, collect.Options{Version: a.Version, Now: a.now, Logf: a.Logf})
+	opt := a.liveOptions()
+	run, err := collect.Live(st, opt)
 	if err == nil {
+		a.collected(opt)
 		st.NoteSystem(run.Host, run.OS, a.Version, "", run.Time, time.Time{}, a.now())
 		err = st.Save()
 	}

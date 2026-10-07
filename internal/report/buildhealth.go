@@ -52,6 +52,13 @@ func (r *Report) buildHealth(runs []*store.Run, events []*event.Event) {
 		}
 		lastRun[hk] = run.Time
 		times[hk] = append(times[hk], run.Time)
+		if b := run.Blocked; b != nil {
+			to := b.Until
+			if to.IsZero() {
+				to = run.Time
+			}
+			h.Blocked = append(h.Blocked, BlockedItem{Host: run.Host, From: b.First, To: to, Since: b.Holder.Since, PID: b.Holder.PID, Refused: b.Refused})
+		}
 		for _, c := range run.Channels {
 			k := run.Host + "|" + c.Channel
 			ch := chIdx[k]
@@ -136,6 +143,9 @@ func (r *Report) buildHealth(runs []*store.Run, events []*event.Event) {
 	}
 
 	// Plain-language warnings.
+	for _, b := range h.Blocked {
+		h.Warnings = append(h.Warnings, BlockedText(b, r.stamp))
+	}
 	for _, g := range h.Gaps {
 		if g.Note != "" {
 			h.Warnings = append(h.Warnings, fmt.Sprintf("%s: %s: %s (since %s).", g.Host, g.Channel, g.Note, r.stamp(g.From)))
@@ -177,4 +187,11 @@ func (r *Report) buildHealth(runs []*store.Run, events []*event.Event) {
 		}
 	}
 	h.Warnings = append(h.Warnings, r.LANWarnings...)
+}
+
+// BlockedText describes a gap in collection while a run held the lock.
+func BlockedText(b BlockedItem, stamp func(time.Time) string) string {
+	return fmt.Sprintf("%s: collection was blocked from %s to %s: a run (PID %d, started %s) held Blackbox's lock, so %s collected nothing. "+
+		"The next run collected what the logs still held; anything they overwrote in that time is listed as lost.",
+		b.Host, stamp(b.From), stamp(b.To), b.PID, stamp(b.Since), plural(b.Refused, "scheduled run"))
 }

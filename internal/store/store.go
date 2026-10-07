@@ -139,6 +139,9 @@ type Run struct {
 	// AuditOff says, in plain words, that auditing was not running when
 	// this collection ran (Linux: auditd stopped, or kernel auditing off).
 	AuditOff string `json:"audit_off,omitempty"`
+	// Blocked is collection refused before this run because another run
+	// held the lock (LOCK1): a gap in collection.
+	Blocked *Blocked `json:"blocked,omitempty"`
 }
 
 // Store is an opened data directory.
@@ -481,35 +484,6 @@ func (s *Store) Prune(days int, now time.Time) error {
 		}
 	}
 	return nil
-}
-
-// Lock prevents two runs at once. Locks older than two hours are treated
-// as left over from a crash.
-func (s *Store) Lock() (unlock func(), err error) {
-	p := filepath.Join(s.Dir, "blackbox.lock")
-	for attempt := 0; attempt < 2; attempt++ {
-		f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
-		if err == nil {
-			fmt.Fprintf(f, "%d %s\n", os.Getpid(), time.Now().Format(time.RFC3339))
-			f.Close()
-			// Only the lock holder may undo an interrupted import; a reader
-			// (such as "blackbox status") must never touch the spool.
-			if err := s.recoverImport(); err != nil {
-				os.Remove(p)
-				return nil, err
-			}
-			return func() { os.Remove(p) }, nil
-		}
-		if !errors.Is(err, os.ErrExist) {
-			return nil, err
-		}
-		if fi, serr := os.Stat(p); serr == nil && time.Since(fi.ModTime()) > 2*time.Hour {
-			os.Remove(p)
-			continue
-		}
-		return nil, fmt.Errorf("%w (lock file %s)", ErrBusy, p)
-	}
-	return nil, fmt.Errorf("could not take lock %s", p)
 }
 
 // ErrBusy means another Blackbox run holds the lock.

@@ -9,6 +9,7 @@ import (
 	"github.com/casea1/blackbox/internal/app"
 	"github.com/casea1/blackbox/internal/report"
 	"github.com/casea1/blackbox/internal/rollover"
+	"github.com/casea1/blackbox/internal/store"
 )
 
 var trayNow = time.Date(2026, 10, 2, 14, 30, 0, 0, time.Local)
@@ -198,6 +199,24 @@ func TestAuditOffIsRed(t *testing.T) {
 		t.Errorf("notices: %+v", ns)
 	}
 	if ns, _ = notices(m, h, v, "0.10.2", trayNow); len(ns) != 0 {
+		t.Errorf("notified twice: %+v", ns)
+	}
+}
+
+// LOCK1: collection blocked by a run holding the lock is red, says so,
+// and is notified once.
+func TestBlockedIsRed(t *testing.T) {
+	h := healthy()
+	h.Blocked = &store.Blocked{Holder: store.Holder{PID: 31025, Since: trayNow.Add(-31 * time.Minute)}, First: trayNow.Add(-20 * time.Minute), Refused: 2}
+	v := classify(h, nil, trayNow)
+	if v.State != stateStopped || !v.Down || !strings.Contains(v.Status, "Collection is blocked: a run has held the lock since") || !strings.Contains(v.Status, "PID 31025") {
+		t.Errorf("view: %+v", v)
+	}
+	ns, m := notices(trayMemory{Seen: true}, h, v, "0.18.0", trayNow)
+	if len(ns) != 1 || !strings.Contains(ns[0].Text, "blocked") {
+		t.Errorf("notices: %+v", ns)
+	}
+	if ns, _ = notices(m, h, v, "0.18.0", trayNow); len(ns) != 0 {
 		t.Errorf("notified twice: %+v", ns)
 	}
 }
