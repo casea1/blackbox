@@ -61,22 +61,26 @@ const (
 
 type tray struct {
 	*window
-	version   string
-	icons     map[trayState]uintptr
-	added     bool
-	taskbar   uint32 // "TaskbarCreated": Explorer restarted
-	exeTime   time.Time
-	relaunch  bool
-	mu        sync.Mutex
-	health    app.Health
-	healthErr error
-	view      trayView
-	memory    trayMemory
-	clickOpen string // report to open when the last notification is clicked
-	queue     noticeQueue
-	making    bool
-	made      string
-	madeErr   error
+	version    string
+	icons      map[trayState]uintptr
+	added      bool
+	taskbar    uint32 // "TaskbarCreated": Explorer restarted
+	exeTime    time.Time
+	relaunch   bool
+	mu         sync.Mutex
+	lastHealth app.Health
+	healthErr  error
+	view       trayView
+	memory     trayMemory
+	clickOpen  string // report to open when the last notification is clicked
+	queue      noticeQueue
+	making     bool
+	made       string
+	madeErr    error
+	// reading is set while a status read runs; readHealth is how the
+	// status is read (a test replaces it).
+	reading    bool
+	readHealth func() (app.Health, error)
 }
 
 // Tray runs the status icon until it is closed. It runs only for an
@@ -239,16 +243,34 @@ func (t *tray) newApp() (*app.App, error) {
 	return &app.App{Cfg: cfg, Version: t.version}, nil
 }
 
-// refresh reads the status in the background.
+// health reads the status as "blackbox status" does. On a collector with
+// a week of runs and checks this takes seconds (8 on the Server 2025 VM,
+// TRAY2), so it is only ever read in the background.
+func (t *tray) health() (app.Health, error) {
+	if t.readHealth != nil {
+		return t.readHealth()
+	}
+	a, err := t.newApp()
+	if err != nil {
+		return app.Health{}, err
+	}
+	return a.Health()
+}
+
+// refresh reads the status in the background, unless a read is already
+// running; the icon and the next menu show it when it is done.
 func (t *tray) refresh() {
+	t.mu.Lock()
+	if t.reading {
+		t.mu.Unlock()
+		return
+	}
+	t.reading = true
+	t.mu.Unlock()
 	go func() {
-		var h app.Health
-		a, err := t.newApp()
-		if err == nil {
-			h, err = a.Health()
-		}
+		h, err := t.health()
 		t.mu.Lock()
-		t.health, t.healthErr = h, err
+		t.lastHealth, t.healthErr, t.reading = h, err, false
 		t.mu.Unlock()
 		post(t.hwnd, msgHealth, 0, 0)
 	}()
@@ -281,7 +303,7 @@ func (t *tray) app(m uint32, wp, lp uintptr) {
 	switch m {
 	case msgHealth:
 		t.mu.Lock()
-		h, err := t.health, t.healthErr
+		h, err := t.lastHealth, t.healthErr
 		t.mu.Unlock()
 		t.view = classify(h, err, time.Now())
 		t.update()
@@ -354,14 +376,17 @@ func (t *tray) menu() uintptr {
 	return m
 }
 
+// openMenu builds the menu at once with the status last read (at most a
+// minute old), and starts a fresh read: its result updates the icon and
+// the next menu (TRAY2). Reading it first held the menu back for seconds,
+// so a second click seemed needed.
+func (t *tray) openMenu() uintptr {
+	t.refresh()
+	return t.menu()
+}
+
 func (t *tray) showMenu() {
-	// The menu shows the status as it is now, not up to a minute ago.
-	if a, err := t.newApp(); err == nil {
-		h, err := a.Health()
-		t.view = classify(h, err, time.Now())
-		t.update()
-	}
-	m := t.menu()
+	m := t.openMenu()
 	defer pDestroyMenu.Call(m)
 	var p point
 	pGetCursorPos.Call(uintptr(unsafe.Pointer(&p)))
