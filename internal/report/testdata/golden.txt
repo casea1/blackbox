@@ -1,7 +1,8 @@
-# Detections (11)
+# Detections (12)
 2026-09-28T10:02:01Z high WS-07 failed_logon | Possible password guessing | 6 failed logons for administrator on WS-07 between 10:02:01 and 10:02:41 from 10.1.1.99.
 2026-09-28T10:02:01Z high WS-07 failed_logon | One source tried several accounts | 10.1.1.99 tried 3 different accounts on WS-07 (administrator, bob, guest) with 8 failed logons between 10:02:01 and 10:03:10.
 2026-09-28T13:20:00Z high WS-07 audit_integrity | Possible covering of tracks | On WS-07 at 2026-09-28 13:02: admin_jd added tempuser to the privileged group Administrators. 18 minutes later: Audit policy for "Removable Storage" was changed by admin_jd: success auditing removed, failure auditing removed. The second step can hide what was done with the first.
+2026-09-28T13:25:30Z high WS-07 audit_integrity | The clock was moved back by a person | admin_jd moved the clock on WS-07 back by 2 hours at 2026-09-28 13:25 (using SystemSettingsAdminFlows.exe). Event times around the change don't line up with other systems, and moving the clock is a way to make activity look as if it happened at another time. Every collected event is still reported, in the order it was collected.
 2026-09-28T14:02:01Z high ubu-audit failed_logon | Possible password guessing | 6 failed logons for root on ubu-audit between 14:02:01 and 14:02:41 from 10.1.1.99.
 2026-09-28T16:38:00Z high WS-07 audit_integrity | Possible covering of tracks | On WS-07 at 2026-09-28 13:01: admin_jd created the user account tempuser. 4 hours later: The Application log was cleared by admin_jd. The second step can hide what was done with the first.
 2026-09-28T17:40:00Z high ubu-audit audit_integrity | Possible covering of tracks | On ubu-audit at 2026-09-28 17:05: admin_jd changed the sudo rules: /etc/sudoers.d/tempuser (using tee). 35 minutes later: admin_jd used sudo to run a command that can stop or weaken auditing: systemctl stop auditd The second step can hide what was done with the first.
@@ -127,7 +128,7 @@
     "WS-07"
   ],
   "events": 102,
-  "high": 25,
+  "high": 26,
   "medium": 22,
   "by_category": {
     "account_changes": 10,
@@ -165,6 +166,13 @@
       "host": "WS-07",
       "title": "Possible covering of tracks",
       "detail": "On WS-07 at 2026-09-28 13:02: admin_jd added tempuser to the privileged group Administrators. 18 minutes later: Audit policy for \"Removable Storage\" was changed by admin_jd: success auditing removed, failure auditing removed. The second step can hide what was done with the first."
+    },
+    {
+      "severity": "high",
+      "time": "2026-09-28T13:25:30.1234567Z",
+      "host": "WS-07",
+      "title": "The clock was moved back by a person",
+      "detail": "admin_jd moved the clock on WS-07 back by 2 hours at 2026-09-28 13:25 (using SystemSettingsAdminFlows.exe). Event times around the change don't line up with other systems, and moving the clock is a way to make activity look as if it happened at another time. Every collected event is still reported, in the order it was collected."
     },
     {
       "severity": "high",
@@ -225,7 +233,7 @@
   ],
   "metrics": {
     "account_changes": 10,
-    "detections": 11,
+    "detections": 12,
     "events": 102,
     "failed_logons": 26,
     "high_events": 16,
@@ -245,7 +253,7 @@
       "name": "admin_jd",
       "privileged_actions": 11,
       "logons": 2,
-      "detections": 6
+      "detections": 7
     },
     {
       "key": "mjones",
@@ -325,7 +333,7 @@
       "date": "2026-09-28",
       "metrics": {
         "account_changes": 10,
-        "detections": 11,
+        "detections": 12,
         "failed_logons": 26,
         "high_events": 15,
         "lockouts": 2,
@@ -346,7 +354,7 @@
           "name": "admin_jd",
           "privileged_actions": 11,
           "logons": 2,
-          "detections": 6
+          "detections": 7
         },
         {
           "key": "mjones",

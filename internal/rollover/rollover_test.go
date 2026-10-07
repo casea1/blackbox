@@ -81,3 +81,24 @@ func TestInterval(t *testing.T) {
 		t.Errorf("interval %v", got)
 	}
 }
+
+// LOG1b: status gives the same capped size as blackbox check, and the
+// registry advice fits a REG_DWORD.
+func TestNeededCapped(t *testing.T) {
+	// The PowerShell log held 1 minute of a burst at 15 MB, collected
+	// hourly: 4 hours at that rate is about 3.5 GB, more than check's cap.
+	l := Loss{Channel: "Microsoft-Windows-PowerShell/Operational", Held: time.Minute, Every: time.Hour, MaxSize: 15 << 20}
+	if n := l.Needed(); n != MaxRecommend {
+		t.Errorf("needed %s, want the cap %s", Size(n), Size(MaxRecommend))
+	}
+	if a := l.Advice(true); !strings.Contains(a, "Make it at least 2 GB") || !strings.Contains(a, "MaxSize (REG_DWORD, bytes) = 2147483648") {
+		t.Errorf("advice: %s", a)
+	}
+	// Over 4 GB, the registry value is split as Windows stores it.
+	if f := Fix("Microsoft-Windows-PowerShell/Operational", 5468323840); !strings.Contains(f, "MaxSize (REG_DWORD) = 1173356544 and MaxSizeUpper (REG_DWORD) = 1") {
+		t.Errorf("fix: %s", f)
+	}
+	if !Critical("/var/log/audit/audit.log") || !Critical("/srv/audit/audit.log") || Critical("Microsoft-Windows-PowerShell/Operational") {
+		t.Error("critical logs")
+	}
+}

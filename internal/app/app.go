@@ -237,7 +237,20 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 	}
 	var gaps []archive.Gap
 	if !first {
-		gaps = archive.GapsIn(states, from, now)
+		// A log cleared since the last export reaches back only to the
+		// clear: that is the clear (a High row), not an overwrite (LC2).
+		// Its file keeps its size, so it still looks full.
+		cleared := map[string]bool{}
+		for _, c := range run.Channels {
+			if c.Cleared || c.Reset {
+				cleared[strings.ToLower(c.Channel)] = true
+			}
+		}
+		for _, g := range archive.GapsIn(states, from, now) {
+			if !cleared[strings.ToLower(g.Source)] {
+				gaps = append(gaps, g)
+			}
+		}
 	}
 	// A log this collection read nothing new from has nothing new to
 	// export, if the last export came after the last collection.

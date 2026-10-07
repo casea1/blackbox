@@ -401,7 +401,7 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 				by = append(by, c.User)
 			}
 		}
-		what := fmt.Sprintf("Security log cleared at %s on %s", joinAnd(at), cleared[0].Time.In(r.Location).Format("2 Jan"))
+		what := fmt.Sprintf("%s cleared at %s on %s", clearedWhat(cleared), joinAnd(at), cleared[0].Time.In(r.Location).Format("2 Jan"))
 		if len(by) > 0 {
 			what += " by " + joinAnd(by)
 		}
@@ -535,6 +535,32 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 		lines = append(lines, CheckLine{Level: "ok", Icon: "history", Title: "No events lost to log rollover", What: what})
 	}
 	return lines
+}
+
+// clearedWhat names the logs cleared (LC1): "Security log", "PowerShell
+// log", "Security and PowerShell logs". A Security clear is 1102; any
+// other log's is System 104.
+func clearedWhat(rows []*Row) string {
+	var names []string
+	seen := map[string]bool{}
+	for _, row := range rows {
+		n := "an event log"
+		if row.Target != "" {
+			n = strings.TrimSuffix(rollover.Name(row.Target), " log")
+		}
+		if !seen[n] {
+			seen[n] = true
+			names = append(names, n)
+		}
+	}
+	sort.SliceStable(names, func(i, j int) bool { return logRank(names[i]) < logRank(names[j]) })
+	switch {
+	case len(names) == 1 && names[0] == "an event log":
+		return "An event log"
+	case len(names) == 1:
+		return names[0] + " log"
+	}
+	return joinAnd(names) + " logs"
 }
 
 func joinAnd(l []string) string {

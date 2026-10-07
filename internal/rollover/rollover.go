@@ -42,7 +42,9 @@ func Name(channel string) string {
 // record the STIG requires: the Windows Security log and the Linux audit
 // log. That stays High; other logs' losses are shown on their own, lower.
 func Critical(channel string) bool {
-	return channel == "Security" || channel == "/var/log/audit/audit.log"
+	// auditd's log_file can be moved; it is still the audit log.
+	return channel == "Security" || channel == "/var/log/audit/audit.log" ||
+		(strings.HasPrefix(channel, "/") && path.Base(channel) == "audit.log")
 }
 
 // Loss is events one log overwrote before they could be collected.
@@ -67,9 +69,16 @@ func (l Loss) TooSmall() bool { return l.Held > 0 && l.Every > 0 && l.Held < l.E
 // default holds only a few hundred.
 const MinPowerShell = 1 << 30
 
+// MaxRecommend caps a size worked out from a burst of events: a size
+// scaled up from a few minutes of a burst is far more than needed, and
+// would not fit the REG_DWORD MaxSize. blackbox check and status give
+// the same advice (LOG1b).
+const MaxRecommend = 2 << 30
+
 // Needed is the size that holds four collection intervals at the rate
 // the log was written when it turned over, rounded up to a whole MB (at
-// least 1 GB for the PowerShell log); 0 when it can't be worked out.
+// least 1 GB for the PowerShell log, at most MaxRecommend); 0 when it
+// can't be worked out.
 func (l Loss) Needed() uint64 {
 	var n uint64
 	if l.Held > 0 && l.Every > 0 && l.MaxSize > 0 {
@@ -79,7 +88,7 @@ func (l Loss) Needed() uint64 {
 	if l.Channel == "Microsoft-Windows-PowerShell/Operational" && n < MinPowerShell {
 		n = MinPowerShell
 	}
-	return n
+	return min(n, MaxRecommend)
 }
 
 // Size is a size in MB or GB.
@@ -104,8 +113,14 @@ func Fix(channel string, size uint64) string {
 	if strings.HasPrefix(channel, "/") {
 		return "keep more of the log in its rotation settings (logrotate or journald)"
 	}
-	return fmt.Sprintf(`as administrator: wevtutil sl "%s" /ms:%d. Group Policy has no setting for this log under Event Log Service; to set it on many computers, use a Group Policy Preferences registry item: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WINEVT\Channels\%s, MaxSize (REG_DWORD, bytes) = %d`,
-		channel, size, channel, size)
+	reg := fmt.Sprintf("MaxSize (REG_DWORD, bytes) = %d", size)
+	if size > 0xFFFFFFFF {
+		// A REG_DWORD holds up to 4,294,967,295: Windows splits larger
+		// sizes over MaxSize and MaxSizeUpper.
+		reg = fmt.Sprintf("MaxSize (REG_DWORD) = %d and MaxSizeUpper (REG_DWORD) = %d", size&0xFFFFFFFF, size>>32)
+	}
+	return fmt.Sprintf(`as administrator: wevtutil sl "%s" /ms:%d. Group Policy has no setting for this log under Event Log Service; to set it on many computers, use a Group Policy Preferences registry item: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WINEVT\Channels\%s, %s`,
+		channel, size, channel, reg)
 }
 
 // Advice is what to do about the loss. local says the log is this

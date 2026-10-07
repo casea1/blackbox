@@ -98,6 +98,7 @@ each report's `summary.json`.
 | Auditing was switched off | High | The audit service stopped by a person, with how long it stayed off |
 | Successful logon after failures | Medium | 3 or more failures, then a success, within 30 minutes |
 | New USB device, then administrator activity | Medium | Administrator rights used within 30 minutes of a USB device never seen before |
+| The clock was moved back (or forward) by a person | High back, Medium forward | A person (not the Windows Time service) set the clock by more than 5 minutes (Windows event 4616). Changes of under a second, which each `Set-Date` also logs, are not rows |
 | Administrator activity outside working hours | Medium | Needs `working_hours` in the [settings](configuration.md); one detection per person, computer and day |
 | First logon to this computer | Medium | A person logs on (at the computer, by Remote Desktop or SSH) to a computer they have not logged on to before |
 | First use of administrator rights | Medium | A person uses administrator rights on a computer for the first time |
@@ -313,8 +314,12 @@ part is recorded as missing: the page shows "Missing <from> – <to>:
 overwritten before it was saved" for that log, Audit health has a
 warning, `summary.json` lists it under the archive's `gaps` (and the
 coverage under `logs`), and `blackbox status` says **LOGS INCOMPLETE**
-for 14 days and exits with code 4. The fix is a larger log (`blackbox
-check` gives the size the STIG requires) or more frequent collection.
+for 14 days and exits with code 4. For another log, such as the
+PowerShell log, the line is "Logs incomplete" and does not change the
+exit code. The fix is a larger log (`blackbox check` gives the size the
+STIG requires), or, on a system that collects less often than every 15
+minutes, collecting more often. A log cleared since the last export is
+not a gap here: the clear is its own High row.
 
 **Exports lost or changed before packing.** Each export's files are
 hashed when they are written (`piece.json`). When they are packed, a file
@@ -538,10 +543,14 @@ The Overview flags a report as incomplete when:
   between collections is too small for its volume, and collecting more
   often would not help, so the size it needs is given; collecting every 15
   minutes is suggested only to a system that collects less often. The
+  size given is capped at 2 GB, the same as `blackbox check` gives. The
   original logs exported at each collection hold what each log had at that
   moment: events written and overwritten between two collections are in no
   export
-- a log was cleared
+- a log was cleared. The log is named: "Security log cleared" for event
+  1102, "PowerShell log cleared" for a System 104 naming that log. The
+  records a clear removed are not also counted as lost to rollover, and
+  no size advice is given for them
 - auditing was switched off
 - a Linux log was rotated away before it was read, or the kernel dropped
   audit records
