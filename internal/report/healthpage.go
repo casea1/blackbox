@@ -358,8 +358,8 @@ func (r *Report) healthPage() *HealthPage {
 			if u := cleared[h][0].User; u != "" {
 				by = " by " + u
 			}
-			addGap("cleared", GapCard{Title: "Security log was cleared", Level: "bad",
-				Explain: fmt.Sprintf("Cleared%s on %s%s. Events from before then are only in the original-log archive.", times(n),
+			addGap("cleared", GapCard{Title: "Logs cleared", Level: "bad",
+				Explain: fmt.Sprintf("%s cleared%s on %s%s. Events from before then are only in the original-log archive.", clearedWhat(cleared[h]), times(n),
 					cleared[h][0].Time.In(r.Location).Format("2 Jan 15:04"), by)}, s.Name)
 		}
 		if s.AuditOff != "" {
@@ -555,7 +555,7 @@ func (r *Report) healthPage() *HealthPage {
 	}
 	// Cleared logs, silence and lost events first, then settings; gaps
 	// before warnings.
-	prio := map[string]int{"Earlier reports missing or changed": 0, "Security log was cleared": 0, "No data received": 1, "Collection was blocked": 2, "Events lost to log rollover": 2, "Other logs overwrote events": 3}
+	prio := map[string]int{"Earlier reports missing or changed": 0, "Logs cleared": 0, "No data received": 1, "Collection was blocked": 2, "Events lost to log rollover": 2, "Other logs overwrote events": 3}
 	p := func(g GapCard) int {
 		n, ok := prio[g.Title]
 		if !ok {

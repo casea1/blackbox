@@ -20,6 +20,15 @@ import (
 	"github.com/casea1/blackbox/internal/store"
 )
 
+// gapSpan is "from 06:02 to 06:17", or "at about 06:17" when both are in
+// the same minute (LOG1b).
+func gapSpan(from, to time.Time, loc *time.Location) string {
+	if from.In(loc).Format("2006-01-02 15:04") == to.In(loc).Format("2006-01-02 15:04") {
+		return "at about " + stampLocal(to, loc)
+	}
+	return "from " + stampLocal(from, loc) + " to " + stampLocal(to, loc)
+}
+
 // Status writes a plain summary of what this computer does and whether it
 // is working: for a quick check by an administrator, or a support call.
 func (a *App) Status(w io.Writer) error {
@@ -74,9 +83,20 @@ func (a *App) Status(w io.Writer) error {
 	}
 
 	for _, g := range s.LogGaps {
-		attention = append(attention, "the saved original logs are incomplete")
-		p("LOGS INCOMPLETE:", "%s had already overwritten its events from %s to %s when the original logs were saved. Make the log larger (blackbox check gives the size), or collect more often.",
-			g.Source, stampLocal(g.From, a.loc()), stampLocal(g.To, a.loc()))
+		// The audit record's gap makes status exit 4; another log's (the
+		// PowerShell log) is its own, lower line, as for lost events
+		// (LOG1b).
+		label := "Logs incomplete:"
+		if rollover.Critical(g.Source) {
+			label = "LOGS INCOMPLETE:"
+			attention = append(attention, "the saved original logs are incomplete")
+		}
+		fix := "Make the log larger (blackbox check gives the size)"
+		if a.Cfg.CollectEvery > 15*time.Minute {
+			fix += ", or collect more often (blackbox config set collect_every 15m)"
+		}
+		p(label, "%s had already overwritten its events %s when the original logs were saved. %s.",
+			g.Source, gapSpan(g.From, g.To, a.loc()), fix)
 	}
 
 	off := auditOffNow(st, now)

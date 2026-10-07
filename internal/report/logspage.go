@@ -87,10 +87,17 @@ func (r *Report) logsPage() *LogsPage {
 	for _, s := range r.SystemRows {
 		osOf[strings.ToLower(s.Name)] = s
 	}
+	// Clears, by host and log (LC1): a 104 for the PowerShell log is
+	// noted on that log, not on Security.
 	cleared := map[string][]time.Time{}
 	for _, row := range r.rows {
 		if row.Action == "log_cleared" {
-			cleared[strings.ToLower(row.Host)] = append(cleared[strings.ToLower(row.Host)], row.Time)
+			log := row.Target
+			if log == "" {
+				log = "Security"
+			}
+			k := strings.ToLower(row.Host + "|" + log)
+			cleared[k] = append(cleared[k], row.Time)
 		}
 	}
 	read := map[string]int{} // records read, by host and log
@@ -223,7 +230,6 @@ func (r *Report) logsPage() *LogsPage {
 			if n := read[h+"|"+strings.ToLower(g.log)]; n > 0 {
 				lf.Events = commas(n)
 			}
-			isSec := strings.EqualFold(g.log, "Security") || strings.Contains(strings.ToLower(g.log), "audit")
 			var parts []string
 			if late {
 				parts = append(parts, "Covers from "+g.covFrom.In(r.Location).Format("2 Jan 15:04"))
@@ -250,8 +256,8 @@ func (r *Report) logsPage() *LogsPage {
 				if late || lf.NoteBad {
 					la.Issues = append(la.Issues, shortLog(g.log)+": "+strings.ToLower(lf.Note[:1])+lf.Note[1:])
 				}
-			case isSec && len(cleared[h]) > 0:
-				lf.Note, lf.NoteBad = "Cleared "+cleared[h][0].In(r.Location).Format("2 Jan")+" · nothing lost", true
+			case len(cleared[h+"|"+strings.ToLower(g.log)]) > 0:
+				lf.Note, lf.NoteBad = "Cleared "+cleared[h+"|"+strings.ToLower(g.log)][0].In(r.Location).Format("2 Jan")+" · nothing lost", true
 			case len(g.notes) > 0:
 				lf.Note = g.notes[0]
 			}

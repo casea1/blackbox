@@ -379,8 +379,12 @@ func (r *Report) checkArchives() {
 	}
 	for _, a := range r.Archives {
 		for _, g := range a.Gaps {
-			r.Health.Warnings = append(r.Health.Warnings, fmt.Sprintf("%s: the original logs are incomplete: %s had already overwritten its events from %s to %s when they were saved. Make the log larger (blackbox check gives the size), or collect more often.",
-				a.Host, g.Source, r.stamp(g.From), r.stamp(g.To)))
+			span := "from " + r.stamp(g.From) + " to " + r.stamp(g.To)
+			if r.stamp(g.From) == r.stamp(g.To) {
+				span = "at about " + r.stamp(g.To)
+			}
+			r.Health.Warnings = append(r.Health.Warnings, fmt.Sprintf("%s: the original logs are incomplete: %s had already overwritten its events %s when they were saved. Make the log larger (blackbox check gives the size).",
+				a.Host, g.Source, span))
 		}
 	}
 }
