@@ -237,7 +237,20 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 	}
 	var gaps []archive.Gap
 	if !first {
-		gaps = archive.GapsIn(states, from, now)
+		// A log cleared since the last export reaches back only to the
+		// clear: that is the clear (a High row), not an overwrite (LC2).
+		// Its file keeps its size, so it still looks full.
+		cleared := map[string]bool{}
+		for _, c := range run.Channels {
+			if c.Cleared || c.Reset {
+				cleared[strings.ToLower(c.Channel)] = true
+			}
+		}
+		for _, g := range archive.GapsIn(states, from, now) {
+			if !cleared[strings.ToLower(g.Source)] {
+				gaps = append(gaps, g)
+			}
+		}
 	}
 	// A log this collection read nothing new from has nothing new to
 	// export, if the last export came after the last collection.
@@ -269,6 +282,35 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 	st.State.LogGaps = kept
 	st.State.ArchivedUntil = now
 	st.State.ArchiveRestart = time.Time{}
+}
+
+// runsCovering are Blackbox's runs from an hour before the earliest event
+// on, for telling Blackbox's own activity from a person's (AR2c). runs,
+// read since the last scheduled report was made, miss the run that made
+// it: the original logs a run exports are written during that run, before
+// the report is made, so a manual report straight after would show them
+// as a person's writes.
+func runsCovering(st *store.Store, events []*event.Event, runs []*store.Run, since time.Time) []*store.Run {
+	if len(events) == 0 {
+		return runs
+	}
+	// A run starts before what it writes: from an hour before the
+	// earliest event, or before since if that is earlier.
+	first := events[0].Time
+	for _, e := range events {
+		if e.Time.Before(first) {
+			first = e.Time
+		}
+	}
+	first = first.Add(-time.Hour)
+	if !first.Before(since) {
+		first = since.Add(-time.Hour)
+	}
+	more, err := st.ReadRuns(first)
+	if err != nil {
+		return runs
+	}
+	return more
 }
 
 // packFailing is packing the original logs failing here, for a report.
@@ -1050,6 +1092,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 	if err != nil {
 		return "", err
 	}
+	ownRuns := runsCovering(st, events, runs, runsSince)
 	// The latest audit settings check of each computer: a week's look-back
 	// finds one even for a computer that checks only once a day.
 	checkSince := prevEnd
@@ -1082,7 +1125,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		KnownDevices: st.State.KnownDevices, CheckSets: sets,
 		Context: context, Baseline: st.State.Baseline, BaselineHosts: st.State.BaselineHosts,
 		WorkingHours: a.Cfg.WorkingHours,
-		Archives:     logs, ArchivesKept: advance, Waiting: waiting, PackFailing: packFailing(st),
+		Archives:     logs, ArchivesKept: advance, Waiting: waiting, OwnRuns: ownRuns, PackFailing: packFailing(st),
 		Systems: systemsFor(st, prevEnd, a.Cfg.Inbox != ""), Collector: a.Cfg.Inbox != "",
 		LANWarnings:   append(lanWarnings(st, prevGen, generated, a.loc()), a.inboxWarnings()...),
 		RetentionDays: a.Cfg.RetentionDays,

@@ -507,3 +507,18 @@ func TestOOBEAccountNoise(t *testing.T) {
 		t.Errorf("primary group: %s", e.Summary)
 	}
 }
+
+// TIME1: each Set-Date also logs a 4616 that moves the clock by less than
+// a second; it is not a row.
+func TestZeroTimeChange(t *testing.T) {
+	tr := NewTranslator()
+	data := map[string]string{"SubjectUserSid": "S-1-5-21-1-2-3-1001", "SubjectUserName": "claude", "SubjectDomainName": "WS-07",
+		"PreviousTime": "2026-10-07T13:00:00.1000000Z", "NewTime": "2026-10-07T13:00:00.4000000Z", "ProcessName": `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`}
+	if e := tr.Translate(sec(4616, data)); e != nil {
+		t.Errorf("zero change kept: %s", e.Summary)
+	}
+	data["NewTime"] = "2026-10-07T13:30:00.1000000Z"
+	if e := tr.Translate(sec(4616, data)); e == nil || !strings.Contains(e.Summary, "30 minutes forward") {
+		t.Errorf("30-minute change: %+v", e)
+	}
+}

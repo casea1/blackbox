@@ -131,10 +131,12 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	o := &Overview{}
 	m := r.metrics()
 	byHost := map[string]int{} // logs cleared, per computer
+	clearRows := map[string][]*Row{}
 	people := map[string]bool{}
 	for _, row := range r.rows {
 		if row.Action == "log_cleared" {
 			byHost[row.Host]++
+			clearRows[row.Host] = append(clearRows[row.Host], row)
 		}
 		if row.Category == event.CatPrivileged && person(row.User) {
 			people[strings.ToLower(row.User)] = true
@@ -169,7 +171,7 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	for _, s := range systems {
 		switch {
 		case byHost[s.Name] > 0:
-			probs = append(probs, fmt.Sprintf("%s: Security log cleared%s", s.Name, times(byHost[s.Name])))
+			probs = append(probs, fmt.Sprintf("%s: %s cleared%s", s.Name, clearedWhat(clearRows[s.Name]), times(byHost[s.Name])))
 		case s.Status == "silent":
 			probs = append(probs, s.Name+": no collection received")
 		}
@@ -239,7 +241,7 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	card("usb", "New USB devices", MNewUSB, "", commas(m[MUSB])+" events", "#usb")
 
 	// Health checklist.
-	o.Checks = r.checklist(systems, byHost)
+	o.Checks = r.checklist(systems, clearRows)
 
 	// System map or (standalone) system cards.
 	if o.Standalone {
@@ -332,19 +334,21 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 }
 
 // checklist is the six-line health checklist.
-func (r *Report) checklist(systems []SystemRow, cleared map[string]int) []CheckLine {
+func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []CheckLine {
 	total := len(systems)
 	frac := func(bad int) string { return fmt.Sprintf("%d/%d", total-bad, total) }
 	var lines []CheckLine
 
 	var who []string
+	var all []*Row
 	for _, s := range systems {
-		if cleared[s.Name] > 0 {
+		if len(cleared[s.Name]) > 0 {
 			who = append(who, s.Name)
+			all = append(all, cleared[s.Name]...)
 		}
 	}
 	if len(who) > 0 {
-		lines = append(lines, CheckLine{Level: "bad", Icon: "file-warning", Title: "Logs cleared", Who: strings.Join(who, ", "), What: "Security log cleared", Count: frac(len(who))})
+		lines = append(lines, CheckLine{Level: "bad", Icon: "file-warning", Title: "Logs cleared", Who: strings.Join(who, ", "), What: clearedWhat(all) + " cleared", Count: frac(len(who))})
 	} else {
 		lines = append(lines, CheckLine{Level: "ok", Icon: "file-warning", Title: "Logs intact", What: "No logs cleared", Count: frac(0)})
 	}

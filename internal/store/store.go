@@ -133,6 +133,11 @@ type ChannelRun struct {
 	Error        string         `json:"error,omitempty"`
 	EventCounts  map[int]int    `json:"event_counts,omitempty"`
 	TypeCounts   map[string]int `json:"type_counts,omitempty"` // Linux: records by auditd type or syslog program
+
+	// Cleared: the log was cleared since the last collection (a 104, or
+	// a 1102 for Security, was read). The records it skipped are not
+	// lost to rollover (LC2).
+	Cleared bool `json:"cleared,omitempty"`
 }
 
 // Run is one collection run on one host.

@@ -84,6 +84,7 @@ func (a *App) reportRange(st *store.Store, from, to time.Time) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	ownRuns := runsCovering(st, events, runs, from.Add(-time.Hour))
 	latest, err := st.LatestChecks(from.AddDate(0, 0, -7), generated)
 	if err != nil {
 		return "", err
@@ -114,7 +115,7 @@ func (a *App) reportRange(st *store.Store, from, to time.Time) (string, error) {
 	r := report.Build(events, runs, report.Options{
 		Site:        a.Cfg.SiteName,
 		WindowStart: from, WindowEnd: to, Generated: generated, Version: a.Version,
-		Source: "Live collection", Location: loc, InReportsDir: true, Interim: true, Range: rng, Period: "range",
+		Source: "Live collection", Location: loc, InReportsDir: true, Interim: true, Range: rng, Period: "range", OwnRuns: ownRuns,
 		History:      report.History(a.ReportsDir(), to, report.HistoryWeeks),
 		ExcludeUsers: a.Cfg.ExcludeUsers, ExcludeProcesses: a.Cfg.ExcludeProcesses,
 		KnownDevices: st.State.KnownDevices, CheckSets: sets,

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/casea1/blackbox/internal/rollover"
 	"github.com/casea1/blackbox/internal/winevt"
 )
 
@@ -248,7 +249,7 @@ func days(d time.Duration) string {
 		return "1 day"
 	}
 	if n == 0 {
-		return fmt.Sprintf("%d hours", int(d.Hours()+0.5))
+		return rollover.Duration(d) // "1 minute", "40 minutes", "5 hours"
 	}
 	return fmt.Sprintf("%d days", n)
 }

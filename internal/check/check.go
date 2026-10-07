@@ -355,8 +355,8 @@ var readLogs = []string{
 
 // maxRecommend caps a size worked out from a burst of events (a week at
 // the rate of a burst is far more than needed), within what a REG_DWORD
-// MaxSize can hold.
-const maxRecommend = 2 << 30
+// MaxSize can hold; status gives the same cap.
+const maxRecommend = rollover.MaxRecommend
 
 // readLogSizes checks the other logs Blackbox reads are large enough not
 // to overwrite events between collections: the PowerShell log always (at
