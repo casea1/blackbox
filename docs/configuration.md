@@ -51,3 +51,26 @@ blackbox config set working_hours "Mon-Fri 06:00-18:00"
 
 Run `blackbox config` to see the current settings, and `blackbox status` to
 see whether everything is working.
+
+## One run at a time
+
+Each run (the scheduled collection, `send`, a manual report, `config set`)
+takes `blackbox.lock` in the data folder, so two never work on the data at
+once; one started while another runs waits for it (a scheduled run up to
+10 minutes). Since 0.18 this is an operating-system lock (`flock` on Linux,
+`LockFileEx` on Windows) held for the life of the run: a run that crashes,
+is killed (`kill -9`, the out-of-memory killer, Task Manager) or loses power
+leaves nothing behind, and the next run starts normally. The file also holds
+the process ID and start time of the run holding it. (Before 0.18 a run that
+died left the file, and collection stopped silently for up to two hours,
+LOCK1.)
+
+A run that hangs still holds the lock. When a scheduled run gives up waiting
+for it:
+
+- `blackbox status` says "Collection is blocked: a run has held the lock
+  since <time> (PID n)", with the command to end it, and exits 4;
+- the status icon turns red and says the same;
+- the next run that collects records the gap, and the next report's Audit
+  health shows "Collection was blocked" for that system, with the times
+  (on the collector too, for a sender).

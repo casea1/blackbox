@@ -45,6 +45,8 @@ jobs:
         run: go test ./...
       - name: Tray dialogs open on the first click (TRAY1)
         run: go test ./internal/gui -run TestFirstDialogShows -v -count=1
+      - name: A run killed while holding the lock leaves nothing behind (LOCK1)
+        run: go test ./internal/store -run "TestLock" -v -count=1
       - name: Smoke test against this runner's live event logs
         shell: pwsh
         run: |
@@ -317,6 +319,17 @@ jobs:
           sudo sh -c 'unzip -l /srv/bb-reports-2/*/logs-*.zip' | grep -q audit.log
           sudo sh -c 'grep -q "logs-" /srv/bb-reports-2/*/manifest.sha256'
           sudo sh -c 'for d in /srv/bb-reports-2/*/; do ./blackbox verify "$d"; done'
+          # LOCK1: a run killed with kill -9 while it holds the lock leaves
+          # nothing that blocks the next scheduled run.
+          sudo /usr/local/bin/blackbox run >/dev/null 2>&1 &
+          for i in $(seq 1 400); do sudo test -s /var/lib/blackbox/blackbox.lock && break; sleep 0.05; done
+          pid=$(sudo awk '{print $1}' /var/lib/blackbox/blackbox.lock)
+          test -n "$pid" || { echo "no run held the lock"; exit 1; }
+          sudo kill -9 "$pid"
+          echo "Killed run $pid; its lock file: $(sudo cat /var/lib/blackbox/blackbox.lock 2>/dev/null)"
+          if sudo /usr/local/bin/blackbox status | grep -q "BLOCKED"; then echo "status says blocked after the run was killed"; exit 1; fi
+          sudo systemctl start blackbox.service || { sudo journalctl -u blackbox.service --no-pager | tail -40; exit 1; }
+          if sudo journalctl -u blackbox.service --no-pager | grep -q "another Blackbox run is in progress"; then echo "the killed run's lock blocked the next run"; exit 1; fi
           sudo ./blackbox uninstall
           if systemctl is-enabled blackbox.timer 2>/dev/null; then echo "timer not removed"; exit 1; fi
           # Start the sender below from scratch (its first archive is due at once).

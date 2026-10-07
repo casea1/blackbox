@@ -229,6 +229,18 @@ type Health struct {
 	ChecksWarn   int
 	LogClears    int
 	AuditOff     []string // periods auditing was switched off
+	// Blocked are gaps in collection while a run held the lock (LOCK1).
+	Blocked []BlockedItem
+}
+
+// BlockedItem is a gap in collection on Host: scheduled runs from From
+// were refused until To because the run with PID held the lock.
+type BlockedItem struct {
+	Host     string
+	From, To time.Time
+	Since    time.Time // when that run took the lock
+	PID      int
+	Refused  int
 }
 
 // Report is everything the template needs.

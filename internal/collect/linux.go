@@ -77,6 +77,10 @@ func Linux(st *store.Store, opt Options) (*store.Run, error) {
 		}
 	}
 	run.Duration = opt.Now().Sub(start).Seconds()
+	if b := opt.Blocked; b != nil {
+		b.Until = start
+		run.Blocked = b
+	}
 	st.State.LastCollect = start
 	if err := st.AppendRun(run); err != nil {
 		return run, err

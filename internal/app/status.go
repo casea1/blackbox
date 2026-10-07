@@ -52,6 +52,10 @@ func (a *App) Status(w io.Writer) error {
 		}
 		p("Last collection:", "%s (%s)", stampLocal(s.LastCollect, a.loc()), when)
 	}
+	if bl := blockedNow(a.Cfg.DataDir, st); bl != nil {
+		attention = append(attention, "collection is blocked")
+		p("BLOCKED:", "%s", BlockedText(bl, a.loc()))
+	}
 	if !s.LastCheck.IsZero() {
 		p("Settings checked:", "%s", stampLocal(s.LastCheck, a.loc()))
 	}
@@ -345,6 +349,14 @@ func nextReport(every string, at config.ReportAt, lastEnd, now time.Time, loc *t
 		return time.Time{}, true
 	}
 	return at.NextBoundary(every, now, loc), false
+}
+
+// BlockedText says collection is blocked by a run holding the lock
+// (LOCK1), and what to do.
+func BlockedText(b *store.Blocked, loc *time.Location) string {
+	return fmt.Sprintf("Collection is blocked: a run has held the lock since %s (PID %d). %d scheduled run%s since %s collected nothing. "+
+		"If that process is stuck, end it (Linux: sudo kill %d; Windows: taskkill /PID %d /F); the next run then collects what was missed.",
+		stampLocal(b.Holder.Since, loc), b.Holder.PID, b.Refused, map[bool]string{true: "s"}[b.Refused != 1], stampLocal(b.First, loc), b.Holder.PID, b.Holder.PID)
 }
 
 // LostText describes events lost to rollover, with what to do about it:

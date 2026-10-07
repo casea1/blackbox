@@ -198,6 +198,10 @@ func (r *Report) healthPage() *HealthPage {
 		}
 	}
 	lost := map[string]uint64{}
+	blocked := map[string][]BlockedItem{}
+	for _, b := range r.Health.Blocked {
+		blocked[strings.ToLower(b.Host)] = append(blocked[strings.ToLower(b.Host)], b)
+	}
 	holds := map[string]time.Duration{}
 	for _, c := range r.Health.Channels {
 		h := strings.ToLower(c.Host)
@@ -268,6 +272,9 @@ func (r *Report) healthPage() *HealthPage {
 					// Not collected live (a report from saved logs).
 				case s.Status == "silent":
 					c = Cell{Mark: "✕", Class: "bad", Title: "No collection received in this period"}
+				case len(blocked[h]) > 0:
+					b := blocked[h][0]
+					c = Cell{Mark: "✕", Class: "bad", Title: "Collection blocked " + r.stamp(b.From) + " to " + r.stamp(b.To)}
 				case s.VM && s.Runs == 0:
 					c = Cell{Mark: "!", Class: "warn", Title: s.StatusMsg}
 				case s.VM:
@@ -344,6 +351,15 @@ func (r *Report) healthPage() *HealthPage {
 		if s.Status == "silent" {
 			addGap("silent", GapCard{Title: "No data received", Level: "bad",
 				Explain: "No collection arrived in this period. Check the system is on and can reach the collector."}, s.Name)
+		}
+		if bs := blocked[h]; len(bs) > 0 {
+			addGap("blocked", GapCard{Title: "Collection was blocked", Level: "bad",
+				Explain: "Scheduled runs were refused because another Blackbox run held its lock, so nothing was collected or sent in that time. " +
+					"The next run collected what the logs still held. A run that dies no longer leaves the lock behind; a run that hangs still holds it, and blackbox status says so."}, s.Name)
+			c := gapCards["blocked"]
+			for _, b := range bs {
+				c.Explain += fmt.Sprintf(" %s: %s to %s, %s refused (PID %d).", s.Name, r.stamp(b.From), r.stamp(b.To), plural(b.Refused, "run"), b.PID)
+			}
 		}
 		if lost[h] > 0 {
 			totalLost += lost[h]
@@ -493,7 +509,7 @@ func (r *Report) healthPage() *HealthPage {
 	}
 	// Cleared logs, silence and lost events first, then settings; gaps
 	// before warnings.
-	prio := map[string]int{"Security log was cleared": 0, "No data received": 1, "Events lost to log rollover": 2}
+	prio := map[string]int{"Security log was cleared": 0, "No data received": 1, "Collection was blocked": 2, "Events lost to log rollover": 2}
 	p := func(g GapCard) int {
 		n, ok := prio[g.Title]
 		if !ok {

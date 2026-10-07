@@ -49,6 +49,10 @@ type Health struct {
 	// Lost lists the logs that overwrote events before they could be
 	// collected, since the last report.
 	Lost []LostLog
+
+	// Blocked is set while scheduled runs are refused because a run has
+	// held the lock past their wait (LOCK1).
+	Blocked *store.Blocked
 }
 
 // LostLog is one log losing events to rollover.
@@ -153,6 +157,7 @@ func (a *App) Health() (Health, error) {
 	h.AuditOff = auditOffNow(st, now)
 	h.WaitingSince = a.waitingSince(st)
 	h.LowSpace = lowSpace(a.Cfg.DataDir)
+	h.Blocked = blockedNow(a.Cfg.DataDir, st)
 	if !a.Cfg.MakesReports() {
 		return h, nil
 	}

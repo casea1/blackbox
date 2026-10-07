@@ -29,6 +29,9 @@ type Options struct {
 	Version string
 	Now     func() time.Time
 	Logf    func(format string, args ...any)
+	// Blocked is collection refused since the last run (LOCK1), recorded
+	// with this run.
+	Blocked *store.Blocked
 }
 
 // LocalHost is the name this system's events and runs are recorded under:
@@ -97,6 +100,10 @@ func Windows(st *store.Store, opt Options) (*store.Run, error) {
 		run.Channels = append(run.Channels, cr)
 	}
 	run.Duration = opt.Now().Sub(start).Seconds()
+	if b := opt.Blocked; b != nil {
+		b.Until = start
+		run.Blocked = b
+	}
 	st.State.LastCollect = start
 	if err := st.AppendRun(run); err != nil {
 		return run, err
