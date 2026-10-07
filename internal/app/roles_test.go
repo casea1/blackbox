@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -145,7 +146,7 @@ func TestFormerNamesFolded(t *testing.T) {
 	st.NoteSystem("WIN-498EC8UMUEL", "windows", "test", "WIN-498EC8UMUEL", at, at, at)
 	st.NoteSystem("WIN-R5L5B9EF403", "windows", "test", "WIN-498EC8UMUEL", at, at, at)
 	st.State.Systems["WIN-498EC8UMUEL"].Former = []string{"WIN-R5L5B9EF403"}
-	systems := systemsFor(st, time.Time{})
+	systems := systemsFor(st, time.Time{}, true)
 	if len(systems) != 2 {
 		t.Fatalf("systems: %+v", systems)
 	}
@@ -153,5 +154,31 @@ func TestFormerNamesFolded(t *testing.T) {
 	r := report.Build([]*event.Event{ev}, nil, report.Options{WindowEnd: at.Add(time.Hour), Location: time.UTC, Systems: systems})
 	if strings.Join(r.Hosts, ",") != "WIN-498EC8UMUEL,WIN11-COL" || ev.Host != "WIN-498EC8UMUEL" {
 		t.Errorf("hosts: %v; event under %s", r.Hosts, ev.Host)
+	}
+}
+
+// ROLE1: a former collector, now standalone, leaves out of its report the
+// sender it heard nothing from this period; a collector still lists it
+// (as not reporting).
+func TestStandaloneLeavesOutFormerSenders(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	start := time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
+	st.NoteSystem(collect.LocalHost(), "windows", "0.19.0", "", start.Add(time.Hour), time.Time{}, start.Add(time.Hour))
+	st.NoteSystem("ubuntu-server", "linux", "0.18.0", "", start.Add(-48*time.Hour), start.Add(-47*time.Hour), start.Add(-47*time.Hour))
+	st.NoteSystem("ws-recent", "windows", "0.19.0", "", start.Add(2*time.Hour), start.Add(3*time.Hour), start.Add(3*time.Hour))
+	names := func(collector bool) string {
+		var n []string
+		for _, s := range systemsFor(st, start, collector) {
+			n = append(n, strings.ToLower(s.Name))
+		}
+		sort.Strings(n)
+		return strings.Join(n, ",")
+	}
+	local := strings.ToLower(collect.LocalHost())
+	if got := names(false); strings.Contains(got, "ubuntu-server") || !strings.Contains(got, local) || !strings.Contains(got, "ws-recent") {
+		t.Errorf("standalone: %s", got)
+	}
+	if got := names(true); !strings.Contains(got, "ubuntu-server") {
+		t.Errorf("collector: %s", got)
 	}
 }
