@@ -300,6 +300,15 @@ func runsCovering(st *store.Store, events []*event.Event, runs []*store.Run, sin
 	return more
 }
 
+// packFailing is packing the original logs failing here, for a report.
+func packFailing(st *store.Store) *report.PackFailing {
+	f := st.State.PackFailing
+	if f == nil {
+		return nil
+	}
+	return &report.PackFailing{Host: collect.LocalHost(), Since: f.Since, Reason: f.Reason}
+}
+
 func stampUTC(t time.Time) string { return t.UTC().Format("2006-01-02 15:04Z") }
 
 // packLogs packs the exported pieces of the original logs into one
@@ -307,9 +316,21 @@ func stampUTC(t time.Time) string { return t.UTC().Format("2006-01-02 15:04Z") }
 // for the next report. Unless force is set it waits until the oldest
 // piece is a day old.
 func (a *App) packLogs(st *store.Store, force bool) {
+	// Packing failing is kept in the state, so status and reports say
+	// so until it works again (AR5).
+	failed := func(err error) {
+		if st.State.PackFailing == nil {
+			st.State.PackFailing = &store.PackFailure{Since: a.now()}
+		}
+		st.State.PackFailing.Reason = err.Error()
+		a.logf("ORIGINAL LOGS NOT ARCHIVED since %s: %v; will try again next run", st.State.PackFailing.Since.In(a.loc()).Format("2006-01-02 15:04"), err)
+		if err := st.Save(); err != nil {
+			a.logf("saving the state: %v", err)
+		}
+	}
 	pieces, err := a.allPieces()
 	if err != nil {
-		a.logf("archiving the logs: %v", err)
+		failed(err)
 		return
 	}
 	if len(pieces) == 0 || !(force || archive.PackDue(pieces, a.now())) {
@@ -321,17 +342,29 @@ func (a *App) packLogs(st *store.Store, force bool) {
 		dir = lan.OutboxDir(st)
 	}
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		a.logf("archiving the logs: %v", err)
+		failed(err)
 		return
 	}
 	span := archive.Span(pieces)
 	info, err := archive.Pack(filepath.Join(dir, archive.FileName(host, span.From, span.To)), host, runtime.GOOS, pieces, a.now())
 	if err != nil {
-		a.logf("archiving the logs: %v; will try again next run", err)
+		failed(err)
 		return
 	}
+	st.State.PackFailing = nil
 	for _, n := range info.Notes {
 		a.logf("log archive: %s", n)
+	}
+	// An export lost before packing is a gap status points out, like an
+	// overwritten one (AR5).
+	for _, g := range info.Gaps {
+		if g.Reason != "" {
+			st.State.LogGaps = append(st.State.LogGaps, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: a.now(), Reason: g.Reason})
+		}
+	}
+	// A sender, or a run with no report due, saves nothing after this.
+	if err := st.Save(); err != nil {
+		a.logf("saving the state: %v", err)
 	}
 }
 
@@ -431,7 +464,7 @@ func (a *App) bundleLogs(end time.Time) (refs []report.ArchiveRef, used []string
 		if fi != nil {
 			size = uint64(fi.Size())
 		}
-		refs = append(refs, report.ArchiveRef{Host: days[0].Host, From: b.From, To: b.To, Name: name, Path: tmp, Bytes: size, SHA256: b.SHA256, Gaps: b.Gaps, Logs: b.Logs, Notes: b.Notes})
+		refs = append(refs, report.ArchiveRef{Host: days[0].Host, From: b.From, To: b.To, Name: name, Path: tmp, Bytes: size, SHA256: b.SHA256, Gaps: b.Gaps, Logs: b.Logs, Notes: b.Notes, Changed: b.Changed})
 		for _, d := range days {
 			used = append(used, d.Path)
 		}
@@ -832,6 +865,7 @@ func (a *App) Scheduled() (string, error) {
 		a.send(st)
 		return "", nil
 	}
+	a.verifyReports(st)
 	end, due := DueWindowEnd(a.Cfg.ReportEvery, a.Cfg.ReportAt, st.State.LastWindowEnd, a.now(), a.loc())
 	if !due {
 		a.packLogs(st, false)
@@ -1078,7 +1112,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		KnownDevices: st.State.KnownDevices, CheckSets: sets,
 		Context: context, Baseline: st.State.Baseline, BaselineHosts: st.State.BaselineHosts,
 		WorkingHours: a.Cfg.WorkingHours,
-		Archives:     logs, ArchivesKept: advance, Waiting: waiting, OwnRuns: ownRuns,
+		Archives:     logs, ArchivesKept: advance, Waiting: waiting, OwnRuns: ownRuns, PackFailing: packFailing(st),
 		Systems: systemsFor(st, prevEnd), Collector: a.Cfg.Inbox != "",
 		LANWarnings:   append(lanWarnings(st, prevGen, generated, a.loc()), a.inboxWarnings()...),
 		RetentionDays: a.Cfg.RetentionDays,

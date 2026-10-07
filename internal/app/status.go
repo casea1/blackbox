@@ -73,8 +73,16 @@ func (a *App) Status(w io.Writer) error {
 		p("Log archive:", "original logs exported up to %s, archived once a day (%s)", stampLocal(s.ArchivedUntil, a.loc()), where)
 	}
 
+	if f := s.PackFailing; f != nil {
+		attention = append(attention, "the original logs are not being archived")
+		p("ORIGINAL LOGS NOT ARCHIVED", "since %s: %s. The exports are kept and packing is tried again at every run.", stampLocal(f.Since, a.loc()), strings.TrimRight(f.Reason, ". "))
+	}
 	for _, g := range s.LogGaps {
 		attention = append(attention, "the saved original logs are incomplete")
+		if g.Reason != "" {
+			p("LOGS INCOMPLETE:", "%s: its events for that time are not in the saved original logs.", g.Reason)
+			continue
+		}
 		p("LOGS INCOMPLETE:", "%s had already overwritten its events from %s to %s when the original logs were saved. Make the log larger (blackbox check gives the size), or collect more often.",
 			g.Source, stampLocal(g.From, a.loc()), stampLocal(g.To, a.loc()))
 	}

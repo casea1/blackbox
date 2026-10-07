@@ -51,6 +51,9 @@
 ## own writes (the service, with no logged-in user) are not recorded.
 -a always,exit -F dir=/etc/blackbox/ -F perm=wa -k blackbox
 -a always,exit -F dir=/var/lib/blackbox/ -F perm=wa -F auid>=1000 -F auid!=unset -k blackbox
+## The original logs waiting to be archived: any change but Blackbox's own,
+## including by a root service or script (AR6).
+-a always,exit -F dir=/var/lib/blackbox/archive-pieces/ -F perm=wa -F exe!=/usr/local/bin/blackbox -k blackbox
 -a always,exit -F path=/usr/local/bin/blackbox -F perm=wa -k blackbox
 -a always,exit -F path=/etc/systemd/system/blackbox.service -F perm=wa -k blackbox
 -a always,exit -F path=/etc/systemd/system/blackbox.timer -F perm=wa -k blackbox

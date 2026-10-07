@@ -132,3 +132,89 @@ func readZip(t *testing.T, path string) map[string]string {
 	}
 	return out
 }
+
+// An export deleted or unreadable before packing is a gap with its reason,
+// not a reason to stop archiving (AR5); one changed since it was exported
+// is packed as found and marked (AR6).
+func TestPackLostAndChangedPieces(t *testing.T) {
+	dir := t.TempDir()
+	pdir := filepath.Join(dir, "pieces")
+	t0 := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	exp := fakeExport(false)
+	for i := 0; i < 3; i++ {
+		from, to := t0.Add(time.Duration(i)*15*time.Minute), t0.Add(time.Duration(i+1)*15*time.Minute)
+		if _, err := SavePiece(pdir, Info{Host: "WIN11", From: from, To: to, Created: to}, exp, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pieces, err := Pieces(pdir)
+	if err != nil || len(pieces) != 3 {
+		t.Fatalf("pieces: %d %v", len(pieces), err)
+	}
+	for _, p := range pieces {
+		for _, f := range p.Info.Files {
+			if len(f.SHA256) != 64 {
+				t.Fatalf("%s/%s: no hash taken at export: %q", p.Dir, f.Name, f.SHA256)
+			}
+		}
+	}
+	// Piece 1: Security.evtx deleted. Piece 2: audit.log unreadable (a
+	// folder in its place). Piece 0: Security.evtx changed.
+	os.Remove(filepath.Join(pieces[1].Dir, "Security.evtx"))
+	os.Remove(filepath.Join(pieces[2].Dir, "audit.log"))
+	os.Mkdir(filepath.Join(pieces[2].Dir, "audit.log"), 0o750)
+	os.WriteFile(filepath.Join(pieces[0].Dir, "Security.evtx"), []byte("edited"), 0o644)
+
+	path := filepath.Join(dir, FileName("WIN11", t0, t0.Add(45*time.Minute)))
+	info, err := Pack(path, "WIN11", "windows", pieces, t0.Add(46*time.Minute))
+	if err != nil {
+		t.Fatalf("packing stopped: %v", err)
+	}
+	if _, err := Verify(path); err != nil {
+		t.Fatal(err)
+	}
+	got := readZip(t, path)
+	if got["Security_20261005-1200Z.evtx"] != "edited" {
+		t.Errorf("changed export not packed as found: %v", got)
+	}
+	if _, ok := got["Security_20261005-1215Z.evtx"]; ok {
+		t.Error("deleted export in the archive")
+	}
+	if got["audit.log"] != "line 12:00\nline 12:15\n" {
+		t.Errorf("audit.log: %q", got["audit.log"])
+	}
+	if len(info.Gaps) != 2 {
+		t.Fatalf("gaps: %+v", info.Gaps)
+	}
+	g := info.Gaps[0]
+	if g.Source != "Security" || !g.From.Equal(t0.Add(15*time.Minute)) || !g.To.Equal(t0.Add(30*time.Minute)) || !strings.Contains(g.Reason, "Security.evtx") || !strings.Contains(g.Reason, "was missing") {
+		t.Errorf("deleted piece gap: %+v", g)
+	}
+	if g := info.Gaps[1]; g.Source != "/var/log/audit/audit.log" || !strings.Contains(g.Reason, "could not be read") {
+		t.Errorf("unreadable piece gap: %+v", g)
+	}
+	var marked []string
+	for _, f := range info.Files {
+		if f.Changed {
+			marked = append(marked, f.Name)
+		}
+	}
+	if strings.Join(marked, ",") != "Security_20261005-1200Z.evtx" {
+		t.Errorf("marked changed: %v", marked)
+	}
+	notes := strings.Join(info.Notes, "\n")
+	if !strings.Contains(notes, "was changed after it was exported") || !strings.Contains(notes, "not in this archive") {
+		t.Errorf("notes: %s", notes)
+	}
+	if p, _ := Pieces(pdir); len(p) != 0 {
+		t.Error("pieces left after packing")
+	}
+	// The marks survive into the bundle the report takes.
+	b, err := Bundle(filepath.Join(dir, "logs-WIN11.zip"), []Stored{{Path: path, Host: "WIN11", From: t0, To: t0.Add(45 * time.Minute)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Changed) != 1 || len(b.Gaps) != 2 {
+		t.Errorf("bundle: changed %+v gaps %+v", b.Changed, b.Gaps)
+	}
+}

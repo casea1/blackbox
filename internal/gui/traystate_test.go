@@ -250,3 +250,21 @@ func TestMissingReportNotice(t *testing.T) {
 		t.Errorf("notified twice: %+v", ns)
 	}
 }
+
+// AR5: the original logs not being archived is an item, notified once
+// per failure.
+func TestPackFailingNotice(t *testing.T) {
+	h := healthy()
+	h.PackFailing = &store.PackFailure{Since: trayNow.Add(-2 * time.Hour), Reason: "open Application.evtx: access denied"}
+	v := classify(h, nil, trayNow)
+	if v.State != stateLook || len(v.Items) != 1 || !strings.HasPrefix(v.Items[0], "Original logs not archived since") {
+		t.Errorf("view: %+v", v)
+	}
+	ns, m := notices(trayMemory{Seen: true}, h, v, "0.20.0", trayNow)
+	if len(ns) != 1 || !ns[0].Warn || !strings.Contains(ns[0].Text, "have not been archived since") || !strings.Contains(ns[0].Text, "access denied") {
+		t.Fatalf("notices: %+v", ns)
+	}
+	if ns, _ = notices(m, h, v, "0.20.0", trayNow); len(ns) != 0 {
+		t.Errorf("notified twice: %+v", ns)
+	}
+}

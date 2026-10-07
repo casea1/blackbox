@@ -380,3 +380,87 @@ func TestManualReportAfterRunDropsExportWrites(t *testing.T) {
 		t.Errorf("manual report: %d events, %d high; want only the notepad write", s.Events, s.High)
 	}
 }
+
+// AR5: while the exports cannot be packed, status says so and exits 4,
+// and the report says why; once packing works, an export lost in the
+// meantime is a gap with its reason, and packing goes on without it.
+func TestPackFailingAndLostExport(t *testing.T) {
+	base := t.TempDir()
+	now := time.Date(2026, 10, 7, 13, 0, 0, 0, time.UTC)
+	st, _ := store.Open(filepath.Join(base, "data"))
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportEvery: "weekly", CollectEvery: 15 * time.Minute}, Loc: time.UTC,
+		Now: func() time.Time { return now }}
+	export := func(dir string, from, to time.Time, skip func(string) bool) ([]archive.Source, []string) {
+		var out []archive.Source
+		for _, n := range []string{"Security.evtx", "Application.evtx"} {
+			p := filepath.Join(dir, n)
+			os.WriteFile(p, []byte(n+from.Format("1504")), 0o644)
+			out = append(out, archive.Source{Name: n, Source: strings.TrimSuffix(n, ".evtx"), Path: p})
+		}
+		return out, nil
+	}
+	for i := 0; i < 2; i++ {
+		from := now.Add(time.Duration(i-2) * time.Hour)
+		if _, err := archive.SavePiece(a.piecesDir(), archive.Info{Host: collect.LocalHost(), From: from, To: from.Add(time.Hour), Created: from.Add(time.Hour)}, export, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Something in the way of the archive folder.
+	block := filepath.Join(a.pendingLogsDir(), archive.SafeName(collect.LocalHost()))
+	os.MkdirAll(filepath.Dir(block), 0o750)
+	os.WriteFile(block, []byte("x"), 0o644)
+
+	a.packLogs(st, true)
+	st, _ = store.Open(st.Dir) // what was saved
+	f := st.State.PackFailing
+	if f == nil || !f.Since.Equal(now) || f.Reason == "" {
+		t.Fatalf("pack failure not kept: %+v", f)
+	}
+	var b bytes.Buffer
+	var na *NeedsAttention
+	if err := a.Status(&b); !errors.As(err, &na) || !strings.Contains(b.String(), "ORIGINAL LOGS NOT ARCHIVED since 2026-10-07 13:00: ") {
+		t.Errorf("status (%v):\n%s", err, b.String())
+	}
+	// Later failures keep when it started.
+	now = now.Add(time.Hour)
+	a.packLogs(st, true)
+	if !st.State.PackFailing.Since.Equal(now.Add(-time.Hour)) {
+		t.Errorf("failing since %v", st.State.PackFailing.Since)
+	}
+	r := report.Build(nil, nil, report.Options{WindowEnd: now, Location: time.UTC, PackFailing: packFailing(st), ArchivesKept: true})
+	if w := strings.Join(r.Health.Warnings, "\n"); !strings.Contains(w, "ORIGINAL LOGS NOT ARCHIVED: ") || !strings.Contains(w, "have not been archived since 2026-10-07 13:00") {
+		t.Errorf("report warnings: %s", w)
+	}
+	dir := filepath.Join(base, "report")
+	if err := r.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	if html, _ := os.ReadFile(filepath.Join(dir, "report.html")); !strings.Contains(string(html), "have not been archived since") {
+		t.Error("Original logs page does not say packing fails")
+	}
+
+	// Fixed; meanwhile one export was deleted.
+	os.Remove(block)
+	pieces, _ := archive.Pieces(a.piecesDir())
+	os.Remove(filepath.Join(pieces[0].Dir, "Application.evtx"))
+	a.packLogs(st, true)
+	st, _ = store.Open(st.Dir)
+	if st.State.PackFailing != nil {
+		t.Errorf("still failing: %+v", st.State.PackFailing)
+	}
+	if p, _ := archive.Pieces(a.piecesDir()); len(p) != 0 {
+		t.Errorf("pieces left: %d", len(p))
+	}
+	if len(st.State.LogGaps) != 1 || st.State.LogGaps[0].Source != "Application" || !strings.Contains(st.State.LogGaps[0].Reason, "was missing") {
+		t.Fatalf("gaps: %+v", st.State.LogGaps)
+	}
+	b.Reset()
+	if err := a.Status(&b); !errors.As(err, &na) || strings.Contains(b.String(), "NOT ARCHIVED") || !strings.Contains(b.String(), "LOGS INCOMPLETE:  Application.evtx, exported for 2026-10-07T11:00:00Z") {
+		t.Errorf("status (%v):\n%s", err, b.String())
+	}
+	refs, _ := a.bundleLogs(now)
+	r = report.Build(nil, nil, report.Options{WindowEnd: now, Location: time.UTC, Archives: refs, ArchivesKept: true})
+	if w := strings.Join(r.Health.Warnings, "\n"); !strings.Contains(w, "the original logs are incomplete: Application.evtx") {
+		t.Errorf("report warnings: %s", w)
+	}
+}

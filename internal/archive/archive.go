@@ -60,6 +60,9 @@ type FileInfo struct {
 	Source string `json:"source"` // the log it came from
 	Bytes  int64  `json:"bytes"`
 	SHA256 string `json:"sha256"`
+	// Changed is set when the export no longer matched the hash taken
+	// when it was exported: it is packed as it was found (AR6).
+	Changed bool `json:"changed,omitempty"`
 }
 
 const kind = "blackbox-archive"
@@ -110,6 +113,8 @@ type Source struct {
 	Name   string // file name inside the archive
 	Source string // the log it came from
 	Path   string // temporary file holding it
+	// Changed: (part of) it was changed after it was exported (AR6).
+	Changed bool
 }
 
 // Create exports this computer's logs for [from, to) and writes the
@@ -200,7 +205,7 @@ func addFile(zw *zip.Writer, s Source) (FileInfo, error) {
 	if err != nil {
 		return FileInfo{}, err
 	}
-	return FileInfo{Name: s.Name, Source: s.Source, Bytes: n, SHA256: hex.EncodeToString(h.Sum(nil))}, nil
+	return FileInfo{Name: s.Name, Source: s.Source, Bytes: n, SHA256: hex.EncodeToString(h.Sum(nil)), Changed: s.Changed}, nil
 }
 
 // Verify opens an archive and checks every file against its recorded
@@ -378,6 +383,8 @@ type Bundled struct {
 	Gaps     []Gap
 	Logs     []LogCover
 	Notes    []string
+	// Changed are files changed after they were exported (AR6).
+	Changed []FileInfo
 }
 
 // Bundle combines one computer's daily archives into a single zip at dst,
@@ -406,6 +413,11 @@ func Bundle(dst string, list []Stored) (Bundled, error) {
 		b.Gaps = append(b.Gaps, info.Gaps...)
 		covers = append(covers, info.Logs)
 		b.Notes = append(b.Notes, info.Notes...)
+		for _, fi := range info.Files {
+			if fi.Changed {
+				b.Changed = append(b.Changed, fi)
+			}
+		}
 		if b.From.IsZero() || s.From.Before(b.From) {
 			b.From = s.From
 		}

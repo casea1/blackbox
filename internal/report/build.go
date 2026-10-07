@@ -79,6 +79,9 @@ type Options struct {
 	// OwnRuns are Blackbox's runs covering every event in the report, for
 	// telling its own activity from a person's (AR2c); nil: the runs.
 	OwnRuns []*store.Run
+	// PackFailing is set while this computer's exported original logs
+	// cannot be packed into an archive (AR5).
+	PackFailing *PackFailing
 
 	// CheckSets are the latest audit settings check of each computer.
 	CheckSets []CheckSet
@@ -126,6 +129,7 @@ type ArchiveRef struct {
 	Gaps     []archive.Gap      // parts a full log had overwritten before it was saved
 	Logs     []archive.LogCover // what each log actually covers (AR2)
 	Notes    []string           // what the archives say, e.g. after a clock change (AR1)
+	Changed  []archive.FileInfo // exports changed after they were made (AR6)
 }
 
 // Row is one event in a section table.
@@ -375,9 +379,25 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	return r
 }
 
+// PackFailing is packing the original logs failing on Host since Since.
+type PackFailing struct {
+	Host   string
+	Since  time.Time
+	Reason string
+}
+
+// Text is the failure in one sentence.
+func (f *PackFailing) Text(stamp func(time.Time) string) string {
+	return fmt.Sprintf("%s: the original logs have not been archived since %s: %s. The exports are kept and packing is tried again at every run; the logs missing from this report's archive are in a later one once it works.",
+		f.Host, stamp(f.Since), strings.TrimRight(f.Reason, ". "))
+}
+
 // checkArchives notes the computers in this report with no archive of
 // their original logs for the period.
 func (r *Report) checkArchives() {
+	if f := r.PackFailing; f != nil {
+		r.Health.Warnings = append(r.Health.Warnings, "ORIGINAL LOGS NOT ARCHIVED: "+f.Text(r.stamp))
+	}
 	if !r.ArchivesKept {
 		return
 	}
@@ -394,7 +414,19 @@ func (r *Report) checkArchives() {
 		r.Health.Warnings = append(r.Health.Warnings, "No archive of the original logs for this period from: "+strings.Join(r.NoArchive, ", ")+". See Audit health.")
 	}
 	for _, a := range r.Archives {
+		for _, f := range a.Changed {
+			r.Findings = append(r.Findings, Finding{Severity: event.SevHigh, Category: event.CatIntegrity, Host: a.Host, Time: a.To,
+				Title: "Saved original log changed before it was archived",
+				Detail: fmt.Sprintf("On %s, the export of the %s log (%s) no longer matched the SHA-256 taken when it was exported: it was changed while it waited to be archived. "+
+					"It is in %s as it was found; its archive.json says which file. Compare it with the events in this report, and find who could write to the Blackbox data folder.",
+					a.Host, f.Source, f.Name, a.Name)})
+		}
 		for _, g := range a.Gaps {
+			if g.Reason != "" {
+				r.Health.Warnings = append(r.Health.Warnings, fmt.Sprintf("%s: the original logs are incomplete: %s. Its events for that time are only in this report, not in %s.",
+					a.Host, g.Reason, a.Name))
+				continue
+			}
 			r.Health.Warnings = append(r.Health.Warnings, fmt.Sprintf("%s: the original logs are incomplete: %s had already overwritten its events from %s to %s when they were saved. Make the log larger (blackbox check gives the size), or collect more often.",
 				a.Host, g.Source, r.stamp(g.From), r.stamp(g.To)))
 		}

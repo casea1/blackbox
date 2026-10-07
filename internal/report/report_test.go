@@ -445,7 +445,22 @@ func TestSingleSystemHasNoSystemsPage(t *testing.T) {
 	if !strings.Contains(html.String(), `<span>System</span><b>`) {
 		t.Error("a standalone report names its system in the sidebar")
 	}
-	if !strings.Contains(html.String(), `data-single="WS-07"`) || !strings.Contains(html.String(), "Settings on WS-07") {
+	// This one has a gap (the Security log was cleared): Audit health
+	// opens on the gaps, not hidden behind the system's settings.
+	if strings.Contains(html.String(), `data-single=`) || !strings.Contains(html.String(), "Settings on WS-07") || !strings.Contains(html.String(), "Security log was cleared") {
+		t.Error("a report of one system with gaps opens Audit health on them")
+	}
+	// With no gaps it opens the system's settings directly.
+	sets := []CheckSet{NewCheckSet("WS-07", time.Now(), []check.Result{{Area: "a", Item: "b", Status: check.Pass}})}
+	r = Build(nil, []*store.Run{{Time: time.Now(), Host: "WS-07"}}, Options{CheckSets: sets, Location: time.UTC, WindowEnd: time.Now()})
+	html.Reset()
+	if err := r.WriteHTML(&html, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html.String(), `data-single="WS-07"`) {
+		for _, g := range r.healthPage().Gaps {
+			t.Logf("gap: %s", g.Title)
+		}
 		t.Error("a report of one system opens its audit settings directly")
 	}
 }
