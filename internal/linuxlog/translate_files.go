@@ -31,6 +31,7 @@ type watched struct {
 
 var watchedFiles = []watched{
 	{"/etc/blackbox/", "Blackbox's settings", "blackbox_config_changed", event.SevHigh, event.CatIntegrity},
+	{"/var/lib/blackbox/archive-pieces/", "the original logs waiting to be archived", "blackbox_files_changed", event.SevHigh, event.CatIntegrity},
 	{"/var/lib/blackbox/", "Blackbox's collected data", "blackbox_files_changed", event.SevHigh, event.CatIntegrity},
 	{"/usr/local/bin/blackbox", "the Blackbox program", "blackbox_files_changed", event.SevHigh, event.CatIntegrity},
 	{"/etc/systemd/system/blackbox.", "Blackbox's schedule", "blackbox_stopped", event.SevHigh, event.CatIntegrity},
@@ -57,7 +58,7 @@ func (t *Translator) watchedFile(r *Record, actor, sc string, paths []string, ex
 			if !strings.HasPrefix(p, w.prefix) {
 				continue
 			}
-			if w.prefix == "/var/lib/blackbox/" && (prog == "blackbox" || strings.HasPrefix(p, "/var/lib/blackbox/reports/")) {
+			if strings.HasPrefix(w.prefix, "/var/lib/blackbox/") && (prog == "blackbox" || strings.HasPrefix(p, "/var/lib/blackbox/reports/")) {
 				continue // Blackbox's own run, or someone opening a report
 			}
 			verb := "changed"

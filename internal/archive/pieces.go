@@ -141,6 +141,11 @@ func SavePiece(dir string, info Info, export ExportFunc, skip func(string) bool)
 		if st, err := os.Stat(s.Path); err == nil {
 			fi.Bytes = st.Size()
 		}
+		// Hashed now, so an edit before the logs are packed is caught
+		// (AR6).
+		if sum, err := FileSHA256(s.Path); err == nil {
+			fi.SHA256 = sum
+		}
 		// Exported into the piece folder already, under its own name.
 		if filepath.Dir(s.Path) != pdir || filepath.Base(s.Path) != s.Name {
 			if err := os.Rename(s.Path, filepath.Join(pdir, s.Name)); err != nil {
@@ -253,12 +258,32 @@ func Pack(path, host, osName string, pieces []Piece, created time.Time) (Info, e
 		}
 		for _, f := range p.Info.Files {
 			src := filepath.Join(p.Dir, f.Name)
+			// A file deleted or unreadable since it was exported is a gap
+			// in this archive, not a reason to stop archiving (AR5); one
+			// changed since is packed as found and marked (AR6).
+			sum, err := FileSHA256(src)
+			if err != nil {
+				why := "was missing"
+				if !errors.Is(err, os.ErrNotExist) {
+					why = "could not be read (" + err.Error() + ")"
+				}
+				g := Gap{Source: f.Source, From: p.Info.From, To: p.Info.To,
+					Reason: fmt.Sprintf("%s, exported for %s to %s, %s when the logs were packed", f.Name, p.Info.From.UTC().Format(time.RFC3339), p.Info.To.UTC().Format(time.RFC3339), why)}
+				info.Gaps = append(info.Gaps, g)
+				info.Notes = append(info.Notes, g.Reason+": its events for that time are not in this archive")
+				continue
+			}
+			changed := f.SHA256 != "" && sum != f.SHA256
+			if changed {
+				info.Notes = append(info.Notes, fmt.Sprintf("%s, exported for %s to %s, was changed after it was exported (its SHA-256 no longer matches the one taken then); it is in this archive as it was found",
+					f.Name, p.Info.From.UTC().Format(time.RFC3339), p.Info.To.UTC().Format(time.RFC3339)))
+			}
 			if strings.HasSuffix(strings.ToLower(f.Name), ".evtx") {
 				name := f.Name
 				if len(pieces) > 1 {
 					name = strings.TrimSuffix(f.Name, filepath.Ext(f.Name)) + "_" + p.Info.From.UTC().Format(stampFormat) + filepath.Ext(f.Name)
 				}
-				sources = append(sources, Source{Name: name, Source: f.Source, Path: src})
+				sources = append(sources, Source{Name: name, Source: f.Source, Path: src, Changed: changed})
 				continue
 			}
 			out := joined[f.Name]
@@ -270,6 +295,13 @@ func Pack(path, host, osName string, pieces []Piece, created time.Time) (Info, e
 				defer out.Close()
 				joined[f.Name] = out
 				sources = append(sources, Source{Name: f.Name, Source: f.Source, Path: out.Name()})
+			}
+			if changed {
+				for i := range sources {
+					if sources[i].Path == out.Name() {
+						sources[i].Changed = true
+					}
+				}
 			}
 			if err := appendFile(out, src); err != nil {
 				return Info{}, fmt.Errorf("%s: %w", src, err)

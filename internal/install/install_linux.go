@@ -60,6 +60,11 @@ func Install(opt Options) error {
 	if err := os.Chmod(data, 0o700); err != nil {
 		return err
 	}
+	// The exports folder exists from the start, so the audit rule that
+	// watches it (AR6) can be loaded before the first run.
+	if err := os.MkdirAll(filepath.Join(data, "archive-pieces"), 0o700); err != nil {
+		return err
+	}
 	logf("Data folder:         %s (root only)", data)
 	if opt.ReportDir != "" {
 		if err := PrepareReportDir(opt.ReportDir, logf); err != nil {

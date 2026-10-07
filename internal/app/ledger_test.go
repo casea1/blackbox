@@ -91,4 +91,83 @@ func TestReportLedger(t *testing.T) {
 	if !strings.Contains(b.String(), "accepted as missing") || !strings.Contains(b.String(), "CHANGED") || !strings.Contains(b.String(), "removed under retention_days") {
 		t.Errorf("blackbox reports:\n%s", b.String())
 	}
+
+	// LEDGER2: the accepted report stays on the index, muted, with who,
+	// when and why.
+	a.refreshIndex(st)
+	idx, _ = os.ReadFile(filepath.Join(reports, "index.html"))
+	if !strings.Contains(string(idx), "Accepted as moved by ") || !strings.Contains(string(idx), " on 8 Oct 2026: moved to the archive drive") ||
+		!strings.Contains(string(idx), `class="trail mute"`) {
+		t.Errorf("index does not keep the accepted report")
+	}
+}
+
+// LEDGER1: every run checks that each file of a scheduled report is there
+// at its size; once a day each is hashed against the manifest. Status
+// names the file.
+func TestReportLedgerFiles(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	reports := t.TempDir()
+	now := time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC)
+	d := filepath.Join(reports, "2026-10-07_CI")
+	os.MkdirAll(d, 0o755)
+	files := map[string]string{"report.html": "<html>", "logs-WS-07.zip": "zipdata", "summary.json": "{}"}
+	var manifest strings.Builder
+	for _, n := range []string{"logs-WS-07.zip", "report.html", "summary.json"} {
+		os.WriteFile(filepath.Join(d, n), []byte(files[n]), 0o644)
+		sum, _ := fileSHA256(filepath.Join(d, n))
+		manifest.WriteString(sum + "  " + n + "\n")
+	}
+	os.WriteFile(filepath.Join(d, "manifest.sha256"), []byte(manifest.String()), 0o644)
+	noteReport(st, d, now.AddDate(0, 0, -7), now, now)
+	if r := st.State.Reports[0]; r.Files["logs-WS-07.zip"] != 7 || len(r.Files) != 3 {
+		t.Fatalf("sizes: %+v", r.Files)
+	}
+	st.Save()
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportDir: reports, ReportEvery: "weekly", ReportAt: config.DefaultReportAt}, Version: "test", Loc: time.UTC,
+		Now: func() time.Time { return now }, Logf: func(string, ...any) {}}
+	status := func() string {
+		var b bytes.Buffer
+		a.Status(&b)
+		return b.String()
+	}
+
+	// Same size, different bytes: only the daily hash finds it.
+	os.WriteFile(filepath.Join(d, "logs-WS-07.zip"), []byte("zipDATA"), 0o644)
+	if p := reportProblems(st); len(p) != 0 {
+		t.Fatalf("found before the daily check: %+v", p)
+	}
+	a.verifyReports(st) // not a day yet
+	if p := reportProblems(st); len(p) != 0 {
+		t.Fatalf("hashed before a day: %+v", p)
+	}
+	now = now.Add(25 * time.Hour)
+	a.verifyReports(st)
+	st, _ = store.Open(st.Dir) // kept
+	if p := reportProblems(st); len(p) != 1 || p[0].What != "logs-WS-07.zip was changed (its SHA-256 no longer matches the manifest)" {
+		t.Fatalf("after the daily check: %+v", p)
+	}
+	if s := status(); !strings.Contains(s, "REPORT CHANGED:") || !strings.Contains(s, "logs-WS-07.zip was changed") {
+		t.Errorf("status:\n%s", s)
+	}
+	// Put back: the next daily check clears it.
+	os.WriteFile(filepath.Join(d, "logs-WS-07.zip"), []byte("zipdata"), 0o644)
+	now = now.Add(25 * time.Hour)
+	a.verifyReports(st)
+	if p := reportProblems(st); len(p) != 0 {
+		t.Fatalf("restored: %+v", p)
+	}
+
+	// Deleted, or a different size: found at once.
+	os.Remove(filepath.Join(d, "logs-WS-07.zip"))
+	if p := reportProblems(st); len(p) != 1 || p[0].Problem != "changed" || p[0].What != "logs-WS-07.zip is missing" {
+		t.Fatalf("deleted: %+v", p)
+	}
+	if s := status(); !strings.Contains(s, "logs-WS-07.zip is missing") {
+		t.Errorf("status:\n%s", s)
+	}
+	os.WriteFile(filepath.Join(d, "logs-WS-07.zip"), []byte("zip"), 0o644)
+	if p := reportProblems(st); len(p) != 1 || p[0].What != "logs-WS-07.zip was changed (its size differs)" {
+		t.Fatalf("resized: %+v", p)
+	}
 }
