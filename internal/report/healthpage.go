@@ -1,14 +1,14 @@
 package report
 
 import (
-	"github.com/casea1/blackbox/internal/winevt"
-
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/casea1/blackbox/internal/check"
+	"github.com/casea1/blackbox/internal/rollover"
+	"github.com/casea1/blackbox/internal/winevt"
 )
 
 // The Audit health page (designs A1 and A3): every system against every
@@ -203,9 +203,25 @@ func (r *Report) healthPage() *HealthPage {
 		blocked[strings.ToLower(b.Host)] = append(blocked[strings.ToLower(b.Host)], b)
 	}
 	holds := map[string]time.Duration{}
+	// Losses from the audit record (Security log, Linux audit log) are
+	// High; other logs' (the PowerShell log) are shown on their own, lower
+	// (LOG1).
+	otherLost := map[string]uint64{}
+	gapsOn := map[string][]GapItem{}
+	for _, g := range r.Health.Gaps {
+		if g.Lost == 0 {
+			continue
+		}
+		h := strings.ToLower(g.Host)
+		if rollover.Critical(g.Channel) {
+			lost[h] += g.Lost
+		} else {
+			otherLost[h] += g.Lost
+		}
+		gapsOn[h] = append(gapsOn[h], g)
+	}
 	for _, c := range r.Health.Channels {
 		h := strings.ToLower(c.Host)
-		lost[h] += c.Lost
 		if strings.EqualFold(c.Channel, "Security") || strings.Contains(strings.ToLower(c.Channel), "audit") {
 			if c.History > 0 && (holds[h] == 0 || c.History < holds[h]) {
 				holds[h] = c.History
@@ -214,7 +230,7 @@ func (r *Report) healthPage() *HealthPage {
 	}
 
 	matching, gaps, warns, clearedN, small := 0, 0, 0, 0, 0
-	var totalLost uint64
+	var totalLost, totalOther uint64
 	var clearedWho, smallWho []string
 	gapCards := map[string]*GapCard{}
 	var gapOrder []string
@@ -289,7 +305,9 @@ func (r *Report) healthPage() *HealthPage {
 				case len(cleared[h]) > 0:
 					c = Cell{Mark: "✕", Class: "bad", Title: "Log cleared"}
 				case lost[h] > 0:
-					c = Cell{Mark: "✕", Class: "bad", Title: plural(int(lost[h]), "event") + " lost to log rollover"}
+					c = Cell{Mark: "✕", Class: "bad", Title: lostTitle(gapsOn[h], true)}
+				case otherLost[h] > 0:
+					c = Cell{Mark: "!", Class: "warn", Title: lostTitle(gapsOn[h], false)}
 				default:
 					c = Cell{Mark: "✓", Class: "ok"}
 				}
@@ -364,8 +382,16 @@ func (r *Report) healthPage() *HealthPage {
 		if lost[h] > 0 {
 			totalLost += lost[h]
 			addGap("lost", GapCard{Title: "Events lost to log rollover", Level: "bad",
-				Explain: "The log filled up and overwrote events before Blackbox read them. A larger log, or collecting every 15 minutes (blackbox config set collect_every 15m on that computer), prevents this."}, s.Name)
+				Explain: "The audit log filled up and overwrote events before Blackbox read them. " + rollover.NotInExports}, s.Name)
+			gapCards["lost"].Explain += " " + lostAdvice(gapsOn[h], true)
 		}
+		if otherLost[h] > 0 {
+			totalOther += otherLost[h]
+			addGap("otherlost", GapCard{Title: "Other logs overwrote events", Level: "warn",
+				Explain: "Not the audit record: a log Blackbox also reads (such as the PowerShell log, where script block logging writes large events) filled up and overwrote events before Blackbox read them. " + rollover.NotInExports}, s.Name)
+			gapCards["otherlost"].Explain += " " + lostAdvice(gapsOn[h], false)
+		}
+
 		if s.Checks != nil {
 			for _, res := range s.Checks.Results {
 				if res.Status != check.Fail && res.Status != check.Warn {
@@ -382,6 +408,9 @@ func (r *Report) healthPage() *HealthPage {
 				explain := ""
 				if res.Have != "" || res.Want != "" {
 					explain = fmt.Sprintf("Set to %s; the STIG requires %s.", orDash(res.Have), orDash(res.Want))
+					if res.STIG == "" && res.Area == "Event log size" {
+						explain = fmt.Sprintf("Set to %s; Blackbox recommends %s.", orDash(res.Have), orDash(res.Want))
+					}
 				}
 				if res.Affects != "" {
 					explain = strings.TrimSpace(explain + " Without it the report is missing: " + res.Affects + ".")
@@ -424,8 +453,11 @@ func (r *Report) healthPage() *HealthPage {
 			}
 		}
 		intact := SettingLine{Check: "Logs intact", STIG: "—", Want: "Not cleared, nothing lost", Have: "Intact", Result: "Matches", Class: "ok"}
-		if c := row.Cells[len(row.Cells)-1]; c.Class == "bad" {
+		switch c := row.Cells[len(row.Cells)-1]; c.Class {
+		case "bad":
 			intact.Have, intact.Result, intact.Class = c.Title, "Gap", "bad"
+		case "warn":
+			intact.Have, intact.Result, intact.Class = c.Title, "Warning", "warn"
 		}
 		rep := SettingLine{Check: "Reporting", STIG: "—", Want: "At each scheduled collection", Result: "Matches", Class: "ok",
 			Have: fmt.Sprintf("%s, last %s", plural(len(s.runTimes), "run"), stampOrDash(s.LastRun, r.Location))}
@@ -509,7 +541,7 @@ func (r *Report) healthPage() *HealthPage {
 	}
 	// Cleared logs, silence and lost events first, then settings; gaps
 	// before warnings.
-	prio := map[string]int{"Security log was cleared": 0, "No data received": 1, "Collection was blocked": 2, "Events lost to log rollover": 2}
+	prio := map[string]int{"Security log was cleared": 0, "No data received": 1, "Collection was blocked": 2, "Events lost to log rollover": 2, "Other logs overwrote events": 3}
 	p := func(g GapCard) int {
 		n, ok := prio[g.Title]
 		if !ok {
@@ -536,7 +568,7 @@ func (r *Report) healthPage() *HealthPage {
 		{Icon: "shield-check", Label: "Systems matching STIG", Scroll: "h-matrix", Value: fmt.Sprintf("%d / %d", matching, total),
 			Note: plural(gaps, "gap") + " · " + plural(warns, "warning"), Level: lvl(matching < total, "bad")},
 		{Icon: "eraser", Label: "Logs cleared", Href: searchLink("page", "integrity", "text", "cleared"), Value: commas(clearedN), Note: short(set(clearedWho), 2), Level: lvl(clearedN > 0, "bad")},
-		{Icon: "circle-check", Label: "Events lost to rollover", Scroll: "h-gaps", Value: commas(int(totalLost)), Note: plural(r.Health.Runs, "run"), Level: lvl(totalLost > 0, "bad")},
+		{Icon: "circle-check", Label: "Events lost to rollover", Scroll: "h-gaps", Value: commas(int(totalLost)), Note: lostNote(totalOther, r.Health.Runs), Level: lvl(totalLost > 0, "bad")},
 		{Icon: "hard-drive", Label: "Log size and space settings", Scroll: "h-gaps", Value: commas(small), Note: short(set(smallWho), 1), Level: lvl(small > 0, "warn")},
 	}
 	hp.fold()
@@ -665,4 +697,63 @@ func (hp *HealthPage) fold() {
 	if len(hp.Other) > 0 {
 		hp.Jump = append(hp.Jump, JumpLink{Label: "Other Security-log events", Note: commas(len(hp.Other)) + " kinds", Target: "h-other"})
 	}
+}
+
+// lostTitle names the logs that lost events on a system, with how many:
+// "PowerShell log: 447 events overwritten".
+func lostTitle(gaps []GapItem, critical bool) string {
+	n := map[string]uint64{}
+	var order []string
+	for _, g := range gaps {
+		if rollover.Critical(g.Channel) != critical {
+			continue
+		}
+		name := rollover.Name(g.Channel)
+		if _, ok := n[name]; !ok {
+			order = append(order, name)
+		}
+		n[name] += g.Lost
+	}
+	var parts []string
+	for _, name := range order {
+		if n[name] == 0 {
+			parts = append(parts, name+": events overwritten (how many is not known)")
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s: %s overwritten", name, plural(int(n[name]), "event")))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// lostAdvice is, for each log on a system that lost events, how many and
+// what to do (the latest gap's advice: the log's size and rate then).
+func lostAdvice(gaps []GapItem, critical bool) string {
+	last := map[string]GapItem{}
+	total := map[string]uint64{}
+	var order []string
+	for _, g := range gaps {
+		if rollover.Critical(g.Channel) != critical {
+			continue
+		}
+		if _, ok := last[g.Channel]; !ok {
+			order = append(order, g.Channel)
+		}
+		total[g.Channel] += g.Lost
+		if prev := last[g.Channel]; prev.Held == 0 || (g.Held > 0 && g.Held < prev.Held) {
+			last[g.Channel] = g // the fastest turnover says most
+		}
+	}
+	var parts []string
+	for _, ch := range order {
+		g := last[ch]
+		parts = append(parts, fmt.Sprintf("%s on %s: %s overwritten. %s", rollover.Name(ch), g.Host, plural(int(total[ch]), "event"), g.Loss().Advice(false)))
+	}
+	return strings.Join(parts, " ")
+}
+
+func lostNote(other uint64, runs int) string {
+	if other > 0 {
+		return commas(int(other)) + " from other logs"
+	}
+	return plural(runs, "run")
 }

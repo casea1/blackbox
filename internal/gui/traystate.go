@@ -12,6 +12,7 @@ import (
 	"github.com/casea1/blackbox/internal/app"
 	"github.com/casea1/blackbox/internal/brand"
 	"github.com/casea1/blackbox/internal/install"
+	"github.com/casea1/blackbox/internal/rollover"
 )
 
 // trayState is the status icon's colour (SETUP-SPEC.md, "What it shows").
@@ -141,7 +142,7 @@ func classify(h app.Health, err error, now time.Time) trayView {
 		v.Items = append(v.Items, fmt.Sprintf("%s has not sent since %s", host, when(h.Quiet[host], now)))
 	}
 	for _, l := range h.Lost {
-		v.Items = append(v.Items, fmt.Sprintf("%s log on %s: %s events lost to rollover since %s", l.Channel, l.Host, commaNum(l.Count), when(l.Since, now)))
+		v.Items = append(v.Items, fmt.Sprintf("%s on %s: %s events overwritten since %s", rollover.Name(l.Channel), l.Host, commaNum(l.Count), when(l.Since, now)))
 	}
 	if !h.WaitingSince.IsZero() && now.Sub(h.WaitingSince) > app.SendStaleAfter {
 		v.Items = append(v.Items, "Data has waited to be sent to the collector since "+when(h.WaitingSince, now))
@@ -272,8 +273,8 @@ func notices(m trayMemory, h app.Health, v trayView, version string, now time.Ti
 		period := h.PeriodStart.String()
 		if m.Lost != period && !first {
 			l := h.Lost[0]
-			text := fmt.Sprintf("Events are being lost: the %s log on %s overwrote %s events before they could be collected. Collect every 15 minutes (blackbox config set collect_every 15m on %s), or make the log larger.",
-				l.Channel, l.Host, commaNum(l.Count), l.Host)
+			text := fmt.Sprintf("Events are being lost: the %s on %s overwrote %s events before they could be collected: %s.",
+				rollover.Name(l.Channel), l.Host, commaNum(l.Count), l.Short())
 			if len(h.Lost) > 1 {
 				text += fmt.Sprintf(" (%s in all.)", plural(len(h.Lost), "log"))
 			}

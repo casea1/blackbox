@@ -7,6 +7,7 @@ import (
 	"github.com/casea1/blackbox/internal/archive"
 	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/event"
+	"github.com/casea1/blackbox/internal/rollover"
 	"github.com/casea1/blackbox/internal/scap"
 	"github.com/casea1/blackbox/internal/store"
 	"regexp"
@@ -210,6 +211,16 @@ type GapItem struct {
 	From, To      time.Time
 	Reset         bool
 	Note          string // when the number lost is not known
+	// Held is how far back the full log reached when the loss was found,
+	// MaxSize its size, and Every how often the system collects (LOG1).
+	Held    time.Duration
+	MaxSize uint64
+	Every   time.Duration
+}
+
+// Loss is the gap as a rollover.Loss, for its name and advice.
+func (g GapItem) Loss() rollover.Loss {
+	return rollover.Loss{Host: g.Host, Channel: g.Channel, Lost: g.Lost, Held: g.Held, MaxSize: g.MaxSize, Every: g.Every}
 }
 
 // Health describes whether the report is complete.

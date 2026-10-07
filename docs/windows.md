@@ -291,6 +291,32 @@ What is checked:
     lost).
   - Windows Server 2025 (WN25-CC-000280): at least 196,608 KB.
 - **System and Application log sizes**: at least 32,768 KB.
+- **The other logs Blackbox reads** (not STIG rules; a shortfall is a
+  warning, LOG1):
+  - the **PowerShell log** (Microsoft-Windows-PowerShell/Operational):
+    at least 1 GB, or enough for a week at its rate (up to 2 GB). Windows
+    gives it 15 MB. With script block logging (WN11-CC-000326), and
+    Windows' own logging of "suspicious" script blocks, each event is
+    often 30 KB or more, so 15 MB holds a few hundred: any administrator
+    session or management script (SCCM, Intune, Ansible, WinRM, SSH) can
+    turn it over in minutes, faster than any collection interval. On the
+    Windows 11 test VM it held 9 minutes and lost 447 events between two
+    collections 15 minutes apart; the Server 2025 VM's was full at 556
+    records;
+  - the others (Defender, Firewall, Remote Desktop, Print, USB) only when
+    they hold less than a week.
+
+  Group Policy has no setting for these logs under Event Log Service.
+  `blackbox check` gives the command, for example (as administrator):
+
+  ```
+  wevtutil sl "Microsoft-Windows-PowerShell/Operational" /ms:1073741824
+  ```
+
+  To set it on many computers, use a Group Policy Preferences registry
+  item: `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WINEVT\Channels\Microsoft-Windows-PowerShell/Operational`,
+  value `MaxSize` (REG_DWORD, bytes), which is what `wevtutil sl /ms:`
+  sets.
 - **Command line in process creation events.** Without it, elevated
   programs are listed by name only.
 - **Audit: Force audit policy subcategory settings.** Without it, the

@@ -2,6 +2,7 @@ package report
 
 import (
 	"fmt"
+	"github.com/casea1/blackbox/internal/rollover"
 	"html/template"
 	"slices"
 	"sort"
@@ -409,21 +410,60 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string]int) []CheckL
 		lines = append(lines, CheckLine{Level: "ok", Icon: "shield-check", Title: "Audit settings match STIG", What: "All systems checked", Count: frac(0)})
 	}
 
-	lost := uint64(0)
-	var lostOn []string
+	// Events lost from the audit record are a failing line; from other
+	// logs (the PowerShell log), a warning of their own, named (LOG1).
+	lost, other := uint64(0), uint64(0)
+	var lostOn, otherOn []string
+	otherBy := map[string]uint64{}
+	var otherNames []string
 	for _, g := range r.Health.Gaps {
+		if g.Lost == 0 {
+			continue
+		}
+		if !rollover.Critical(g.Channel) {
+			other += g.Lost
+			if !slices.Contains(otherOn, g.Host) {
+				otherOn = append(otherOn, g.Host)
+			}
+			k := g.Host + "\x00" + rollover.Name(g.Channel)
+			if _, ok := otherBy[k]; !ok {
+				otherNames = append(otherNames, k)
+			}
+			otherBy[k] += g.Lost
+			continue
+		}
 		lost += g.Lost
-		if g.Lost > 0 && !slices.Contains(lostOn, g.Host) {
+		if !slices.Contains(lostOn, g.Host) {
 			lostOn = append(lostOn, g.Host)
 		}
 	}
 	if lost > 0 {
 		// A failing line says what went wrong, not what was checked: never
 		// "No events lost" above "95,229 events were overwritten".
+		var names []string
+		seen := map[string]bool{}
+		for _, g := range r.Health.Gaps {
+			if g.Lost > 0 && rollover.Critical(g.Channel) && !seen[g.Channel] {
+				seen[g.Channel] = true
+				names = append(names, rollover.Name(g.Channel))
+			}
+		}
 		lines = append(lines, CheckLine{Level: "bad", Icon: "circle-check", Title: "Events lost to log rollover", Who: strings.Join(lostOn, ", "),
-			What: plural(int(lost), "event") + " overwritten before they were collected", Count: frac(len(lostOn))})
+			What: fmt.Sprintf("%s: %s overwritten before they were collected", strings.Join(names, ", "), plural(int(lost), "event")), Count: frac(len(lostOn))})
 	} else {
-		lines = append(lines, CheckLine{Level: "ok", Icon: "circle-check", Title: "No events lost to log rollover", What: fmt.Sprintf("%s collection runs", commas(r.Health.Runs)), Count: frac(0)})
+		lines = append(lines, CheckLine{Level: "ok", Icon: "circle-check", Title: "No events lost from the audit logs", What: fmt.Sprintf("%s collection runs", commas(r.Health.Runs)), Count: frac(0)})
+	}
+	if other > 0 {
+		var parts []string
+		for _, k := range otherNames {
+			host, name, _ := strings.Cut(k, "\x00")
+			if len(otherOn) > 1 {
+				name += " on " + host // the line names the systems once
+			}
+			parts = append(parts, fmt.Sprintf("%s: %s overwritten", name, plural(int(otherBy[k]), "event")))
+		}
+		lines = append(lines, CheckLine{Level: "warn", Icon: "circle-check", Title: "Other logs overwrote events", Who: strings.Join(otherOn, ", "),
+			What: strings.Join(parts, "; ") + " · see Audit health", Href: "#health", Count: frac(len(otherOn))})
 	}
 
 	if l, ok := r.avCheckLine(r.avRows()); ok {

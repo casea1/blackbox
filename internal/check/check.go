@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/casea1/blackbox/internal/rollover"
 	"github.com/casea1/blackbox/internal/winevt"
 )
 
@@ -242,6 +243,7 @@ func EvaluateLogs(b Baseline, get func(string) (winevt.LogSettings, error), hist
 		}
 		out = append(out, r)
 	}
+	out = append(out, readLogSizes(get, history)...)
 	for _, l := range enabledLogs {
 		r := Result{Area: l.area, Item: l.name, Want: "Enabled", Affects: l.affects}
 		s, err := get(l.name)
@@ -332,4 +334,72 @@ func logSizeGPO(log string, kb uint64) string {
 func enableLogFix(log string) string {
 	return fmt.Sprintf("No Group Policy setting turns this log on. In Event Viewer: Applications and Services Logs > %s > right-click > Enable Log (or once, as administrator: wevtutil sl \"%s\" /e:true)",
 		strings.ReplaceAll(log, "/", " > "), log)
+}
+
+// readLogs are the other logs Blackbox reads (the STIG sizes only Security,
+// System and Application). Windows gives most of them a small size; the
+// PowerShell log's 15 MB holds only a few hundred script block events of
+// 30 KB or more, and any administrator session or management script can
+// turn it over in minutes (LOG1).
+var readLogs = []string{
+	"Microsoft-Windows-PowerShell/Operational",
+	"Microsoft-Windows-Windows Defender/Operational",
+	"Microsoft-Windows-Windows Firewall With Advanced Security/Firewall",
+	"Microsoft-Windows-TerminalServices-LocalSessionManager/Operational",
+	"Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational",
+	"Microsoft-Windows-PrintService/Operational",
+	"Microsoft-Windows-Partition/Diagnostic",
+	"Microsoft-Windows-Kernel-PnP/Configuration",
+	"Microsoft-Windows-DriverFrameworks-UserMode/Operational",
+}
+
+// maxRecommend caps a size worked out from a burst of events (a week at
+// the rate of a burst is far more than needed), within what a REG_DWORD
+// MaxSize can hold.
+const maxRecommend = 2 << 30
+
+// readLogSizes checks the other logs Blackbox reads are large enough not
+// to overwrite events between collections: the PowerShell log always (at
+// least 1 GB, more if a week at its rate needs it), the others only when
+// they hold less than a week. These are Blackbox's advice, not STIG
+// settings, so a shortfall is a warning.
+func readLogSizes(get func(string) (winevt.LogSettings, error), history func(string) (winevt.LogHistory, error)) []Result {
+	var out []Result
+	for _, name := range readLogs {
+		s, err := get(name)
+		if err != nil || !s.Enabled {
+			continue // a log that is off is reported with the logs below
+		}
+		r := Result{Area: "Event log size", Item: rollover.Name(name), Have: fmt.Sprintf("%s, %s", mb(s.MaxSize), s.OverwriteMode()),
+			Affects: "Events in this log may be overwritten before they are collected"}
+		var week uint64
+		h, herr := history(name)
+		held, measured := HeldFor(h, s.MaxSize)
+		if herr == nil && measured {
+			r.Have += fmt.Sprintf("; holds about %s", days(held))
+			if held < weekNeeded {
+				week = uint64(float64(s.MaxSize) * float64(weekNeeded) / float64(held))
+			}
+		}
+		need := week
+		if name == "Microsoft-Windows-PowerShell/Operational" {
+			need = max(need, rollover.MinPowerShell)
+			r.Want = "at least 1 GB, or enough for 7 days of events (Blackbox's advice: not a STIG setting)"
+		} else {
+			if week == 0 {
+				continue // holds a week, or can't tell yet: nothing to say
+			}
+			r.Want = "enough for 7 days of events (Blackbox's advice: not a STIG setting)"
+		}
+		need = min(need, maxRecommend)
+		need = (need + 1<<20 - 1) / (1 << 20) * (1 << 20)
+		if s.MaxSize >= need {
+			r.Status, r.Affects = Pass, ""
+		} else {
+			r.Status = Warn
+			r.Fix = fmt.Sprintf("make it %s: %s", rollover.Size(need), rollover.Fix(name, need))
+		}
+		out = append(out, r)
+	}
+	return out
 }

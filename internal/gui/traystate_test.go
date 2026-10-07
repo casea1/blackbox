@@ -8,6 +8,7 @@ import (
 
 	"github.com/casea1/blackbox/internal/app"
 	"github.com/casea1/blackbox/internal/report"
+	"github.com/casea1/blackbox/internal/rollover"
 	"github.com/casea1/blackbox/internal/store"
 )
 
@@ -127,9 +128,9 @@ func TestTrayImage(t *testing.T) {
 func TestLostEvents(t *testing.T) {
 	h := healthy()
 	h.PeriodStart = trayNow.AddDate(0, 0, -2)
-	h.Lost = []app.LostLog{{Host: "DSK1", Channel: "Security", Count: 17925, Since: trayNow.Add(-3 * time.Hour)}}
+	h.Lost = []app.LostLog{{Loss: rollover.Loss{Host: "DSK1", Channel: "Security", Every: time.Hour}, Count: 17925, Since: trayNow.Add(-3 * time.Hour)}}
 	v := classify(h, nil, trayNow)
-	if v.State != stateLook || len(v.Items) != 1 || !strings.HasPrefix(v.Items[0], "Security log on DSK1: 17,925 events lost to rollover since") {
+	if v.State != stateLook || len(v.Items) != 1 || !strings.HasPrefix(v.Items[0], "Security log on DSK1: 17,925 events overwritten since") {
 		t.Errorf("lost events: %+v", v)
 	}
 	_, m := notices(trayMemory{}, healthy(), classify(healthy(), nil, trayNow), "1.0", trayNow)
@@ -147,7 +148,7 @@ func TestLostEvents(t *testing.T) {
 func TestNoticeQueue(t *testing.T) {
 	h := healthy()
 	h.AuditGaps["WS-02"] = 1
-	h.Lost = []app.LostLog{{Host: "DSK1", Channel: "Security", Count: 5}}
+	h.Lost = []app.LostLog{{Loss: rollover.Loss{Host: "DSK1", Channel: "Security"}, Count: 5}}
 	n, _ := notices(trayMemory{Seen: true, Version: "0.9.3"}, h, classify(h, nil, trayNow), "0.10.1", trayNow)
 	if len(n) != 3 || n[0].Text != "Blackbox updated to 0.10.1." {
 		t.Fatalf("notices: %+v", n)

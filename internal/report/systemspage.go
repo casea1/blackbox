@@ -2,6 +2,7 @@ package report
 
 import (
 	"fmt"
+	"github.com/casea1/blackbox/internal/rollover"
 	"html/template"
 	"sort"
 	"strings"
@@ -504,14 +505,21 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 		lines = append(lines, l)
 	}
 
-	if len(s.gaps) > 0 {
-		var lost uint64
-		for _, g := range s.gaps {
-			lost += g.Lost
+	// The audit record's losses fail; other logs' (the PowerShell log)
+	// are a warning of their own, named (LOG1).
+	var critical []GapItem
+	if other := lostTitle(s.gaps, false); other != "" {
+		lines = append(lines, CheckLine{Level: "warn", Icon: "history", Title: "Other logs overwrote events", What: other})
+	}
+	for _, g := range s.gaps {
+		if rollover.Critical(g.Channel) {
+			critical = append(critical, g)
 		}
+	}
+	if len(critical) > 0 {
 		what := "Some events were overwritten before they were collected"
-		if lost > 0 {
-			what = fmt.Sprintf("%s overwritten before they were collected", plural(int(lost), "event"))
+		if t := lostTitle(critical, true); t != "" {
+			what = t + " before they were collected"
 		}
 		lines = append(lines, CheckLine{Level: "bad", Icon: "history", Title: "Events lost to log rollover", What: what})
 	} else {

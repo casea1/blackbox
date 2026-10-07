@@ -459,7 +459,18 @@ inventory reaches the collector with its settings check.
 The Overview flags a report as incomplete when:
 
 - events were overwritten before collection, for example because the
-  system was off longer than the log could hold
+  system was off longer than the log could hold. The log is named ("PowerShell
+  log on WIN11-TEST: 447 events overwritten"). Losses from the audit
+  record (the Security log, the Linux audit log) are **Events lost to log
+  rollover** (red); other logs' losses, such as the PowerShell log's, are
+  **Other logs overwrote events** (amber), on their own line. The advice
+  depends on the rate: a log that turned over in less time than there is
+  between collections is too small for its volume, and collecting more
+  often would not help, so the size it needs is given; collecting every 15
+  minutes is suggested only to a system that collects less often. The
+  original logs exported at each collection hold what each log had at that
+  moment: events written and overwritten between two collections are in no
+  export
 - a log was cleared
 - auditing was switched off
 - a Linux log was rotated away before it was read, or the kernel dropped
