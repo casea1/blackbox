@@ -350,7 +350,7 @@ func (r *Report) healthPage() *HealthPage {
 			warns += s.Checks.Warn
 		}
 
-		// Gaps, as cards.
+		// Gaps, as rows of the Gaps table.
 		if n := len(cleared[h]); n > 0 {
 			clearedN++
 			clearedWho = append(clearedWho, s.Name)
