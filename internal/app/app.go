@@ -1083,7 +1083,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		Context: context, Baseline: st.State.Baseline, BaselineHosts: st.State.BaselineHosts,
 		WorkingHours: a.Cfg.WorkingHours,
 		Archives:     logs, ArchivesKept: advance, Waiting: waiting, PackFailing: packFailing(st),
-		Systems: systemsFor(st, prevEnd), Collector: a.Cfg.Inbox != "",
+		Systems: systemsFor(st, prevEnd, a.Cfg.Inbox != ""), Collector: a.Cfg.Inbox != "",
 		LANWarnings:   append(lanWarnings(st, prevGen, generated, a.loc()), a.inboxWarnings()...),
 		RetentionDays: a.Cfg.RetentionDays,
 	})
@@ -1168,7 +1168,11 @@ func contextEvents(all, inReport []*event.Event, start time.Time) []*event.Event
 
 // systemsFor lists the computers to show in a report whose period starts
 // at start: all known, except those retired before it.
-func systemsFor(st *store.Store, start time.Time) []report.SystemInfo {
+//
+// A computer that no longer receives (a collector made standalone or a
+// sender) leaves out the computers that sent to it and sent nothing this
+// period (ROLE1): they are not its systems any more.
+func systemsFor(st *store.Store, start time.Time, collector bool) []report.SystemInfo {
 	// A name another computer says it had before is that computer, not
 	// one of its own (W1b).
 	former := map[string]bool{}
@@ -1182,6 +1186,9 @@ func systemsFor(st *store.Store, start time.Time) []report.SystemInfo {
 	var out []report.SystemInfo
 	for k, s := range st.State.Systems {
 		if !s.Removed.IsZero() && !s.Removed.After(start) || former[k] {
+			continue
+		}
+		if !collector && k != store.SystemKey(collect.LocalHost()) && !s.LastReceived.After(start) {
 			continue
 		}
 		out = append(out, report.SystemInfo{Name: s.Name, OS: s.OS, Version: s.Version, Via: s.Via,

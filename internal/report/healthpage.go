@@ -113,6 +113,9 @@ type GapCard struct {
 	Title, STIG, Explain, Fix string
 	Systems                   []string
 	Level                     string
+	// STIGs, when the systems are under different STIGs, is each one's
+	// IDs with its OS, one per line (STIG1); STIG then joins them.
+	STIGs []string
 }
 
 // HealthPage is the Audit health page.
@@ -234,6 +237,21 @@ func (r *Report) healthPage() *HealthPage {
 	var clearedWho, smallWho []string
 	gapCards := map[string]*GapCard{}
 	var gapOrder []string
+	// Each system's own STIG IDs for a gap (STIG1): Windows 11 and Server
+	// 2025 share "Credential Validation" under different IDs.
+	type stigIDs struct{ label, ids string }
+	gapSTIGs := map[string][]stigIDs{}
+	addSTIG := func(key, label, ids string) {
+		if ids == "" {
+			return
+		}
+		for _, s := range gapSTIGs[key] {
+			if s.ids == ids {
+				return
+			}
+		}
+		gapSTIGs[key] = append(gapSTIGs[key], stigIDs{label, ids})
+	}
 	addGap := func(key string, g GapCard, host string) {
 		c := gapCards[key]
 		if c == nil {
@@ -368,7 +386,7 @@ func (r *Report) healthPage() *HealthPage {
 		}
 		if s.Status == "silent" {
 			addGap("silent", GapCard{Title: "No data received", Level: "bad",
-				Explain: "No collection arrived in this period. Check the system is on and can reach the collector."}, s.Name)
+				Explain: "No collection arrived in this period. Check the system is on and can reach the collector. If it no longer sends here (it was made standalone, or retired), remove it from the report with: blackbox systems remove <name>."}, s.Name)
 		}
 		if bs := blocked[h]; len(bs) > 0 {
 			addGap("blocked", GapCard{Title: "Collection was blocked", Level: "bad",
@@ -416,6 +434,7 @@ func (r *Report) healthPage() *HealthPage {
 					explain = strings.TrimSpace(explain + " Without it the report is missing: " + res.Affects + ".")
 				}
 				addGap("check|"+res.Item, GapCard{Title: res.Item, STIG: res.STIG, Explain: explain, Fix: res.Fix, Level: lv}, s.Name)
+				addSTIG("check|"+res.Item, osLabel(s), res.STIG)
 			}
 		}
 
@@ -537,6 +556,13 @@ func (r *Report) healthPage() *HealthPage {
 			Explain: "Not in this report: " + t + ". Failed logons against these accounts, changes to them, log clears and audit changes, and anything of Medium severity or above are always included."})
 	}
 	for _, k := range gapOrder {
+		if ids := gapSTIGs[k]; len(ids) > 1 {
+			var parts []string
+			for _, s := range ids {
+				parts = append(parts, s.ids+" ("+s.label+")")
+			}
+			gapCards[k].STIG, gapCards[k].STIGs = strings.Join(parts, " · "), parts
+		}
 		hp.Gaps = append(hp.Gaps, *gapCards[k])
 	}
 	// The original logs: not being archived, or parts lost or changed
