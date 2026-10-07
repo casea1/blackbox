@@ -50,7 +50,7 @@ type pageSpec struct {
 	cols      []Column
 }
 
-const colKind2, colKind3, colKind4 = colLight, colWarn, "#0A2A7A"
+const colKind2, colKind3, colKind4, colKind5 = colLight, colWarn, "#0A2A7A", "#8A94A8"
 
 func detail(e *event.Event, label string) string {
 	for _, d := range e.Details {
@@ -164,15 +164,29 @@ var pageSpecs = map[string]pageSpec{
 		extra: func(e *event.Event) string { return e.Target },
 	},
 	"integrity": {
-		kinds: []pageKind{{"Log cleared", colBad}, {"Audit policy changed", colKind3}, {"Logging stopped", colKind4}},
+		// Each kind its own label (UX2): "Logging stopped" is only the
+		// event log or audit service stopping, the log full or dropping
+		// records.
+		kinds: []pageKind{{"Log cleared", colBad}, {"Audit policy changed", colKind3}, {"Logging stopped", colKind4}, {"Blackbox", colAccent},
+			{"Firewall", colKind2}, {"Clock", colKind5}, {"Startup and shutdown", colKind5}, {"Other", colKind5}},
 		kindOf: func(e *event.Event) string {
 			switch {
 			case has(e.Action, "log_cleared", "log_tampered", "audit_tamper"):
 				return "Log cleared"
-			case has(e.Action, "audit_policy", "audit_disabled", "audit_enabled", "audit_locked", "audit_rules", "blackbox_config", "object_audit"):
+			case has(e.Action, "audit_policy", "audit_disabled", "audit_enabled", "audit_locked", "audit_rules", "object_audit"):
 				return "Audit policy changed"
+			case has(e.Action, "audit_stopped", "audit_events_dropped", "eventlog_shutdown", "eventlog_error", "log_full"):
+				return "Logging stopped"
+			case has(e.Action, "blackbox_"):
+				return "Blackbox"
+			case has(e.Action, "firewall_"):
+				return "Firewall"
+			case e.Action == "time_changed":
+				return "Clock"
+			case has(e.Action, "system_start", "system_stop", "shutdown_initiated", "unexpected_shutdown", "audit_started"):
+				return "Startup and shutdown"
 			}
-			return "Logging stopped"
+			return "Other"
 		},
 		kindLabel: "Kind", topTitle: "Top systems", top: func(e *event.Event) string { return e.Host }, unit: "audit integrity events",
 		cols: []Column{{"Time", "time"}, {"System", "host"}, {"Person", "user"}, {"Kind", "kind"}, {"What changed", "sum"}, {"Severity", "sev"}},
@@ -368,7 +382,18 @@ func (r *Report) fillPages(pages []*EventPage) {
 			hosts[e.Host] = true
 			sources[logonSource(e)] = true
 		}
-		top := &pageTop{ChartTitle: p.Title + " per day", TopTitle: spec.topTitle, Legend: spec.kinds, KindWord: spec.kindLabel}
+		// The legend names the kinds this page has (all of them when it
+		// has none), so a page with many kinds stays on one line or two.
+		var legend []pageKind
+		for _, k := range spec.kinds {
+			if count[k.Name] > 0 {
+				legend = append(legend, k)
+			}
+		}
+		if len(legend) == 0 {
+			legend = spec.kinds
+		}
+		top := &pageTop{ChartTitle: p.Title + " per day", TopTitle: spec.topTitle, Legend: legend, KindWord: spec.kindLabel}
 		switch p.ID {
 		case "failed":
 			top.ChartTitle = "Failed logons per day"
@@ -638,7 +663,11 @@ func (r *Report) pageStats(p *EventPage, spec pageSpec, count map[string]int, us
 	case "integrity":
 		cleared, cw := match(func(e *event.Event) bool { return spec.kindOf(e) == "Log cleared" })
 		pol := count["Audit policy changed"]
-		stopped := count["Logging stopped"]
+		// Only real stops: the event log service stopping at a shutdown,
+		// or auditd as a restart ends, is Low and not counted (UX2).
+		stopped, _ := match(func(e *event.Event) bool {
+			return spec.kindOf(e) == "Logging stopped" && e.Severity.Rank() >= event.SevMedium.Rank()
+		})
 		return []EventCard{
 			{Icon: "eraser", Label: "Logs cleared", Filter: cardFilter("kind", "Log cleared"), Value: commas(cleared), Note: short(cw, 2), Level: level(cleared, "bad")},
 			{Icon: "settings", Label: "Audit policy changes", Filter: cardFilter("kind", "Audit policy changed"), Value: commas(pol), Level: level(pol, "warn")},

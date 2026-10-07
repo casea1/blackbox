@@ -76,6 +76,9 @@ type Options struct {
 	// Waiting, on a manual report, is what of the original logs waits for
 	// the next scheduled report (UI5).
 	Waiting *WaitingLogs
+	// OwnRuns are Blackbox's runs covering every event in the report, for
+	// telling its own activity from a person's (AR2c); nil: the runs.
+	OwnRuns []*store.Run
 	// PackFailing is set while this computer's exported original logs
 	// cannot be packed into an archive (AR5).
 	PackFailing *PackFailing
@@ -282,6 +285,10 @@ type Report struct {
 	ExcludedBy map[string]int
 	ExcludedOn map[string]bool
 	Duplicates int
+	// Folded are records shown inside another row (UX1): console hosts
+	// in the program that started them, and identical records as one
+	// row with "×N".
+	Folded     int
 	Late       int
 	NewDevices map[string]time.Time
 	Learned    map[string]time.Time // baseline items seen in this period
@@ -315,15 +322,21 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	unknownNames(events)
 	events = mergeAdminLogons(events)
 	events = r.dedupe(events)
-	events = selfChanges(events, runs)
+	own := runs
+	if opt.OwnRuns != nil {
+		own = opt.OwnRuns
+	}
+	events = selfChanges(events, own)
 	events = installerWrites(events)
-	events = exportWrites(events, runs)
+	events = exportWrites(events, own)
 	events = r.appPackageRules(events)
 	events = r.defenderState(events)
 	events = r.windowsSetup(events)
 	attributeDevices(events)
 	auditStoppedBy(events)
 	shutdownStops(events)
+	events = r.foldConsoleHosts(events)
+	events = r.foldRepeats(events)
 
 	rows := make([]*Row, len(events))
 	hosts := map[string]bool{}
@@ -334,6 +347,9 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 		if e.Late {
 			r.Late++
 			rows[i].Flags = append(rows[i].Flags, "Late")
+		}
+		if e.Repeat > 1 {
+			rows[i].Flags = append(rows[i].Flags, fmt.Sprintf("×%d", e.Repeat))
 		}
 	}
 	r.Events = events

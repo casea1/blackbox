@@ -882,6 +882,110 @@ func mergeAdminLogons(events []*event.Event) []*event.Event {
 	return out
 }
 
+// consoleHosts are the programs Windows starts for a console program:
+// part of what started them, not something a person ran (UX1).
+var consoleHosts = map[string]bool{"conhost.exe": true, "openconsole.exe": true}
+
+// foldConsoleHosts folds the console host Windows starts for each console
+// program run with administrator rights ("conhost.exe 0xffffffff
+// -ForceV1") into the row of the program that started it, when that row
+// is there: a count and the times in its details. One with no such row
+// stays.
+func (r *Report) foldConsoleHosts(events []*event.Event) []*event.Event {
+	type folded struct {
+		n     int
+		times []string
+	}
+	into := map[*event.Event]*folded{}
+	out := events[:0]
+	for i, e := range events {
+		if e.Category != event.CatPrivileged || e.OS != "windows" || !consoleHosts[strings.ToLower(baseName(e.Process))] {
+			out = append(out, e)
+			continue
+		}
+		parent := strings.ToLower(detail(e, "Started by"))
+		var p *event.Event
+		for j := i - 1; j >= 0 && e.Time.Sub(events[j].Time) <= 10*time.Second; j-- {
+			x := events[j]
+			if x.Host == e.Host && x.User == e.User && x != e && parent != "" && strings.EqualFold(x.Process, parent) && !consoleHosts[strings.ToLower(baseName(x.Process))] {
+				p = x
+				break
+			}
+		}
+		if p == nil {
+			out = append(out, e)
+			continue
+		}
+		f := into[p]
+		if f == nil {
+			f = &folded{}
+			into[p] = f
+		}
+		f.n++
+		r.Folded++
+	}
+	for p, f := range into {
+		what := "1 console window (conhost.exe)"
+		if f.n > 1 {
+			what = fmt.Sprintf("%d console windows (conhost.exe)", f.n)
+		}
+		p.AddDetail("Also started", what+", not shown as rows of their own")
+	}
+	return out
+}
+
+func baseName(p string) string {
+	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
+		return p[i+1:]
+	}
+	return p
+}
+
+// repeatWindow is how close identical records must be to share a row.
+const repeatWindow = time.Minute
+
+// foldRepeats shows identical records (same system, person, action and
+// text, within a minute of the first) as one row with "×N" (UX1), each
+// one's time kept in its details. Failed logons are left as they are:
+// each is an attempt, and the detections count them.
+func (r *Report) foldRepeats(events []*event.Event) []*event.Event {
+	type group struct {
+		first *event.Event
+		times []time.Time
+	}
+	open := map[string]*group{}
+	var all []*group
+	out := events[:0]
+	for _, e := range events {
+		if e.Category == event.CatFailedLogon || e.Outcome == "failure" && e.Category == event.CatLogon {
+			out = append(out, e)
+			continue
+		}
+		k := e.Host + "\x00" + e.User + "\x00" + e.Action + "\x00" + e.Summary
+		if g := open[k]; g != nil && e.Time.Sub(g.first.Time) <= repeatWindow && e.Late == g.first.Late {
+			g.times = append(g.times, e.Time)
+			r.Folded++
+			continue
+		}
+		g := &group{first: e, times: []time.Time{e.Time}}
+		open[k] = g
+		all = append(all, g)
+		out = append(out, e)
+	}
+	for _, g := range all {
+		if len(g.times) < 2 {
+			continue
+		}
+		g.first.Repeat = len(g.times)
+		var at []string
+		for _, t := range g.times {
+			at = append(at, t.In(r.Location).Format("15:04:05.000"))
+		}
+		g.first.AddDetail("Recorded", fmt.Sprintf("%d times: %s", len(g.times), strings.Join(at, ", ")))
+	}
+	return out
+}
+
 func absDur(d time.Duration) time.Duration {
 	if d < 0 {
 		return -d
