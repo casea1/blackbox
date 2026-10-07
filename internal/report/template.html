@@ -123,7 +123,7 @@
 <div class="pager"><span data-count></span><span></span><span></span></div></div>{{end}}
 
 {{define "health"}}<div class="ev6" style="grid-template-columns:repeat(4,1fr)">{{range .Stats}}{{template "stat" .}}{{end}}</div>
-<div data-a1{{if .Single}} data-single="{{.Single}}"{{end}}>
+<div data-a1{{if and .Single (not .Gaps)}} data-single="{{.Single}}"{{end}}>
 <nav class="jump" aria-label="Sections of this page">{{range .Jump}}<a href="#" data-scroll="{{.Target}}" class="{{.Level}}"><b>{{.Label}}</b><span>{{.Note}}</span></a>{{end}}</nav>
 <div class="panel" id="h-matrix"><div class="ph"><h2>{{icon "layers" 17}}Audit settings by system</h2><span class="pm"><span style="color:#147A3D">✓</span> matches STIG · <span style="color:#C22020">✕</span> gap · <span style="color:#A35A00">!</span> warning · hover a heading for its full name</span></div>
 <div class="mxbox"><span class="morecue" aria-hidden="true">more →</span><div class="mxwrap" data-scrollcue><table class="mxs"><thead><tr><th>System</th>{{range .Cols}}<th title="{{.Full}}">{{.Short}}</th>{{end}}</tr></thead><tbody>{{range .Attention}}{{template "mxgroup" .}}{{end}}</tbody>{{if .PassingN}}{{if .Attention}}<tbody><tr class="mxfold"><td colspan="12"><button type="button" class="link" data-mxshow data-hide="Hide the systems that match on every check ↑">{{if eq .PassingN 1}}Show the system that matches on every check{{else}}Show the {{.PassingN}} systems that match on every check{{end}} ↓</button></td></tr></tbody><tbody data-mxok hidden>{{else}}<tbody>{{end}}{{range .Passing}}{{template "mxgroup" .}}{{end}}</tbody>{{end}}</table></div></div></div>
@@ -183,7 +183,7 @@
 <div><i>3</i><span>To prove nothing was changed: <code>blackbox verify</code> checks every file against <code>manifest.sha256</code>.</span></div></div>
 <div class="path" data-folder>This report's folder</div>{{end}}
 
-{{define "logs"}}{{if .Manual}}<div class="panel"><div class="ph"><h2>{{icon "hard-drive" 17}}Where the original logs are</h2></div><p style="margin:0">{{.Waiting}}</p></div>{{else}}<div class="ev6" style="grid-template-columns:repeat(4,1fr)">{{range .Stats}}{{template "stat" .}}{{end}}</div>
+{{define "logs"}}{{if .Failing}}<div class="panel" style="margin-bottom:12px"><p class="vbad" style="margin:0;font-weight:500">{{icon "circle-alert" 14}} {{.Failing}}</p></div>{{end}}{{if .Manual}}<div class="panel"><div class="ph"><h2>{{icon "hard-drive" 17}}Where the original logs are</h2></div><p style="margin:0">{{.Waiting}}</p></div>{{else}}<div class="ev6" style="grid-template-columns:repeat(4,1fr)">{{range .Stats}}{{template "stat" .}}{{end}}</div>
 {{if not .Archives}}<div class="panel"><p class="pm" style="margin:0">{{if .Kept}}No original logs were archived for this period.{{else}}This report was made without keeping the original logs.{{end}}</p></div>{{else}}
 <div data-a1><div class="row" style="grid-template-columns:1fr 360px">
 <div class="panel" style="overflow-x:auto"><div class="ph"><h2>{{icon "hard-drive" 17}}Archives in this report</h2><span class="pm">{{.Range}}</span></div>

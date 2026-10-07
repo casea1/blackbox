@@ -394,6 +394,19 @@ func (t *Translator) unattendedChange(r *Record, sc string, paths []string, exe,
 		return nil
 	}
 	for _, p := range paths {
+		// The original logs waiting to be archived: changed by anything
+		// but Blackbox, whoever ran it, is High (AR6).
+		if strings.HasPrefix(p, "/var/lib/blackbox/archive-pieces/") && prog != "blackbox" {
+			e := &event.Event{Category: event.CatIntegrity, Severity: event.SevHigh, Action: "blackbox_files_changed", Target: p, Process: exe, Command: cmd,
+				DedupeKey: "unattended|" + p,
+				Summary:   fmt.Sprintf("The original logs waiting to be archived were changed with no one logged on: %s%s.", p, usingProg(prog))}
+			e.AddDetail("File", p)
+			e.AddDetail("System call", sc)
+			e.AddDetail("Command", cmd)
+			e.AddDetail("Audit rule", r.Get("key"))
+			e.AddDetail("Why no person", "The change ran without a login session (auid unset): a service, a scheduled job or a script started by one. Its own log, or the process that started it, says who.")
+			return e
+		}
 		for _, u := range unattendedSettings {
 			if !strings.HasPrefix(p, u.prefix) {
 				continue

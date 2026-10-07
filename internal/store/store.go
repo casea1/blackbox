@@ -80,6 +80,9 @@ type State struct {
 	// clock was moved back (AR1): the first record written since the last
 	// export.
 	ArchiveRestart time.Time `json:"archive_restart,omitzero"`
+	// PackFailing is set while packing the exports fails: status says so
+	// and exits 4, and reports show the reason (AR5).
+	PackFailing *PackFailure `json:"pack_failing,omitempty"`
 
 	// LAN: sending to a collector, receiving from other systems, and the
 	// systems seen (see lan.go).
@@ -548,6 +551,16 @@ type LogGap struct {
 	From   time.Time `json:"from"`
 	To     time.Time `json:"to"`
 	Noted  time.Time `json:"noted"`
+	// Reason is set when the export was lost or unreadable before it
+	// was packed, rather than overwritten in the log (AR5).
+	Reason string `json:"reason,omitempty"`
+}
+
+// PackFailure is set while the exported original logs cannot be packed
+// into an archive (AR5).
+type PackFailure struct {
+	Since  time.Time `json:"since"`
+	Reason string    `json:"reason"`
 }
 
 // ReportRecord is one scheduled report in the ledger.
@@ -559,6 +572,13 @@ type ReportRecord struct {
 	// Manifest is the SHA-256 of the report's manifest.sha256, which
 	// lists the hash of every other file in it.
 	Manifest string `json:"manifest"`
+	// Files are the size of each file the manifest lists, when it was
+	// written: checked at every run (LEDGER1).
+	Files map[string]int64 `json:"files,omitempty"`
+	// Verified is when every file was last hashed against the manifest
+	// (once a day), and Bad what that found wrong ("" if nothing).
+	Verified time.Time `json:"verified,omitzero"`
+	Bad      string    `json:"bad,omitempty"`
 	// Removed is when retention_days removed it (not a problem).
 	Removed time.Time `json:"removed,omitzero"`
 	// Accepted says a person recorded that it is gone or changed on

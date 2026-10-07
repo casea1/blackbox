@@ -222,3 +222,25 @@ func TestAccountToolHandleWrites(t *testing.T) {
 		t.Errorf("rows:\n%s", got)
 	}
 }
+
+// AR6: the original logs waiting to be archived changed by anything but
+// Blackbox, a root script included, is a High row of its own.
+func TestArchivePiecesWatched(t *testing.T) {
+	lines := sysRec(1, "257", "yes", "3", "7ffd", "241", "/usr/bin/python3.12", "blackbox", "/var/lib/blackbox/archive-pieces/000007/audit.log")
+	for i := range lines {
+		lines[i] = strings.Replace(lines[i], "auid=1001", "auid=4294967295", 1)
+	}
+	lines = append(lines, sysRec(2, "257", "yes", "3", "7ffd", "241", "/usr/local/bin/blackbox", "blackbox", "/var/lib/blackbox/archive-pieces/000008/audit.log")...)
+	evs := translateLines(t, Users{1001: "jsmith"}, lines...)
+	if len(evs) != 1 || evs[0].Severity != event.SevHigh || !strings.Contains(evs[0].Summary, "The original logs waiting to be archived were changed with no one logged on: /var/lib/blackbox/archive-pieces/000007/audit.log (using python3.12)") {
+		t.Errorf("rows:\n%s", summaries(evs))
+	}
+}
+
+// A person changing them is High too, with their name.
+func TestArchivePiecesChangedByPerson(t *testing.T) {
+	evs := translateLines(t, Users{1001: "jsmith"}, sysRec(1, "257", "yes", "3", "7ffd", "241", "/usr/bin/vim.basic", "blackbox", "/var/lib/blackbox/archive-pieces/000007/audit.log")...)
+	if len(evs) != 1 || evs[0].Severity != event.SevHigh || !strings.Contains(evs[0].Summary, "jsmith changed the original logs waiting to be archived") {
+		t.Errorf("rows:\n%s", summaries(evs))
+	}
+}

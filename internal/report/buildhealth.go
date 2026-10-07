@@ -147,6 +147,9 @@ func (r *Report) buildHealth(runs []*store.Run, events []*event.Event) {
 		what := "is missing (deleted or moved)"
 		if m.Problem == "changed" {
 			what = "was changed after it was written"
+			if m.What != "" {
+				what += " (" + m.What + ")"
+			}
 		}
 		h.Warnings = append(h.Warnings, fmt.Sprintf("The scheduled report %s (%s to %s) %s: it held the only copy of that period's original logs.", m.Name, r.stamp(m.From), r.stamp(m.To), what))
 	}
