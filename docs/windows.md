@@ -123,18 +123,14 @@ Blackbox icon by the clock when they log on. It is started by the
 scheduled task **Blackbox Status**, with full rights, so there is no UAC
 prompt. Untick the box on the Collection page of setup to turn it off.
 
-| Dot | Means |
-|---|---|
-| Green | Collecting on schedule; nothing needs attention |
-| Amber | Something to look at: audit settings to fix, Defender intelligence out of date, events lost because a log filled up before it was collected, a computer that has stopped sending, or files set aside in the inbox |
-| Red | Collection has stopped (no run for twice the interval plus 15 minutes), or the last run failed |
-| Grey (no dot) | The status can't be read |
+The icon is the Blackbox logo. Its menu's status line and the notifications
+say how things are.
 
 Click it for the menu:
-- the status, and anything to look at;
+- the status line: "Collecting every 15 minutes · last 14:05 · next report Wed 00:00", or what is wrong (what needs fixing on each system is in the report and `blackbox status`);
 - **Open latest report** and **Open all reports**;
 - **Make a manual report…**, for a chosen period (the schedule doesn't change);
-- **Collect now**;
+- **Collect now**, with a notification when the run has finished;
 - **Status details…**, the same as `blackbox status`;
 - **Change settings…**;
 - **Close this icon**.

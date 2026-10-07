@@ -3,7 +3,6 @@ package gui
 import (
 	"fmt"
 	"image"
-	"image/color"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -298,41 +297,32 @@ func notices(m trayMemory, h app.Health, v trayView, version string, now time.Ti
 	return out, next
 }
 
-// Icon colours.
-var (
-	dotOK      = color.NRGBA{0x1E, 0x9E, 0x4A, 0xFF}
-	dotLook    = color.NRGBA{0xE0, 0x8A, 0x00, 0xFF}
-	dotStopped = color.NRGBA{0xD0, 0x2B, 0x2B, 0xFF}
+// trayImage is the logo (owner decision, 7 Oct 2026: no coloured status
+// dot; the menu's status line and the notifications say how things are).
+func trayImage(size int, _ trayState) *image.NRGBA { return brand.Logo(size) }
+
+// collectWait is how long after "Collect now" the icon watches for the
+// run to end, checking every collectPoll.
+const (
+	collectWait = 30 * time.Minute
+	collectPoll = 5 * time.Second
 )
 
-// trayImage is the logo with a coloured dot in the corner, or the logo in
-// grey when the status can't be read.
-func trayImage(size int, s trayState) *image.NRGBA {
-	img := brand.Logo(size)
-	if s == stateUnknown {
-		for i := 0; i < len(img.Pix); i += 4 {
-			g := uint8((uint16(img.Pix[i])*30 + uint16(img.Pix[i+1])*59 + uint16(img.Pix[i+2])*11) / 100)
-			img.Pix[i], img.Pix[i+1], img.Pix[i+2] = g, g, g
-		}
-		return img
+// collectDone says whether the run started by "Collect now" at started
+// has ended, and the notification for it. A run that failed is already
+// notified as one (the last run failed), so only success gets its own.
+func collectDone(h app.Health, started time.Time) (n notice, done, notify bool) {
+	if h.LastRun.Time.Before(started) {
+		return notice{}, false, false
 	}
-	dot := map[trayState]color.NRGBA{stateOK: dotOK, stateLook: dotLook, stateStopped: dotStopped}[s]
-	r := float64(size) * 0.25 // dot radius
-	ring := r + float64(size)*0.06
-	cx, cy := float64(size)-r-1, float64(size)-r-1
-	for y := 0; y < size; y++ {
-		for x := 0; x < size; x++ {
-			dx, dy := float64(x)+0.5-cx, float64(y)+0.5-cy
-			d2 := dx*dx + dy*dy
-			switch {
-			case d2 <= r*r:
-				img.SetNRGBA(x, y, dot)
-			case d2 <= ring*ring:
-				img.SetNRGBA(x, y, color.NRGBA{0xFF, 0xFF, 0xFF, 0xFF})
-			}
-		}
+	if h.LastRun.Error != "" {
+		return notice{}, true, false
 	}
-	return img
+	text := "Collection finished"
+	if !h.LastCollect.IsZero() {
+		text += " (" + clock(h.LastCollect) + ")"
+	}
+	return notice{Title: "Blackbox", Text: text + "."}, true, true
 }
 
 // noticeQueue shows notifications one after another: Windows shows one at

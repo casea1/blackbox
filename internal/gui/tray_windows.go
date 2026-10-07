@@ -24,28 +24,29 @@ import (
 // The status icon (SETUP-SPEC.md, "Tray").
 
 const (
-	msgTray     = wmApp + 10 // from the notification area
-	msgHealth   = wmApp + 11 // a fresh status is ready
-	msgQuit     = wmApp + 12 // uninstall, or the icon was turned off
-	msgReport   = wmApp + 13 // a manual report finished
-	timerPoll   = 1
-	timerAdd    = 2
-	timerExit   = 3
-	timerNotify = 4 // the next queued notification
-	noticeGap   = 7000
-	pollEvery   = time.Minute
-	trayIconID  = 1
-	nimAdd      = 0
-	nimModify   = 1
-	nimDelete   = 2
-	nimSetVer   = 4
-	nifMessage  = 0x01
-	nifIcon     = 0x02
-	nifTip      = 0x04
-	nifInfo     = 0x10
-	nifShowTip  = 0x80
-	niifInfo    = 0x1
-	niifWarning = 0x2
+	msgTray      = wmApp + 10 // from the notification area
+	msgHealth    = wmApp + 11 // a fresh status is ready
+	msgQuit      = wmApp + 12 // uninstall, or the icon was turned off
+	msgReport    = wmApp + 13 // a manual report finished
+	timerPoll    = 1
+	timerAdd     = 2
+	timerExit    = 3
+	timerNotify  = 4 // the next queued notification
+	timerCollect = 5 // watching a run started by "Collect now"
+	noticeGap    = 7000
+	pollEvery    = time.Minute
+	trayIconID   = 1
+	nimAdd       = 0
+	nimModify    = 1
+	nimDelete    = 2
+	nimSetVer    = 4
+	nifMessage   = 0x01
+	nifIcon      = 0x02
+	nifTip       = 0x04
+	nifInfo      = 0x10
+	nifShowTip   = 0x80
+	niifInfo     = 0x1
+	niifWarning  = 0x2
 )
 
 // Menu commands.
@@ -81,6 +82,8 @@ type tray struct {
 	// status is read (a test replaces it).
 	reading    bool
 	readHealth func() (app.Health, error)
+	// collecting is when "Collect now" started a run, until it ends.
+	collecting time.Time
 }
 
 // Tray runs the status icon until it is closed. It runs only for an
@@ -286,6 +289,13 @@ func (t *tray) timer(id uintptr) {
 			return
 		}
 		t.refresh()
+	case timerCollect:
+		if time.Since(t.collecting) > collectWait {
+			t.collecting = time.Time{}
+			pKillTimer.Call(t.hwnd, timerCollect)
+			return
+		}
+		t.refresh()
 	case timerAdd:
 		t.add()
 	case timerExit:
@@ -313,6 +323,15 @@ func (t *tray) app(m uint32, wp, lp uintptr) {
 			saveMemory(t.memory)
 			for _, n := range list {
 				t.notify(n) // queued: each is shown in turn
+			}
+			if !t.collecting.IsZero() {
+				if n, done, tell := collectDone(h, t.collecting); done {
+					t.collecting = time.Time{}
+					pKillTimer.Call(t.hwnd, timerCollect)
+					if tell {
+						t.notify(n)
+					}
+				}
 			}
 		}
 	case msgTray:
@@ -346,10 +365,9 @@ func (t *tray) menu() uintptr {
 	add := func(flags uintptr, id int, text string) {
 		pAppendMenuW.Call(m, flags, uintptr(id), ptr(strings.ReplaceAll(text, "&", "&&")))
 	}
+	// Only the status line (owner decision, 7 Oct 2026): what needs
+	// fixing on each system is in the report and blackbox status.
 	add(mfString|mfGrayed, 0, t.view.Status)
-	for _, it := range t.view.Items {
-		add(mfString|mfGrayed, 0, it)
-	}
 	add(mfSeparator, 0, "")
 	open := uintptr(mfString)
 	if t.view.Report == "" {
@@ -404,7 +422,10 @@ func (t *tray) showMenu() {
 		if out, err := hidden.Command("schtasks.exe", "/Run", "/TN", install.TaskName).CombinedOutput(); err != nil {
 			messageBox(0, "Collection could not be started:\n"+strings.TrimSpace(string(out)), "Blackbox", mbOK|mbIconError)
 		} else {
-			t.notify(notice{Title: "Blackbox", Text: "Collecting now. The status updates when it finishes."})
+			// Watched until it ends, then "Collection finished".
+			t.collecting = time.Now().Add(-2 * time.Second)
+			pSetTimer.Call(t.hwnd, timerCollect, uintptr(collectPoll/time.Millisecond), 0)
+			t.notify(notice{Title: "Blackbox", Text: "Collecting now. You'll be told when it finishes."})
 		}
 	case cmdStatus:
 		t.statusWindow()
