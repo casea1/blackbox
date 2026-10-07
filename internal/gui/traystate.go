@@ -160,7 +160,9 @@ func classify(h app.Health, err error, now time.Time) trayView {
 	}
 	if len(v.Items) > 0 && v.State == stateOK {
 		v.State = stateLook
-		v.Tip += " · " + plural(len(v.Items), "thing") + " to look at"
+		// The menu no longer lists them (0.18.1): say where they are,
+		// not how many (TRAY3).
+		v.Tip += " · something to look at: see Status details"
 	}
 	if len(v.Tip) > 127 {
 		v.Tip = v.Tip[:124] + "..."

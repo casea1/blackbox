@@ -56,6 +56,9 @@ Setup then:
 
 ## Changing settings later
 
+Run `blackbox` commands with `sudo`: its settings and data are readable by
+root only, and a command run without it says so ("run it with sudo").
+
 **Run `sudo ./install.sh` again.** It shows the current settings as the
 defaults. Or change one setting:
 

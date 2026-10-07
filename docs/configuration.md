@@ -21,7 +21,7 @@ file:
 | `exclude_processes` | *(none)* | Programs to leave out, by name or full path, e.g. `scan.exe` |
 | `scap_results` | *(blank)* | SCAP scan results to show each computer's STIG compliance ([STIG compliance](reports.md#stig-compliance-scap)). Blank reads the `scap` folder in the data folder; set a folder (for example SCC's results folder) to read that instead, including its subfolders, or `none` to turn this off. Setup asks for it (the **SCAP results** page). Blackbox only reads results; it never runs a scan |
 | `scap_max_age_days` | `30` | A scan older than this is marked stale |
-| `keep_sent_days` | `14` | On a sender: days to keep batches after delivering them, so `blackbox send --resend FROM-TO` can fill a gap the collector reports. `0` deletes them once delivered. Kept batches are a few MB and only in the data folder |
+| `keep_sent_days` | `14` | On a sender: days to keep batches after delivering them, so `blackbox send --resend FROM-TO` can fill a gap the collector reports. `0` deletes them once delivered, which ends resends: `blackbox config set` says so Kept batches are a few MB and only in the data folder |
 | `working_hours` | *(blank)* | When administrator activity is expected, e.g. `Mon-Fri 06:00-18:00`, `Daily 07:00-19:00` or `Mon-Fri 22:00-06:00` (a night shift). Activity outside these hours is shown under [Detections](reports.md#detections). Blank turns the check off |
 | `data_dir` | platform default | Where reports and collected events are stored |
 | `send_to` | *(blank)* | The collector's inbox this computer sends to: `\\COLLECTOR\BlackboxInbox` (Windows), `//COLLECTOR/BlackboxInbox` or `/media/sf_BlackboxInbox` (Linux). When set, this computer makes no reports of its own. See [lan.md](lan.md) |

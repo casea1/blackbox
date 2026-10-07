@@ -98,6 +98,14 @@ func Install(opt Options) error {
 		return err
 	}
 	logf("Scheduled task:      \"%s\" — collects %s as SYSTEM; %s", TaskName, EveryText(opt.CollectEvery), scheduleWhat(opt))
+	// Collect now, as the Linux timer does when it is enabled: an upgrade
+	// replaces the task without running it (CLI1). A run already going
+	// (the first registration's) is left to finish.
+	if out, err := hidden.Command("schtasks.exe", "/Run", "/TN", TaskName).CombinedOutput(); err != nil {
+		logf("Note: could not start a collection now (%v: %s); the task runs at its next time", err, strings.TrimSpace(string(out)))
+	} else {
+		logf("Collection:          started now (blackbox status shows when it has run)")
+	}
 
 	// 5. The status icon, for administrators on a collector or standalone computer.
 	if err := setupTray(opt.Tray && opt.SendTo == "", logf); err != nil {
