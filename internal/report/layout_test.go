@@ -51,8 +51,9 @@ func TestLayoutFixes(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := b.String()
-	if len(r.Hosts) == 0 || !strings.Contains(h, `title="`+r.Hosts[0]+` · `) {
-		t.Errorf("an Overview tile lacks its full name on hover")
+	// UX3: the Overview has no system tiles (that is the Systems page).
+	if strings.Contains(h, `class="map mapfit"`) {
+		t.Errorf("the Overview still draws system tiles")
 	}
 	for _, want := range []string{`<th title="Removable storage">USB</th>`, `<th title="Log size and space settings">Log size</th>`,
 		`data-scrollcue`, `class="morecue"`, `class="stig gaps"`, `<details class="gapd"><summary>`, "Log size and space settings"} {

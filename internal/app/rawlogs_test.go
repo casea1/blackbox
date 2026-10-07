@@ -377,7 +377,7 @@ func TestManualReportAfterRunDropsExportWrites(t *testing.T) {
 	var s report.Summary
 	json.Unmarshal(b, &s)
 	if s.High != 1 || s.Events != 1 {
-		t.Errorf("manual report: %d events, %d high; want only the notepad write", s.Events, s.High)
+		t.Errorf("manual report: %d events, %d high; want only the notepad write: %s", s.Events, s.High, b)
 	}
 }
 

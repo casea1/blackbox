@@ -882,6 +882,59 @@ func mergeAdminLogons(events []*event.Event) []*event.Event {
 	return out
 }
 
+// sshSources gives an SSH logon on Windows its source address (UX8): the
+// 4624 Windows writes for an OpenSSH sign-in has none, but sshd's own
+// line ("Accepted publickey for claude from 10.1.1.20") does. The two are
+// joined (same computer and account, within 10 seconds) and sshd's row
+// dropped; one with no logon to join stays.
+func sshSources(events []*event.Event) []*event.Event {
+	acct := func(u string) string {
+		if i := strings.LastIndexAny(u, `\@`); i >= 0 && u[i] == '\\' {
+			u = u[i+1:]
+		}
+		return strings.ToLower(u)
+	}
+	used := map[*event.Event]bool{}
+	for i, s := range events {
+		if s.Action != "ssh_accepted" || s.SourceIP == "" {
+			continue
+		}
+		var best *event.Event
+		for j := i - 1; j >= 0 && s.Time.Sub(events[j].Time) <= 10*time.Second; j-- {
+			if l := events[j]; isSSHLogon(l) && l.Host == s.Host && acct(l.User) == acct(s.User) && l.SourceIP == "" && !used[l] {
+				best = l
+				break
+			}
+		}
+		for j := i + 1; best == nil && j < len(events) && events[j].Time.Sub(s.Time) <= 10*time.Second; j++ {
+			if l := events[j]; isSSHLogon(l) && l.Host == s.Host && acct(l.User) == acct(s.User) && l.SourceIP == "" && !used[l] {
+				best = l
+			}
+		}
+		if best == nil {
+			continue
+		}
+		used[best], used[s] = true, true
+		best.SourceIP = s.SourceIP
+		best.Summary = strings.TrimSuffix(best.Summary, ".") + " from " + s.SourceIP + "."
+		best.Summary = strings.Replace(best.Summary, " with administrator rights from "+s.SourceIP, " from "+s.SourceIP+" with administrator rights", 1)
+		best.AddDetail("Source address", s.SourceIP+" (from the OpenSSH server's log)")
+		best.AddDetail("SSH method", detail(s, "Method"))
+	}
+	out := events[:0]
+	for _, e := range events {
+		if e.Action == "ssh_accepted" && used[e] {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+func isSSHLogon(e *event.Event) bool {
+	return e.OS == "windows" && e.Action == "logon" && detail(e, "Logon type") == "SSH (OpenSSH)"
+}
+
 // consoleHosts are the programs Windows starts for a console program:
 // part of what started them, not something a person ran (UX1).
 var consoleHosts = map[string]bool{"conhost.exe": true, "openconsole.exe": true}

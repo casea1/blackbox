@@ -1,10 +1,15 @@
-# Detections (12)
+# Detections (17)
+2025-10-02T13:51:10Z high claude-code privileged | Command that can clear logs or weaken auditing on claude-code | austin used sudo to run a command that can stop or weaken auditing: /usr/bin/systemctl stop rsyslog
+2026-09-28T08:42:05Z high WS-07 other_security | Malware detected on WS-07 | Microsoft Defender detected malware: HackTool:Win32/Keygen in E:\tools\keygen.exe.
 2026-09-28T10:02:01Z high WS-07 failed_logon | Possible password guessing | 6 failed logons for administrator on WS-07 between 10:02:01 and 10:02:41 from 10.1.1.99.
 2026-09-28T10:02:01Z high WS-07 failed_logon | One source tried several accounts | 10.1.1.99 tried 3 different accounts on WS-07 (administrator, bob, guest) with 8 failed logons between 10:02:01 and 10:03:10.
 2026-09-28T13:20:00Z high WS-07 audit_integrity | Possible covering of tracks | On WS-07 at 2026-09-28 13:02: admin_jd added tempuser to the privileged group Administrators. 18 minutes later: Audit policy for "Removable Storage" was changed by admin_jd: success auditing removed, failure auditing removed. The second step can hide what was done with the first.
 2026-09-28T13:25:30Z high WS-07 audit_integrity | The clock was moved back by a person | admin_jd moved the clock on WS-07 back by 2 hours at 2026-09-28 13:25 (using SystemSettingsAdminFlows.exe). Event times around the change don't line up with other systems, and moving the clock is a way to make activity look as if it happened at another time. Every collected event is still reported, in the order it was collected.
 2026-09-28T14:02:01Z high ubu-audit failed_logon | Possible password guessing | 6 failed logons for root on ubu-audit between 14:02:01 and 14:02:41 from 10.1.1.99.
 2026-09-28T16:38:00Z high WS-07 audit_integrity | Possible covering of tracks | On WS-07 at 2026-09-28 13:01: admin_jd created the user account tempuser. 4 hours later: The Application log was cleared by admin_jd. The second step can hide what was done with the first.
+2026-09-28T16:40:00Z high WS-07 audit_integrity | Log cleared on WS-07 | The Security log was cleared by admin_jd.
+2026-09-28T16:58:00Z high WS-07 other_security | Anti-malware switched off on WS-07 | Microsoft Defender real-time protection was turned off.
+2026-09-28T16:58:21Z high ubu-ws12 removable_media | USB network adapter connected on ubu-ws12 | A USB network adapter was connected: Google Pixel 7 (usb0, driver rndis_host) — this can bridge the system to another network (for example a phone's USB tethering or a Wi-Fi adapter).
 2026-09-28T17:40:00Z high ubu-audit audit_integrity | Possible covering of tracks | On ubu-audit at 2026-09-28 17:05: admin_jd changed the sudo rules: /etc/sudoers.d/tempuser (using tee). 35 minutes later: admin_jd used sudo to run a command that can stop or weaken auditing: systemctl stop auditd The second step can hide what was done with the first.
 2026-09-28T17:40:01Z high ubu-audit audit_integrity | Auditing was switched off | The audit service on ubu-audit was off for 12 minutes (17:40:01 to 17:52:10). Nothing done in that time was recorded.
 2026-09-28T17:40:01Z high ubu-audit audit_integrity | Possible covering of tracks | On ubu-audit at 2026-09-28 17:02: admin_jd added tempuser to the privileged group sudo. 38 minutes later: The audit service (auditd) was stopped by admin_jd (systemctl stop auditd) — events are not recorded while it is stopped. The second step can hide what was done with the first.
@@ -128,7 +133,7 @@
     "WS-07"
   ],
   "events": 102,
-  "high": 26,
+  "high": 15,
   "medium": 22,
   "by_category": {
     "account_changes": 10,
@@ -146,6 +151,20 @@
   "blackbox_version": "golden",
   "source": "testdata",
   "detections": [
+    {
+      "severity": "high",
+      "time": "2025-10-02T13:51:10Z",
+      "host": "claude-code",
+      "title": "Command that can clear logs or weaken auditing on claude-code",
+      "detail": "austin used sudo to run a command that can stop or weaken auditing: /usr/bin/systemctl stop rsyslog"
+    },
+    {
+      "severity": "high",
+      "time": "2026-09-28T08:42:05.1234567Z",
+      "host": "WS-07",
+      "title": "Malware detected on WS-07",
+      "detail": "Microsoft Defender detected malware: HackTool:Win32/Keygen in E:\\tools\\keygen.exe."
+    },
     {
       "severity": "high",
       "time": "2026-09-28T10:02:01.1234567Z",
@@ -187,6 +206,27 @@
       "host": "WS-07",
       "title": "Possible covering of tracks",
       "detail": "On WS-07 at 2026-09-28 13:01: admin_jd created the user account tempuser. 4 hours later: The Application log was cleared by admin_jd. The second step can hide what was done with the first."
+    },
+    {
+      "severity": "high",
+      "time": "2026-09-28T16:40:00.1234567Z",
+      "host": "WS-07",
+      "title": "Log cleared on WS-07",
+      "detail": "The Security log was cleared by admin_jd."
+    },
+    {
+      "severity": "high",
+      "time": "2026-09-28T16:58:00.1234567Z",
+      "host": "WS-07",
+      "title": "Anti-malware switched off on WS-07",
+      "detail": "Microsoft Defender real-time protection was turned off."
+    },
+    {
+      "severity": "high",
+      "time": "2026-09-28T16:58:21Z",
+      "host": "ubu-ws12",
+      "title": "USB network adapter connected on ubu-ws12",
+      "detail": "A USB network adapter was connected: Google Pixel 7 (usb0, driver rndis_host) — this can bridge the system to another network (for example a phone's USB tethering or a Wi-Fi adapter)."
     },
     {
       "severity": "high",
@@ -233,7 +273,7 @@
   ],
   "metrics": {
     "account_changes": 10,
-    "detections": 12,
+    "detections": 17,
     "events": 102,
     "failed_logons": 26,
     "high_events": 16,
@@ -253,7 +293,7 @@
       "name": "admin_jd",
       "privileged_actions": 11,
       "logons": 2,
-      "detections": 7
+      "detections": 8
     },
     {
       "key": "mjones",
@@ -263,23 +303,30 @@
       "detections": 2
     },
     {
+      "key": "jsmith",
+      "name": "jsmith",
+      "privileged_actions": 3,
+      "logons": 3,
+      "failed_logons": 1,
+      "detections": 2
+    },
+    {
       "key": "administrator",
       "name": "administrator",
       "failed_logons": 6,
       "detections": 2
     },
     {
-      "key": "jsmith",
-      "name": "jsmith",
-      "privileged_actions": 3,
-      "logons": 3,
-      "failed_logons": 1,
-      "detections": 1
-    },
-    {
       "key": "root",
       "name": "root",
       "failed_logons": 7,
+      "detections": 1
+    },
+    {
+      "key": "austin",
+      "name": "austin",
+      "privileged_actions": 1,
+      "logons": 2,
       "detections": 1
     },
     {
@@ -295,12 +342,6 @@
       "detections": 1
     },
     {
-      "key": "austin",
-      "name": "austin",
-      "privileged_actions": 1,
-      "logons": 2
-    },
-    {
       "key": "(unknown user name)",
       "name": "(unknown user name)",
       "failed_logons": 2
@@ -314,6 +355,7 @@
     {
       "date": "2025-10-02",
       "metrics": {
+        "detections": 1,
         "high_events": 1,
         "privileged_actions": 1
       },
@@ -325,7 +367,8 @@
           "key": "austin",
           "name": "austin",
           "privileged_actions": 1,
-          "logons": 1
+          "logons": 1,
+          "detections": 1
         }
       ]
     },
@@ -333,7 +376,7 @@
       "date": "2026-09-28",
       "metrics": {
         "account_changes": 10,
-        "detections": 12,
+        "detections": 16,
         "failed_logons": 26,
         "high_events": 15,
         "lockouts": 2,
@@ -354,7 +397,7 @@
           "name": "admin_jd",
           "privileged_actions": 11,
           "logons": 2,
-          "detections": 7
+          "detections": 8
         },
         {
           "key": "mjones",
@@ -364,18 +407,18 @@
           "detections": 2
         },
         {
-          "key": "administrator",
-          "name": "administrator",
-          "failed_logons": 6,
-          "detections": 2
-        },
-        {
           "key": "jsmith",
           "name": "jsmith",
           "privileged_actions": 3,
           "logons": 3,
           "failed_logons": 1,
-          "detections": 1
+          "detections": 2
+        },
+        {
+          "key": "administrator",
+          "name": "administrator",
+          "failed_logons": 6,
+          "detections": 2
         },
         {
           "key": "root",

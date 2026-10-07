@@ -48,6 +48,26 @@ type pageData struct {
 type headData struct {
 	Crumb, Title, Range string
 	Index               bool // the date range links to the list of all reports
+	// Manual is the chip by the title of a page after the Overview in a
+	// manual report ("Manual", "Chosen period").
+	Manual string
+}
+
+// periodNoun is "week" for a report that covers about a week on a weekly
+// schedule, else "period": a one-day manual report is not a week (UI18).
+func (r *Report) periodNoun() string {
+	span := r.WindowEnd.Sub(r.PeriodStart())
+	if (r.Period == "weekly" || r.Period == "") && (r.WindowEnd.IsZero() || span >= 6*24*time.Hour && span <= 8*24*time.Hour) {
+		return "week"
+	}
+	return "period"
+}
+
+func overviewTitleOf(p pageData) string {
+	if p.IsLAN() && !p.Overview.Standalone {
+		return "Network overview"
+	}
+	return "Overview"
 }
 
 // IsLAN says whether this is a network report (a collector's, or more
@@ -129,13 +149,8 @@ func funcs(loc *time.Location) template.FuncMap {
 			}
 			return unit + "s"
 		},
-		"overviewTitle": func(p pageData) string {
-			if p.IsLAN() && !p.Overview.Standalone {
-				return "Network overview"
-			}
-			return "Overview"
-		},
-		"dayBefore": func(ds []DetectionCard, i int) string { return ds[i-1].Day },
+		"overviewTitle": overviewTitleOf,
+		"dayBefore":     func(ds []DetectionCard, i int) string { return ds[i-1].Day },
 		"healthCrumb": func(p pageData) string {
 			return p.Kind() + " · audit settings compared with the STIG for each system's OS · Blackbox only reports, it never changes settings"
 		},
@@ -145,11 +160,7 @@ func funcs(loc *time.Location) template.FuncMap {
 		"searchCols": func() template.CSS { return gridCols(searchCols) },
 		"periodDays": func(p pageData) []string { return p.periodDays() },
 		"periodWord": func(p pageData) string {
-			// "Week" only for a report that covers about a week: a
-			// one-day manual report on a weekly schedule is a period
-			// (UI18).
-			span := p.WindowEnd.Sub(p.PeriodStart())
-			if (p.Period == "weekly" || p.Period == "") && (p.WindowEnd.IsZero() || span >= 6*24*time.Hour && span <= 8*24*time.Hour) {
+			if p.periodNoun() == "week" {
 				return "Week"
 			}
 			return "Period"
@@ -219,7 +230,18 @@ func funcs(loc *time.Location) template.FuncMap {
 			if l := periodLabel(p.PeriodStart(), p.WindowEnd, loc); strings.Contains(l, ":") {
 				rng = l // a period that starts or ends during a day: "7 Oct 00:00 – 12:30" (UI6)
 			}
-			return headData{Crumb: crumb, Title: title, Range: rng, Index: p.InReportsDir}
+			h := headData{Crumb: crumb, Title: title, Range: rng, Index: p.InReportsDir}
+			// After the Overview, a manual report says so in a chip by the
+			// title, not the banner again (UX9).
+			if title != overviewTitleOf(p) {
+				switch {
+				case p.Range != "":
+					h.Manual = "Chosen period"
+				case p.Interim:
+					h.Manual = "Manual"
+				}
+			}
+			return h
 		},
 		"brandName": func() string { return brand.Name },
 		"fontCSS":   func() template.CSS { return template.CSS(brand.FontCSS()) },

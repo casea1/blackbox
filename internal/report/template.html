@@ -15,33 +15,30 @@
   <div class="site"><span>{{if .IsLAN}}Network{{else}}System{{end}}</span><b>{{if .Site}}{{.Site}}{{else}}{{.MainSystem}}{{end}}</b></div>
   <nav>
     <a href="#overview" data-nav="overview">{{icon "layout-dashboard" 17}}<span>Overview</span></a>
-    <a href="#systems" data-nav="systems">{{icon "server" 17}}<span>Systems</span>{{if .SystemsNeedingAttention}}<em>!</em>{{end}}</a>
     <a href="#detections" data-nav="detections">{{icon "shield-alert" 17}}<span>Detections</span>{{with len .Findings}}<em>{{.}}</em>{{end}}</a>
     <a href="#search" data-nav="search">{{icon "search" 17}}<span>Search</span></a>
+    <a href="#systems" data-nav="systems">{{icon "server" 17}}<span>Systems</span>{{if .SystemsNeedingAttention}}<em>!</em>{{end}}</a>
     <a href="#people" data-nav="people">{{icon "user-round" 17}}<span>People</span></a>
-  </nav>
-  <div class="grp">Events</div>
-  <nav>
-    {{range .Pages}}<a href="#{{.ID}}" data-nav="{{.ID}}">{{icon .Icon 17}}<span>{{.Title}}</span><small>{{commas .Total}}</small></a>
-    {{end}}
-  </nav>
-  <div class="grp">Audit</div>
-  <nav>
     <a href="#health" data-nav="health">{{icon "shield-check" 17}}<span>Audit health</span></a>
+    <a href="#logs" data-nav="logs">{{icon "scroll-text" 17}}<span>Original logs</span></a>
+    {{if .InReportsDir}}<a href="../index.html">{{icon "history" 17}}<span>All reports</span></a>{{end}}
+  </nav>
+  <div class="grp tog" data-tog="events" role="button" tabindex="0">Events by kind <i>▸</i></div>
+  <nav class="fold shut" data-fold="events">
+    {{range .Pages}}{{if .Total}}<a href="#{{.ID}}" data-nav="{{.ID}}">{{icon .Icon 17}}<span>{{.Title}}</span><small>{{commas .Total}}</small></a>
+    {{end}}{{end}}
+  </nav>
+  <div class="grp tog" data-tog="more" role="button" tabindex="0">More <i>▸</i></div>
+  <nav class="fold shut" data-fold="more">
     <a href="#inventory" data-nav="inventory">{{icon "cpu" 17}}<span>Inventory</span></a>
     <a href="#trends" data-nav="trends">{{icon "trending-up" 17}}<span>Trends</span></a>
-    <a href="#logs" data-nav="logs">{{icon "scroll-text" 17}}<span>Original logs</span></a>
   </nav>
-  {{if .InReportsDir}}<div class="grp">Reports</div>
-  <nav>
-    <a href="../index.html">{{icon "history" 17}}<span>All reports</span></a>
-  </nav>{{end}}
 </aside>
 <main>
-{{if .Range}}<div class="alertbar interim">{{icon "clock-alert" 18}}<b>Report for a chosen period.</b><span>Run by hand {{stamp .Generated}} {{zone .Generated}}. {{.Range}} It does not change the schedule.</span></div>{{else if .Interim}}<div class="alertbar interim">{{icon "clock-alert" 18}}<b>Manual report.</b><span>Run by hand {{stamp .Generated}} {{zone .Generated}}, between scheduled reports. It does not change the schedule: the next scheduled report covers this time again, and that report's folder holds the original logs.</span></div>{{end}}
 
 <section class="view" data-view="overview">
   {{template "head" (head . (overviewTitle .) "")}}
+{{if .Range}}<div class="alertbar interim">{{icon "clock-alert" 18}}<b>Report for a chosen period.</b><span>Run by hand {{stamp .Generated}} {{zone .Generated}}. {{.Range}} It does not change the schedule.</span></div>{{else if .Interim}}<div class="alertbar interim">{{icon "clock-alert" 18}}<b>Manual report.</b><span>Run by hand {{stamp .Generated}} {{zone .Generated}}, between scheduled reports. It does not change the schedule: the next scheduled report covers this time again, and that report's folder holds the original logs.</span></div>{{end}}
   {{template "overview" .Overview}}
 </section>
 <section class="view" data-view="systems">{{template "head" (head . "Systems" "")}}{{with .SystemsPage}}{{template "systems" .}}{{end}}</section>
@@ -51,8 +48,8 @@
 {{range .Pages}}
 <section class="view" data-view="{{.ID}}">
   {{template "head" (head $ .Title (eventsCrumb $ .))}}
-  {{with .Top}}{{template "pagetop" .}}{{end}}
-  {{template "events" .}}
+  {{if .Total}}{{with .Top}}{{template "pagetop" .}}{{end}}
+  {{template "events" .}}{{else}}<div class="panel"><p class="pm" style="margin:0">Nothing on {{.Title}} this {{lower (periodWord $)}}. <a class="link" href="#search">Search</a> covers every event in the report.</p></div>{{end}}
 </section>
 {{end}}
 <section class="view" data-view="health">{{template "head" (head . "Audit health" (healthCrumb .))}}{{with .HealthPage}}{{template "health" .}}{{else}}<div class="panel"><p class="pm" style="margin:0">No systems in this report.</p></div>{{end}}</section>
@@ -70,7 +67,7 @@
 </html>
 {{end}}
 
-{{define "head"}}<div class="head"><div><div class="crumb">{{.Crumb}}</div><h1>{{.Title}}</h1></div>
+{{define "head"}}<div class="head"><div><div class="crumb">{{.Crumb}}</div><h1>{{.Title}}{{if .Manual}} <span class="chip-manual" title="Run by hand between scheduled reports; it does not change the schedule">{{.Manual}}</span>{{end}}</h1></div>
 <div class="tools"><span class="btn static" title="The period this report covers">{{icon "calendar-range" 16}}{{.Range}}</span>{{if .Index}}<a class="btn" href="../index.html" title="Every report in this folder, newest first">{{icon "history" 16}}All reports</a>{{end}}<button class="btn verified" data-open="verified">{{icon "fingerprint" 16}}<span>Verified</span></button><button class="btn primary" data-open="export">Export</button></div></div>{{end}}
 
 {{define "soon"}}<div class="panel"><p class="pm" style="margin:0">{{.}}</p></div>{{end}}
@@ -84,8 +81,7 @@
 <div class="facts4">{{range .Facts}}{{template "fact" .}}{{end}}</div>
 <div class="sub2">Collection this period</div>{{.Bar}}</div>
 <div class="row" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
-<div class="panel"><div class="ph"><h2>{{icon "shield-check" 17}}Health</h2></div>{{range .Health}}{{template "ck" .}}{{end}}
-{{if .FailedItems}}<details class="fails" open><summary>Audit settings that need attention · {{len .FailedItems}}</summary>{{range .FailedItems}}<div><b>{{.Item}}</b><span>Set to {{or .Have "—"}}; STIG expects {{or .Want "—"}}{{if .STIG}} · {{.STIG}}{{end}}</span></div>{{end}}</details>{{end}}</div>
+<div class="panel"><div class="ph"><h2>{{icon "shield-check" 17}}Health</h2></div>{{range .Health}}{{template "ck" .}}{{end}}</div>
 <div class="panel"><div class="ph"><h2>{{icon "layers" 17}}{{if $lan}}Activity vs. typical system{{else}}Activity this period{{end}}</h2>{{if $lan}}<span class="pm">Line = network median</span>{{end}}</div><div class="vs">{{range .Activity}}<div><a class="link" href="{{.Href}}" style="color:inherit">{{.Label}}</a><div class="tr2{{if .Above}} hot{{end}}"><s style="width:{{.Pct}}%"></s>{{if $lan}}<em style="left:{{.Median}}%"></em>{{end}}</div><b>{{commas .N}}</b></div>{{end}}</div></div></div>
 <div class="panel" id="sysdet-{{.Name}}"><div class="ph"><h2>{{icon "shield-alert" 17}}Detections on {{.Name}}</h2><span class="pm">{{len .Detections}} this period</span></div>{{if .Detections}}<div class="dl">{{range .Detections}}<a class="dc {{.Severity}}" href="#detections/{{.Index}}"><div class="b"><b>{{.Title}}</b><span>{{.Detail}}</span></div><div class="m2">{{.Day}}<small>{{.Time}}</small></div></a>{{end}}</div>{{else}}<p class="pm" style="margin:0">No detections on this system.</p>{{end}}</div>
 </div>{{end}}{{end}}</div></div>{{end}}
@@ -97,7 +93,7 @@
 <div class="panel" style="margin-bottom:12px"><div class="dh"><div class="ph2"><div class="av {{.Level}}">{{.Initials}}</div><div><h3>{{.Name}}</h3><p>{{.Line}}</p></div></div>{{if .Level}}<span class="sv {{if eq .Level "bad"}}high{{else}}medium{{end}}">Needs a look</span>{{end}}</div>
 <div class="facts4">{{range .Facts}}{{template "fact" .}}{{end}}</div></div>
 <div class="row" style="grid-template-columns:1.2fr 1fr;margin-bottom:12px">
-<div class="panel"><div class="ph"><h2>{{icon "triangle-alert" 17}}Notable actions</h2><span class="pm">{{.NotableCount}} this period</span></div>{{if .Notable}}{{range .Notable}}{{template "ck" .}}{{end}}{{else}}<p class="pm" style="margin:0">Nothing out of the ordinary.</p>{{end}}</div>
+<div class="panel"><div class="ph"><h2>{{icon "triangle-alert" 17}}High and Medium actions</h2><span class="pm">{{.NotableCount}} this period</span></div>{{if .Notable}}{{range .Notable}}{{template "ck" .}}{{end}}{{else}}<p class="pm" style="margin:0">No High or Medium actions this period.</p>{{end}}</div>
 <div style="display:grid;gap:12px;align-content:start"><div class="panel"><div class="ph"><h2>{{icon "activity" 17}}When they were active</h2><span class="pm">Red = detection · click an hour</span></div>{{.Heat}}</div>
 <div class="panel" id="pused-{{.Key}}"><div class="ph"><h2>{{icon "server" 17}}Systems used</h2><span class="pm">Events</span></div><div class="mini">{{range .Used}}<div><a class="link" style="color:inherit" href="#systems/{{.Label}}">{{.Label}}</a><s style="width:{{.Pct}}%"></s><b>{{commas .N}}</b></div>{{end}}</div></div></div></div>
 {{with .Trend}}<div class="panel" style="margin-bottom:12px"><div class="ph"><h2>{{icon "trending-up" 17}}Over time</h2><span class="pm">{{if gt .Weeks 1}}This week so far against the average of {{.Weeks}} complete weeks · bars = privileged actions by week{{else}}By calendar week{{end}}</span></div>
@@ -107,11 +103,12 @@
 </div>{{end}}{{end}}</div></div>{{end}}
 
 {{define "search"}}<div class="panel" style="margin-bottom:12px"><div class="builder" data-q>Show
-<label class="pick">{{icon "layers" 15}}<select data-q="page"><option value="">All events</option>{{range .Pages}}<option value="{{.ID}}">{{.Title}}</option>{{end}}</select></label> by
+<label class="pick">{{icon "layers" 15}}<select data-q="page"><option value="">All events</option>{{range .Pages}}{{if .Total}}<option value="{{.ID}}">{{.Title}}</option>{{end}}{{end}}</select></label> by
 <label class="pick">{{icon "user-round" 15}}<select data-q="user"><option value="">anyone</option>{{with .PeoplePage}}{{range .Groups}}<optgroup label="{{.Title}}">{{range .People}}<option value="{{.Key}}">{{.Name}}</option>{{end}}</optgroup>{{end}}{{end}}</select></label> on
 <label class="pick">{{icon "server" 15}}<select data-q="host"><option value="">Any system</option><option value="@server">Servers</option><option value="@workstation">Workstations</option><option value="@vm">Virtual machines</option><optgroup label="Systems">{{range .Hosts}}<option value="{{.}}">{{.}}</option>{{end}}</optgroup></select></label> during
 <label class="pick">{{icon "calendar-range" 15}}<select data-q="when"><option value="">This {{lower (periodWord .)}}</option><option value="@after">Outside working hours</option><optgroup label="Day">{{range periodDays .}}<option value="{{.}}">{{dayName .}}</option>{{end}}</optgroup></select></label> containing
 <label class="pick" style="font-weight:500;min-width:200px">{{icon "search" 15}}<input type="search" placeholder="any text" data-q="text"></label></div>
+<div class="chips cats" data-cats style="margin-top:14px"><span class="on" data-cat="">All events</span>{{range .Pages}}{{if .Total}}<span data-cat="{{.ID}}">{{.Title}}<i>{{commas .Total}}</i></span>{{end}}{{end}}</div>
 <div class="sub2" style="margin-top:18px">Common searches</div><div class="saved" style="margin-top:0">
 <a data-preset="person">{{icon "key-round" 16}}Everything one person did</a><a data-preset="usbservers">{{icon "usb" 16}}USB devices on servers</a>
 <a data-preset="afterhours">{{icon "moon" 16}}Admin work after hours</a><a data-preset="failedsource">{{icon "log-in" 16}}Failed logons by source</a>
@@ -156,7 +153,7 @@
 
 {{define "trends"}}{{if .NotEnough}}<div class="alertbar note" style="margin-bottom:12px">{{icon "info" 18}}<span>Not enough history yet: trends start after 2 full weeks. Each scheduled report keeps its counts day by day; they are added up by calendar week, and only weeks fully covered by scheduled reports are compared.</span></div>{{end}}
 <div class="ph" style="margin-bottom:10px"><h2>{{icon "trending-up" 17}}This week against earlier weeks</h2><span class="pm">Dashed line = average of complete weeks · this week is compared with the same part of an average week</span></div>
-<div class="sm">{{range .Cards}}<a class="panel smc" href="{{.Href}}"><div class="t"><b>{{.Title}}</b><span>{{.Avg}}</span></div><div class="v">{{.Value}}{{if .Delta}}<small class="{{.Class}}">{{.Delta}}</small>{{end}}</div><div class="pm" style="font-size:12px;margin:-2px 0 4px">{{.Sub}}</div>{{if .Note}}<p class="pm" style="margin:8px 0 0">{{.Note}}</p>{{else}}{{.Chart}}{{end}}</a>{{end}}</div>
+{{if not .NotEnough}}<div class="sm">{{range .Cards}}<a class="panel smc" href="{{.Href}}"><div class="t"><b>{{.Title}}</b><span>{{.Avg}}</span></div><div class="v">{{.Value}}{{if .Delta}}<small class="{{.Class}}">{{.Delta}}</small>{{end}}</div><div class="pm" style="font-size:12px;margin:-2px 0 4px">{{.Sub}}</div>{{if .Note}}<p class="pm" style="margin:8px 0 0">{{.Note}}</p>{{else}}{{.Chart}}{{end}}</a>{{end}}</div>{{end}}
 <div class="panel" style="margin-top:12px"><div class="ph"><h2>{{icon "server" 17}}Detections per system, by week</h2><span class="pm">Darker = more</span></div>{{if .Rows}}<div style="overflow-x:auto"><table class="wk"><thead><tr><th></th>{{range .Weeks}}<th>{{.}}</th>{{end}}</tr></thead><tbody>{{range .Rows}}<tr><td class="nm"><a class="link" style="color:inherit" href="#systems/{{.Name}}">{{.Name}}</a></td>{{range .Cells}}<td style="{{.Style}}">{{if .N}}{{.N}}{{end}}</td>{{end}}</tr>{{end}}</tbody></table></div>{{else}}<p class="pm" style="margin:0">No detections in these weeks.</p>{{end}}</div>
 <div class="panel" style="margin-top:12px"><div class="ph"><h2>{{icon "users" 17}}Privileged actions by person, by week</h2><span class="pm">Darker = more · click a person for their activity over time</span></div>{{if .People}}<div style="overflow-x:auto"><table class="wk"><thead><tr><th></th>{{range .Weeks}}<th>{{.}}</th>{{end}}</tr></thead><tbody>{{range .People}}<tr><td class="nm"><a class="link" style="color:inherit" href="{{.Href}}">{{.Name}}</a></td>{{range .Cells}}<td style="{{.Style}}">{{if .N}}{{.N}}{{end}}</td>{{end}}</tr>{{end}}</tbody></table></div>{{if .PeopleOld}}<p class="pm" style="margin:8px 0 0">Reports made before 0.13 did not keep counts by person; their weeks are blank.</p>{{end}}{{else}}<p class="pm" style="margin:0">No privileged actions in these weeks.</p>{{end}}</div>{{end}}
 
@@ -242,8 +239,8 @@
 {{define "pagetop"}}<div class="ev6" style="grid-template-columns:repeat(4,1fr)">{{range .Stats}}{{template "stat" .}}{{end}}</div>
 <div class="row" style="grid-template-columns:1.5fr 1fr">
 <div class="panel"><div class="ph"><h2>{{icon "calendar-range" 17}}{{.ChartTitle}}</h2><span class="pm">By {{lower $.KindWord}}</span></div>{{.Chart}}<div class="legend">{{range .Legend}}<span><i style="background:{{css2 .Color}}"></i>{{.Name}}</span>{{end}}{{if .Hot}}<span><i style="background:none;outline:1.5px solid #D12C2C"></i>Above normal</span>{{end}}</div></div>
-<div class="panel"><div class="ph"><h2>{{icon "list-filter" 17}}{{.TopTitle}}</h2>{{if .Top}}<span class="pm">Red = flagged</span>{{end}}</div>{{if .Top}}<div class="mini">{{range .Top}}<div>{{if .Href}}<a class="link" style="color:inherit" href="{{.Href}}" title="{{.Label}}">{{.Label}}</a>{{else}}<span title="{{.Label}}">{{.Label}}</span>{{end}}<s style="width:{{.Pct}}%{{if .Flagged}};background:#D12C2C{{end}}"></s><b>{{commas .N}}</b></div>{{end}}</div>{{else}}<p class="pm" style="margin:0">Nothing this week.</p>{{end}}</div></div>
-<div class="panel" style="margin-bottom:12px"><div class="ph"><h2>{{icon "shield-alert" 17}}Flagged this week</h2><span class="pm">{{.FlaggedNote}}</span></div>{{if .Flagged}}<div class="dstrip">{{range .Flagged}}<a class="dc {{.Severity}}" href="#detections/{{.Index}}"><div class="b"><b>{{.Title}}</b><span>{{.Detail}}</span></div><div class="m2">{{.Host}}<small>{{.Day}} {{.Time}}</small></div></a>{{end}}</div>{{else}}<p class="pm" style="margin:0">None of these events are part of a detection.</p>{{end}}</div>
+<div class="panel"><div class="ph"><h2>{{icon "list-filter" 17}}{{.TopTitle}}</h2>{{if .Top}}<span class="pm">Red = in a detection</span>{{end}}</div>{{if .Top}}<div class="mini">{{range .Top}}<div>{{if .Href}}<a class="link" style="color:inherit" href="{{.Href}}" title="{{.Label}}">{{.Label}}</a>{{else}}<span title="{{.Label}}">{{.Label}}</span>{{end}}<s style="width:{{.Pct}}%{{if .Flagged}};background:#D12C2C{{end}}"></s><b>{{commas .N}}</b></div>{{end}}</div>{{else}}<p class="pm" style="margin:0">Nothing this week.</p>{{end}}</div></div>
+{{if .Flagged}}<div class="panel" style="margin-bottom:12px"><div class="ph"><h2>{{icon "shield-alert" 17}}Detections</h2><span class="pm">{{.FlaggedNote}}</span></div><div class="dstrip">{{range .Flagged}}<a class="dc {{.Severity}}" href="#detections/{{.Index}}"><div class="b"><b>{{.Title}}</b><span>{{.Detail}}</span></div><div class="m2">{{.Host}}<small>{{.Day}} {{.Time}}</small></div></a>{{end}}</div></div>{{end}}
 {{end}}
 
 {{define "events"}}
@@ -264,31 +261,26 @@
 {{end}}
 
 {{define "overview"}}
-{{if .Alert}}<div class="alertbar">{{icon "triangle-alert" 18}}<b>{{.Alert}}</b><span>{{.AlertDetail}}</span><a href="#health">Details {{icon "chevron-right" 14}}</a></div>{{end}}
-{{if .Standalone}}<div class="sys2">{{range .Systems}}
-<div class="panel"><div class="sc"><div class="ic">{{if .VM}}{{icon "box" 22}}{{else}}{{icon "monitor" 22}}{{end}}</div><div><h3>{{.Name}}{{if .VM}} <span class="vm">VM</span>{{end}}</h3><p>{{.OS}} · {{.Role}}</p></div>
-<span class="sv {{if .Bad}}high{{end}}" style="align-self:start{{if not .Bad}};color:#147A3D{{end}}">{{.Status}}</span></div>
-<div class="facts"><div>Events<b>{{.Events}}</b></div><div>Detections<b class="{{if .DetectionsBad}}bad{{end}}">{{.Detections}}</b></div><div>Collected<b>{{.Collected}}</b></div><div>Audit settings<b class="{{if .SettingsBad}}bad{{end}}">{{.Settings}}</b></div></div></div>
-{{end}}</div>{{else}}
+<div class="sub2" style="margin:0 0 8px">This report</div>
 <div class="kpis">{{range .KPIs}}<a class="panel kpi" href="{{.Href}}"><div class="kl">{{.Label}}</div><div class="kv{{if .Bad}} bad{{end}}">{{.Value}}</div><div class="kr"><span class="ks">{{.Note}}</span>{{.Spark}}</div></a>{{end}}</div>
-{{end}}
-<div class="ev6">{{range .Cards}}<a class="panel ec {{.Level}}" href="{{.Href}}"><div class="l">{{icon .Icon 15}}{{.Label}}</div><div class="v">{{.Value}}</div><div class="d">{{.Note}}</div></a>{{end}}</div>
+{{if .Cards}}<div class="ev6">{{range .Cards}}<a class="panel ec {{.Level}}" href="{{.Href}}"><div class="l">{{icon .Icon 15}}{{.Label}}</div><div class="v">{{.Value}}</div><div class="d">{{.Note}}</div></a>{{end}}</div>{{end}}
+{{if .Quiet}}<p class="pm" style="margin:0 0 12px">{{.Quiet}}</p>{{end}}
 <div class="row" style="grid-template-columns:1.35fr 1fr">
-<div class="panel"><div class="ph"><h2>{{icon "server" 17}}{{if .Standalone}}Health{{else}}Systems · {{add (add .OK .Warn) .Bad}}{{end}}</h2>{{if not .Standalone}}<a class="pm link" href="#systems">Systems page →</a>{{end}}</div>
+<div class="panel"><div class="ph"><h2>{{icon "server" 17}}Health</h2>{{if not .Standalone}}<a class="pm link" href="#systems">{{add (add .OK .Warn) .Bad}} systems →</a>{{end}}</div>
 {{if not .Standalone}}<div class="hbar">{{if .OK}}<s style="flex:{{.OK}};background:#1A9A50"></s>{{end}}{{if .Warn}}<s style="flex:{{.Warn}};background:#E08A00"></s>{{end}}{{if .Bad}}<s style="flex:{{.Bad}};background:#D12C2C"></s>{{end}}</div>
 <div class="hleg"><span><i style="background:#1A9A50"></i><b>{{.OK}}</b>reporting normally</span>{{if .Warn}}<span><i style="background:#E08A00"></i><b>{{.Warn}}</b>{{if eq .Warn 1}}warning{{else}}warnings{{end}}</span>{{end}}{{if .Bad}}<span><i style="background:#D12C2C"></i><b>{{.Bad}}</b>{{if eq .Bad 1}}problem{{else}}problems{{end}}</span>{{end}}</div>{{end}}
-{{range .Checks}}{{template "ck" .}}{{end}}
-{{if .Map}}<div style="margin-top:16px">{{range .Map}}<div class="mgrp">{{.Title}} · {{len .Tiles}}</div><div class="map mapfit">{{range .Tiles}}<a class="m {{.Level}}{{if .VM}} mvm{{end}}" href="#systems/{{.Name}}" title="{{.Name}} · {{.OS}}">{{.Name}}<small>{{.OS}}</small></a>{{end}}</div>{{end}}</div>{{end}}
+{{range .Problems}}{{template "ck" .}}{{end}}
+{{if .ChecksOK}}<p class="pm" style="margin:10px 0 0">{{if .Problems}}Also fine{{else}}All fine{{end}}: {{join .ChecksOK " · "}}.</p>{{end}}
 </div>
 <div class="panel"><div class="ph"><h2>{{icon "shield-alert" 17}}Detections</h2><span class="pm"><span class="hi">{{.High}} high</span> · <span class="md">{{.Med}} medium</span></span></div>
 {{if .Detections}}<div class="dl">{{range $i, $d := .Detections}}{{if lt $i 6}}{{if or (eq $i 0) (ne $d.Day (dayBefore $.Detections $i))}}<div class="dayh">{{$d.Day}}</div>{{end}}<a class="dc {{$d.Severity}}" href="#detections/{{$d.Index}}"><div class="b"><b>{{$d.Title}}</b><span>{{$d.Detail}}</span></div><div class="m2">{{$d.Host}}<small>{{$d.Time}}</small></div></a>{{end}}{{end}}</div>
 {{if gt (len .Detections) 6}}<a class="pm link" style="display:block;margin-top:12px" href="#detections">All {{len .Detections}} detections →</a>{{end}}
-{{else}}<div class="clean"><div class="ic">{{icon "shield-check" 22}}</div><div><b>Nothing unusual this period</b><span>No activity matched a detection rule. Every event is still on the event pages and in Search.</span></div></div>{{end}}
+{{else}}<div class="clean"><div class="ic">{{icon "shield-check" 22}}</div><div><b>Nothing unusual this {{.PeriodNoun}}</b><span>No activity matched a detection rule. Every event is still on the event pages and in Search.</span></div></div>{{end}}
 </div></div>
 <div class="panel" style="margin-bottom:12px"><div class="ph"><h2>{{icon "trending-up" 17}}What changed</h2><span class="pm">{{if .HistoryN}}This week so far against the average of {{.HistoryN}} complete weeks · <a class="link" href="#trends">Trends →</a>{{else}}By calendar week{{end}}</span></div>
 {{if .Changes}}<div class="chg">{{range .Changes}}<a class="c-{{.Class}}" href="{{.Href}}"><i>{{if eq .Class "dn"}}▼{{else if eq .Class "new"}}●{{else}}▲{{end}}</i><span>{{.Text}}</span></a>{{end}}</div>
 {{else if .HistoryN}}<p class="pm" style="margin:0">No big changes: every count is within 25% of its average for this point of the week, and no system or person stands out.</p>
 {{else}}<p class="pm" style="margin:0">Not enough history yet: trends start after 2 full weeks. Each scheduled report keeps its counts day by day; once two calendar weeks are fully covered, this lists the biggest changes across systems and people.</p>{{end}}</div>
-<div class="sub2" style="margin:6px 0 8px">Trends · {{.TrendSpan}}</div>
-<div class="row" style="grid-template-columns:repeat(3,1fr)">{{range .Trends}}<div class="panel"><div class="ph"><h2>{{.Title}}</h2><span class="pm">{{.Note}}</span></div>{{if .Chart}}{{.Chart}}<div class="lg" style="justify-content:space-between"><span>{{.From}}</span><span>{{.To}}</span></div>{{else}}<p class="pm" style="margin:8px 0 0">Not enough history yet: trends start after 2 full weeks.</p>{{end}}</div>{{end}}</div>
+{{if .HistoryN}}<div class="sub2" style="margin:6px 0 8px">Trends · {{.TrendSpan}}</div>
+<div class="row" style="grid-template-columns:repeat(3,1fr)">{{range .Trends}}<div class="panel"><div class="ph"><h2>{{.Title}}</h2><span class="pm">{{.Note}}</span></div>{{if .Chart}}{{.Chart}}<div class="lg" style="justify-content:space-between"><span>{{.From}}</span><span>{{.To}}</span></div>{{end}}</div>{{end}}</div>{{end}}
 {{end}}

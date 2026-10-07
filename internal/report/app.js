@@ -127,13 +127,31 @@
     if (t) { t.flag = ''; a.parentNode.hidden = true; t.filter(); }
   });
 
+  // ---- Sidebar groups (UX9) ----
+  function fold(name, open) {
+    var t = document.querySelector('[data-tog="' + name + '"]'), f = document.querySelector('[data-fold="' + name + '"]');
+    if (!t || !f) return;
+    t.classList.toggle('open', open);
+    f.classList.toggle('shut', !open);
+  }
+  document.querySelectorAll('[data-tog]').forEach(function (t) {
+    var go = function () { var n = t.getAttribute('data-tog'); fold(n, !t.classList.contains('open')); };
+    t.addEventListener('click', go);
+    t.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  });
+
   // ---- Pages ----
   var views = document.querySelectorAll('.view');
   function show() {
     var id = (location.hash || '#overview').slice(1).split(/[/?]/)[0];
     if (!document.querySelector('.view[data-view="' + id + '"]')) id = 'overview';
     views.forEach(function (v) { v.hidden = v.getAttribute('data-view') !== id; });
-    document.querySelectorAll('[data-nav]').forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-nav') === id); });
+    document.querySelectorAll('[data-nav]').forEach(function (a) {
+      var on = a.getAttribute('data-nav') === id;
+      a.classList.toggle('on', on);
+      var f = on && a.closest('[data-fold]');
+      if (f) fold(f.getAttribute('data-fold'), true); // the page shown is never hidden in a closed group
+    });
     var t = tables[id];
     if (t) t.open();
     var view = document.querySelector('.view[data-view="' + id + '"]');
@@ -366,6 +384,7 @@
     this.message('Loading events…');
     loadRows(p, function (done, n) { self.message('Loading events… ' + done + ' of ' + n + ' days'); }).then(function (rows) {
       self.rows = rows;
+      self.fitCols();
       self.options();
       if (self.want) self.setFilters(); else self.filter();
     }).catch(function (err) {
@@ -472,19 +491,53 @@
     kind: function (r) { return '<span>' + esc(r[17]) + '</span>'; },
     x: function (r) { return '<span title="' + esc(r[18]) + '">' + esc(r[18]) + '</span>'; },
     cmd: function (r) { var c = (r[12] || r[8]).split('\n')[0]; return '<span class="mono" title="' + esc(c) + '">' + esc(c) + '</span>'; },
-    sum: function (r) {
+    sum: function (r, byPerson) {
+      var s = r[8];
+      if (byPerson && r[5] && s.indexOf(r[5] + ' ') === 0) {
+        s = s.slice(r[5].length + 1);
+        s = s.charAt(0).toUpperCase() + s.slice(1);
+      }
       // Flags ("×7", "Late", "First time") first, so a long summary's
       // ellipsis never hides them (UX1).
-      return '<span class="what" title="' + esc(r[8]) + '">' + (r[14] ? '<i class="flag">' + esc(r[14].split(',').join(' · ')) + '</i> ' : '') + esc(r[8]) + '</span>';
+      return '<span class="what" title="' + esc(r[8]) + '">' + (r[14] ? '<i class="flag">' + esc(r[14].split(',').join(' · ')) + '</i> ' : '') + esc(s) + '</span>';
     },
     sev: function (r) { return '<span>' + sevCell(r[3]) + '</span>'; },
     event: function (r) { var a = (r[4] || '').replace(/_/g, ' '); return '<span>' + esc(a.charAt(0).toUpperCase() + a.slice(1)) + '</span>'; }
   };
   var DEFAULT_COLS = [{ f: 'time' }, { f: 'host' }, { f: 'user' }, { f: 'sum' }, { f: 'sev' }];
   Table.prototype.cells = function (r) {
-    var out = '';
-    (this.page.Cols || DEFAULT_COLS).forEach(function (c) { out += FIELDS[c.f](r); });
+    var out = '', self = this;
+    (this.cols || this.page.Cols || DEFAULT_COLS).forEach(function (c) {
+      out += c.f === 'sum' && self.byPerson ? FIELDS.sum(r, true) : FIELDS[c.f](r);
+    });
     return out;
+  };
+
+  // fitCols hides the columns that say nothing for this page's events
+  // (UX7): Severity when no row is High or Medium, a Kind, Session or
+  // From that is the same on every row. With a Person column, the
+  // summary leaves out the person's name (the event panel keeps it).
+  var FIT = {
+    sev: function (r) { return r[3] === 'high' || r[3] === 'medium' ? r[3] : ''; },
+    kind: function (r) { return r[17]; },
+    x: function (r) { return r[18]; },
+    src: function (r) { return r[7] || ''; }
+  };
+  var WIDTH = { time: '150px', sev: '90px', event: 'minmax(0,1.3fr)', sum: 'minmax(0,3fr)', cmd: 'minmax(0,3fr)' };
+  Table.prototype.fitCols = function () {
+    var cols = this.page.Cols || DEFAULT_COLS, rows = this.rows, head = this.el.querySelector('.vt-head');
+    var keep = cols.filter(function (c, i) {
+      var f = FIT[c.f], show = true;
+      if (f && rows.length) {
+        var first = f(rows[0]);
+        show = !rows.every(function (r) { return f(r) === first; });
+      }
+      if (head && head.children[i]) head.children[i].hidden = !show;
+      return show;
+    });
+    this.cols = keep;
+    this.byPerson = keep.some(function (c) { return c.f === 'user'; });
+    this.box.style.setProperty('--cols', keep.map(function (c) { return WIDTH[c.f] || 'minmax(0,1fr)'; }).join(' '));
   };
 
   Table.prototype.csv = function () {
@@ -628,6 +681,7 @@
       return (d.getUTCDay() + 6) % 7 === +p[0] && d.getUTCHours() === +p[1];
     }
     function run() {
+      syncCats();
       if (tooOld) { st.message(TOO_OLD); return; }
       ran = true;
       var my = ++seq, pages = (meta.pages || []).filter(function (p) { return !q.page.value || p.ID === q.page.value; });
@@ -689,12 +743,30 @@
       b.forEach(function (v, i) { if (v) svg += '<rect x="' + (i * bw).toFixed(1) + '" y="' + (H - 16 - v / top * (H - 20)).toFixed(1) + '" width="' + Math.max(1, bw - 1).toFixed(1) + '" height="' + (v / top * (H - 20)).toFixed(1) + '" fill="#0B5FFF" opacity=".75"/>'; });
       // Day labels in HTML so they keep their shape; at most eight.
       var step = Math.ceil(days.length / 8), lab = '';
-      days.forEach(function (d, k) { if (k % step === 0) lab += '<span style="left:' + (k / days.length * 100).toFixed(2) + '%">' + dayLabel(d) + '</span>'; });
+      days.forEach(function (d, k) {
+        if (k % step !== 0) return;
+        lab += '<span style="left:' + (k / days.length * 100).toFixed(2) + '%">' + dayLabel(d) + '</span>';
+        // A short period also gets times of day (UX9).
+        if (days.length <= 3) [6, 12, 18].forEach(function (h) {
+          lab += '<span style="left:' + ((k * 24 + h) / n * 100).toFixed(2) + '%">' + (h < 10 ? '0' : '') + h + ':00</span>';
+        });
+      });
       box.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + (H - 16) + '" width="100%" height="' + (H - 16) + '" preserveAspectRatio="none">' + svg + '</svg><div class="cbar-l">' + lab + '</div>';
     }
     Object.keys(q).forEach(function (k) {
       q[k].addEventListener(k === 'text' ? 'input' : 'change', function () { extra = null; run(); });
     });
+    // Category chips (UX9): the same as choosing the kind of event.
+    var cats = document.querySelectorAll('[data-cats] [data-cat]');
+    function syncCats() { if (cats) cats.forEach(function (c) { c.classList.toggle('on', c.getAttribute('data-cat') === (q.page ? q.page.value : '')); }); }
+    cats.forEach(function (c) {
+      c.addEventListener('click', function () {
+        if (!q.page) return;
+        q.page.value = c.getAttribute('data-cat');
+        q.page.dispatchEvent(new Event('change'));
+      });
+    });
+    if (q.page) q.page.addEventListener('change', syncCats);
     // Sort: newest, by system, or (failed logons by source) by address.
     function setSort(by) {
       sortBy = by;

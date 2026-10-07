@@ -41,6 +41,7 @@ var Channels = []string{
 	chRDPLocal,
 	chRDPRemote,
 	chPrint,
+	chOpenSSH,
 }
 
 // Translate returns the normalized event for r, or nil if r is not
@@ -91,6 +92,8 @@ func (t *Translator) translate(r *Raw) *event.Event {
 		return t.printed(r)
 	case r.Channel == chRDPLocal || r.Channel == chRDPRemote:
 		return t.remoteDesktop(r)
+	case r.Channel == chOpenSSH:
+		return t.openSSH(r)
 	}
 	return nil
 }

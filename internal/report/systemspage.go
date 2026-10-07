@@ -212,6 +212,13 @@ func (r *Report) systemsPage() *SystemsPage {
 
 		v.Bar = r.collectionBar(s, cleared[h])
 		v.Health = r.systemHealth(s, cleared[h], on)
+		// The reason it is silent is said once: in Health › Reporting
+		// when that line says it, not also in a box above (UX3).
+		for _, l := range v.Health {
+			if l.Level != "ok" && v.Message != "" && strings.Contains(l.What, v.Message) {
+				v.Message = ""
+			}
+		}
 		for i := range v.Health {
 			switch v.Health[i].Title {
 			case "Logs intact", "Logs cleared":
@@ -428,7 +435,8 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 		if len(items) > 2 {
 			what += fmt.Sprintf("; and %d more", len(items)-2)
 		}
-		lines = append(lines, CheckLine{Level: "bad", Icon: "shield-check", Title: "Audit settings to fix", What: what + " — see Audit health"})
+		// A count and a link; the list is on Audit health (UX3).
+		lines = append(lines, CheckLine{Level: "bad", Icon: "shield-check", Title: "Audit settings to fix", What: plural(len(items), "setting") + " (" + what + ")", Href: "#health/" + s.Name})
 	default:
 		what := "All match"
 		if s.Checks.Baseline != "" {
@@ -545,7 +553,9 @@ func clearedWhat(rows []*Row) string {
 	seen := map[string]bool{}
 	for _, row := range rows {
 		n := "an event log"
-		if row.Target != "" {
+		if row.Target == "" && row.EventID == 1102 {
+			n = "Security"
+		} else if row.Target != "" {
 			n = strings.TrimSuffix(rollover.Name(row.Target), " log")
 		}
 		if !seen[n] {

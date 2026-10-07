@@ -3,6 +3,7 @@ package winevt
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/casea1/blackbox/internal/event"
@@ -18,7 +19,49 @@ const (
 	chPrint       = "Microsoft-Windows-PrintService/Operational"
 	chRDPLocal    = "Microsoft-Windows-TerminalServices-LocalSessionManager/Operational"
 	chRDPRemote   = "Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational"
+	chOpenSSH     = "OpenSSH/Operational"
 )
+
+// sshAccepted is sshd's line for a sign-in: "Accepted publickey for claude
+// from 10.1.1.20 port 50114 ssh2: ED25519 SHA256:…".
+var sshAccepted = regexp.MustCompile(`^(?:sshd: )?Accepted (\S+) for (.+?) from (\S+) port (\d+)`)
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// openSSH reads the Windows OpenSSH server's log (UX8): the 4624 Windows
+// writes for an SSH sign-in has no address, so sshd's "Accepted … from
+// <address>" is kept and joined to it in the report. Everything else sshd
+// writes there is left out.
+func (t *Translator) openSSH(r *Raw) *event.Event {
+	// The line is in the "payload" field; any field is read, in case a
+	// version names it differently.
+	var m []string
+	for _, k := range append([]string{"payload"}, sortedKeys(r.Data)...) {
+		if m = sshAccepted.FindStringSubmatch(strings.TrimSpace(r.Data[k])); m != nil {
+			break
+		}
+	}
+	if m == nil {
+		return nil
+	}
+	// Named as the 4624 names a local account, so the two can be joined.
+	user := m[2]
+	if !strings.Contains(user, `\`) {
+		user = joinAccount(r.Computer, user, r.Computer)
+	}
+	e := &event.Event{Category: event.CatLogon, Action: "ssh_accepted", User: user, Outcome: "success", SourceIP: cleanIP(m[3]),
+		Summary: fmt.Sprintf("%s signed in over SSH from %s (%s).", user, cleanIP(m[3]), m[1])}
+	e.AddDetail("Method", m[1])
+	e.AddDetail("Source port", m[4])
+	return e
+}
 
 var msiProductRE = regexp.MustCompile(`^Product: (.+?) -- `)
 
