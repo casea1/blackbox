@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -68,14 +69,16 @@ func main() {
 		// open the setup window.
 		if gui.Launched() {
 			if gui.Setup(version, false) != nil {
-				os.Exit(1)
+				exit(1)
 			}
 			return
 		}
 		fmt.Fprint(os.Stderr, usage)
-		os.Exit(2)
+		exit(2)
 	}
 	gui.AttachConsole() // the setup file run from a prompt with a command
+	foldRedirectedOutput()
+	defer flushOut()
 	cmd, args := os.Args[1], os.Args[2:]
 	var err error
 	switch cmd {
@@ -121,15 +124,35 @@ func main() {
 		fmt.Print(usage)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", cmd, usage)
-		os.Exit(2)
+		exit(2)
 	}
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			os.Exit(0)
+			exit(0)
 		}
 		fmt.Fprintln(os.Stderr, "blackbox:", err)
-		os.Exit(1)
+		if hint := permissionHint(err, cmd); hint != "" {
+			fmt.Fprintln(os.Stderr, hint)
+		}
+		exit(1)
 	}
+}
+
+var geteuid = os.Geteuid
+
+// permissionHint says how to run a command again when it was refused its
+// settings or data (CLI1): they are readable by root or Administrators only.
+func permissionHint(err error, cmd string) string {
+	if !errors.Is(err, fs.ErrPermission) {
+		return ""
+	}
+	if runtime.GOOS == "windows" {
+		return "Its settings and data are readable by Administrators only: run it from an administrator prompt."
+	}
+	if geteuid() == 0 {
+		return ""
+	}
+	return "Its settings and data are readable by root only: run it with sudo, e.g. sudo blackbox " + cmd
 }
 
 func printf(format string, args ...any) { fmt.Printf(format+"\n", args...) }
@@ -470,7 +493,12 @@ func savedText(key, value string) string {
 	if value == "" {
 		return fmt.Sprintf("Cleared %s. %s", key, applies) // E1: not "Saved exclude_users = ."
 	}
-	return fmt.Sprintf("Saved %s = %s. %s", key, value, applies)
+	s := fmt.Sprintf("Saved %s = %s. %s", key, value, applies)
+	if key == "keep_sent_days" && strings.TrimSpace(value) == "0" {
+		// CLI1: say what 0 means.
+		s += " With 0, delivered batches are not kept: if the collector reports one missing, it cannot be sent again (blackbox send --resend has nothing to send)."
+	}
+	return s
 }
 
 // retentionFloor is a year: AU-11 audit record retention, the period sites
@@ -519,7 +547,7 @@ func cmdStatus(args []string) error {
 	}
 	var na *app.NeedsAttention
 	if errors.As(err, &na) {
-		os.Exit(4) // the status says what; lets scripts and monitoring notice (L10)
+		exit(4) // the status says what; lets scripts and monitoring notice (L10)
 	}
 	return err
 }
@@ -864,7 +892,7 @@ func cmdCheck(args []string) error {
 	rs := check.Run()
 	printChecks(rs, *all)
 	if _, fail, _ := check.Summary(rs); fail > 0 {
-		os.Exit(3) // lets scripts detect non-compliance
+		exit(3) // lets scripts detect non-compliance
 	}
 	return nil
 }
@@ -901,7 +929,7 @@ func cmdVerify(args []string) error {
 		}
 	}
 	if bad {
-		os.Exit(1)
+		exit(1)
 	}
 	return nil
 }
