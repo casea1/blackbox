@@ -380,8 +380,10 @@ A sender keeps everything until the collector has it.
   (recorded like a setting change, in the system log too). Open gaps make
   `blackbox status` exit 4. A gap from batch 1, noticed when the
   collector first heard from a sender, clears by itself once that
-  sender's batches say where its earlier batches went (a gap recorded
-  before 0.14 marked that).
+  sender's batches say where its earlier batches went. A gap recorded
+  before 0.14 may never clear by itself: batches sent before 0.14 say
+  nothing about where earlier ones went, so accept it with `blackbox gaps
+  accept` once you know where they went (L13c).
 
 In a re-test, 114 batches and 2 log archives queued over 27 hours were
 delivered in 47 seconds, with nothing rejected.
