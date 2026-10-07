@@ -324,6 +324,13 @@ collector**. It appears on the Systems page after its first collection.
 silent. Its events stay in earlier reports, and it is listed again if it
 ever sends again.
 
+**A collector made standalone.** Its reports leave out the computers that
+sent to it and sent nothing in the report's period: they are not its
+systems any more. One that still sent during the period is in that
+report. On a collector, a sender that stops sending (made standalone, or
+retired) is shown as not reporting until it is removed with
+`blackbox systems remove NAME`, as the gap says.
+
 **Changing where a computer sends.** Run the installer again. It shows the
 current settings as the defaults. From a script, run
 `blackbox config set send_to \\NEWCOLLECTOR\BlackboxInbox` as an

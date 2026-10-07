@@ -81,7 +81,9 @@ says which version is installed and lists your current settings; click
 **Upgrade now, keep current settings** to upgrade in one click, or **Next**
 to go through them. It doesn't move the report schedule. A collection running at that moment, or an open
 status icon, doesn't block it. Setup then checks the new program starts,
-and puts the previous one back if it doesn't.
+and puts the previous one back if it doesn't. Installing or upgrading
+(also `blackbox install --yes`) starts a collection straight away, as on
+Linux.
 
 To change a single setting from a script, use `blackbox config`:
 
@@ -116,6 +118,16 @@ which reaches network shares as the computer account (`DOMAIN\COMPUTER$`).
 Grant that account write access to the share and folder. On a workgroup
 system with no domain, use a local folder.
 
+## Console output
+
+`blackbox` writes its messages in plain ASCII when its output is
+redirected to a file or another program (`>`, `Out-File`,
+`Start-Process -RedirectStandardOutput`), so Windows PowerShell 5.1 doesn't
+turn dashes into `ΓÇö` in what you paste into a ticket. In a console window
+it shows them as they are. Run it from an administrator prompt: its
+settings and data are readable by Administrators only, and it says so if
+it is refused.
+
 ## Status icon
 
 On a collector or standalone computer, members of **Administrators** see a
@@ -134,6 +146,9 @@ Click it for the menu:
 - **Status details…**, the same as `blackbox status`;
 - **Change settings…**;
 - **Close this icon**.
+
+When something needs looking at, the icon's tooltip ends "something to
+look at: see Status details"; **Status details…** says what.
 
 It shows a notification when a scheduled report is ready, when collection
 stops, when a computer stops sending, when audit settings stop matching
@@ -161,6 +176,7 @@ account read access to that folder. This is the same as Explorer's
 |---|---|
 | Security | Logons, failed logons, lockouts, admin logons, elevated programs, account and group changes, audit policy changes, log cleared, removable storage file access; audit events dropped (4612), LSA packages (4611/4614/4622), user rights (4704/4705), domain, Kerberos and trust policy (4739, 4713, 4706/4707/4716), weakened boot settings (4826), auditing settings on objects (4907), firewall rules, settings and service (4946–4950, 5024/5025/5030), code integrity (5038/6281), shares (5140, refused 5145), security registry keys (4657), permissions (4670), SID history (4765/4766), lock and unlock (4800/4801), files with auditing set (File System 4656/4663: refused access, writes and deletes). Every other Security event is listed as "Security event <ID>" on Other security, or counted when too frequent (see below). |
 | System | Services installed, startup and shutdown, other logs cleared |
+| OpenSSH/Operational | Only sshd's "Accepted … from <address>" line, to give an SSH logon its source address (when the OpenSSH server is installed) |
 | Application | Software installed and removed (Windows Installer 1033/1034, 11707/11724) |
 | Microsoft-Windows-Windows Firewall With Advanced Security/Firewall | Who changed a firewall rule or setting (2003, 2004/2097, 2006, 2033); merged with the Security log's firewall events |
 | Microsoft-Windows-TerminalServices-LocalSessionManager/Operational and RemoteConnectionManager/Operational | Remote Desktop sign-ins (21, 1149), disconnects and reconnects (24, 25), with the client address; merged with the Security log's |

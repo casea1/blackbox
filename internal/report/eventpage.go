@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"html/template"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -351,11 +352,31 @@ func (r *Report) fillPages(pages []*EventPage) {
 		flaggedRows := 0
 		users, hosts, sources := map[string]bool{}, map[string]bool{}, map[string]bool{}
 		count := map[string]int{}
+		// A period of a day or less is charted by hour (UX4).
+		start := r.PeriodStart()
+		span := r.WindowEnd.Sub(start)
+		hourly := !start.IsZero() && span > 0 && span <= 24*time.Hour
+		var perHour [][]int
+		if hourly {
+			perHour = make([][]int, int(math.Ceil(r.WindowEnd.Sub(start).Hours())))
+			for h := range perHour {
+				perHour[h] = make([]int, len(spec.kinds))
+			}
+		}
 		for i, e := range r.Events {
 			if !p.on(e) {
 				continue
 			}
 			k := spec.kindOf(e)
+			if hourly {
+				if h := int(e.Time.Sub(start).Hours()); h >= 0 && h < len(perHour) {
+					for ki, pk := range spec.kinds {
+						if pk.Name == k {
+							perHour[h][ki]++
+						}
+					}
+				}
+			}
 			if day := e.Time.In(r.Location).Format("20060102"); perDay[day] != nil {
 				for ki, pk := range spec.kinds {
 					if pk.Name == k {
@@ -418,29 +439,50 @@ func (r *Report) fillPages(pages []*EventPage) {
 		for ki, k := range spec.kinds {
 			series[ki] = Series{Name: k.Name, Color: k.Color}
 		}
-		tot := make([]int, len(days))
+		var tot []int
 		sum := 0
-		for di, d := range days {
-			t, _ := time.ParseInLocation("20060102", d, r.Location)
-			if len(days) > 10 {
-				labels = append(labels, t.Format("2 Jan"))
-			} else {
-				labels = append(labels, t.Format("Mon"))
+		if hourly {
+			top.ChartTitle = strings.Replace(top.ChartTitle, " per day", " per hour", 1)
+			for h := range perHour {
+				labels = append(labels, start.Add(time.Duration(h)*time.Hour).In(r.Location).Format("15:04"))
+				n := 0
+				for ki := range spec.kinds {
+					series[ki].Values = append(series[ki].Values, perHour[h][ki])
+					n += perHour[h][ki]
+				}
+				tot = append(tot, n)
+				sum += n
 			}
-			for ki := range spec.kinds {
-				series[ki].Values = append(series[ki].Values, perDay[d][ki])
-				tot[di] += perDay[d][ki]
+		} else {
+			for _, d := range days {
+				t, _ := time.ParseInLocation("20060102", d, r.Location)
+				if len(days) > 10 {
+					labels = append(labels, t.Format("2 Jan"))
+				} else {
+					labels = append(labels, t.Format("Mon"))
+				}
+				n := 0
+				for ki := range spec.kinds {
+					series[ki].Values = append(series[ki].Values, perDay[d][ki])
+					n += perDay[d][ki]
+				}
+				tot = append(tot, n)
+				sum += n
 			}
-			sum += tot[di]
 		}
-		hot := make([]bool, len(days))
+		hot := make([]bool, len(tot))
 		active := 0 // days with events: quiet weekends don't make weekdays look busy
 		for _, v := range tot {
 			if v > 0 {
 				active++
 			}
 		}
+		// "Above normal" needs something to compare with: at least two
+		// other days with events, and never by hour (UX4).
 		for di, v := range tot {
+			if hourly || active < 3 {
+				break
+			}
 			others := float64(sum-v) / float64(max(1, active-1))
 			if float64(v) > others*1.5 && float64(v) >= others+10 {
 				hot[di], top.Hot = true, true
@@ -474,7 +516,7 @@ func (r *Report) fillPages(pages []*EventPage) {
 			}
 			top.Top = append(top.Top, item)
 		}
-		// Flagged this week: the detections with most of this page's events.
+		// Detections with most of this page's events (none: no panel).
 		var fl []int
 		for fi := range findings {
 			fl = append(fl, fi)
@@ -492,7 +534,7 @@ func (r *Report) fillPages(pages []*EventPage) {
 			}
 		}
 		if p.Total > 0 {
-			top.FlaggedNote = fmt.Sprintf("%s of %s %s are part of something unusual", commas(flaggedRows), commas(p.Total), spec.unit)
+			top.FlaggedNote = fmt.Sprintf("%s of %s %s are in a detection", commas(flaggedRows), commas(p.Total), spec.unit)
 		}
 		top.Stats = r.pageStats(p, spec, count, users, hosts, sources, findings)
 		p.Top = top

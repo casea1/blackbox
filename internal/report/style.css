@@ -469,6 +469,21 @@ button.btn{font:inherit;font-size:13px;font-weight:550;cursor:pointer}
   .facts4>*:nth-child(n+3){border-top:1px solid rgba(0,30,98,.08)}
   .drawer{width:min(560px,100vw)}
 }
+/* Collapsible sidebar groups (UX9); on the narrow icon rail they stay open. */
+aside .tog{cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;padding-right:18px}
+aside .tog i{font-style:normal;transition:transform .15s}
+aside .tog.open i{transform:rotate(90deg)}
+aside .fold.shut{display:none}
+@media (max-width:1050px){aside .fold.shut{display:block}}
+.chip-manual{display:inline-block;vertical-align:middle;font-size:11px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:#8F4F00;background:#FDF3E1;border:1px solid #F0D6A8;border-radius:999px;padding:2px 9px;margin-left:8px}
+/* Phone width (UI18): the page never scrolls sideways; wide tables
+   scroll inside their panels, and the header tools wrap. */
+@media (max-width:640px){
+  main{min-width:0}
+  .panel{max-width:100%;overflow-x:auto}
+  .head,.top,.hd{flex-wrap:wrap}
+  .head .tools{flex:1 1 100%!important;flex-wrap:wrap;min-width:0}
+}
 @media print{
   @page{margin:16mm}
   body{background:#fff!important;display:block!important}

@@ -35,6 +35,10 @@ func TestClassify(t *testing.T) {
 		!strings.HasPrefix(v.Items[2], "WS-09 has not sent since") {
 		t.Errorf("things to look at: %+v", v)
 	}
+	// TRAY3: the menu doesn't list them; the tooltip says where they are.
+	if !strings.HasSuffix(v.Tip, "something to look at: see Status details") || strings.Contains(v.Tip, "3 things") {
+		t.Errorf("tooltip: %q", v.Tip)
+	}
 
 	h = healthy()
 	h.LastCollect = trayNow.Add(-2*time.Hour - 16*time.Minute) // past twice the interval plus 15 minutes

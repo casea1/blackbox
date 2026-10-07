@@ -107,7 +107,8 @@ func (r *Report) summary() Summary {
 	if s.WindowStart.IsZero() {
 		s.WindowStart = r.FirstEvent
 	}
-	s.High = len(r.HighRows)
+	// High counts High detections: every High row is in one (UX6), so
+	// counting the rows too counted each twice.
 	for _, a := range r.Archives {
 		s.Archives = append(s.Archives, ArchiveJSON{Host: a.Host, From: a.From, To: a.To, File: a.Name, Bytes: a.Bytes, SHA256: a.SHA256, Gaps: a.Gaps, Logs: a.Logs, Notes: a.Notes})
 	}
