@@ -476,3 +476,67 @@ func TestOwnFolderAudit(t *testing.T) {
 		t.Errorf("error: %+v", r)
 	}
 }
+
+// LOG1: the PowerShell log is sized too (Windows' default 15 MB holds a
+// few hundred script block events), with how to set it, since Group
+// Policy has no setting for it; another log Blackbox reads is warned about
+// only when it holds less than a week.
+func TestReadLogSizes(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	settings := map[string]winevt.LogSettings{
+		"Microsoft-Windows-PowerShell/Operational":                           {Enabled: true, MaxSize: 15 << 20},
+		"Microsoft-Windows-Windows Defender/Operational":                     {Enabled: true, MaxSize: 16 << 20},
+		"Microsoft-Windows-PrintService/Operational":                         {Enabled: false, MaxSize: 1 << 20},
+		"Microsoft-Windows-TerminalServices-LocalSessionManager/Operational": {Enabled: true, MaxSize: 1 << 20},
+	}
+	hist := map[string]winevt.LogHistory{
+		// Full, and spanning 9 minutes: as on the Windows 11 VM.
+		"Microsoft-Windows-PowerShell/Operational": {Oldest: now.Add(-9 * time.Minute), Newest: now, FileSize: 15 << 20},
+		// Half full after 30 days.
+		"Microsoft-Windows-Windows Defender/Operational": {Oldest: now.AddDate(0, 0, -30), Newest: now, FileSize: 8 << 20},
+		// Full after 2 days.
+		"Microsoft-Windows-TerminalServices-LocalSessionManager/Operational": {Oldest: now.AddDate(0, 0, -2), Newest: now, FileSize: 1 << 20},
+	}
+	get := func(n string) (winevt.LogSettings, error) {
+		s, ok := settings[n]
+		if !ok {
+			return winevt.LogSettings{}, errors.New("not found")
+		}
+		return s, nil
+	}
+	history := func(n string) (winevt.LogHistory, error) { return hist[n], nil }
+	got := map[string]Result{}
+	for _, r := range readLogSizes(get, history) {
+		got[r.Item] = r
+	}
+	ps, ok := got["PowerShell log"]
+	if !ok || ps.Status != Warn || ps.Area != "Event log size" || ps.STIG != "" {
+		t.Fatalf("PowerShell log: %+v", ps)
+	}
+	for _, want := range []string{`wevtutil sl "Microsoft-Windows-PowerShell/Operational" /ms:`, `WINEVT\Channels\Microsoft-Windows-PowerShell/Operational`, "make it 2 GB"} {
+		if !strings.Contains(ps.Fix, want) {
+			t.Errorf("PowerShell fix lacks %q: %s", want, ps.Fix)
+		}
+	}
+	if !strings.Contains(ps.Have, "15 MB") || !strings.Contains(ps.Want, "1 GB") {
+		t.Errorf("PowerShell have/want: %q / %q", ps.Have, ps.Want)
+	}
+	if _, ok := got["Windows Defender log"]; ok {
+		t.Error("a log holding 30 days is warned about")
+	}
+	if _, ok := got["Print log"]; ok {
+		t.Error("a log that is off is sized")
+	}
+	rdp, ok := got["Remote Desktop sessions log"]
+	if !ok || rdp.Status != Warn || !strings.Contains(rdp.Fix, "make it 4 MB") {
+		t.Errorf("Remote Desktop log holding 2 days: %+v", rdp)
+	}
+	// Already 1 GB and holding a week: passes.
+	settings["Microsoft-Windows-PowerShell/Operational"] = winevt.LogSettings{Enabled: true, MaxSize: 1 << 30}
+	hist["Microsoft-Windows-PowerShell/Operational"] = winevt.LogHistory{Oldest: now.AddDate(0, 0, -10), Newest: now, FileSize: 1 << 30}
+	for _, r := range readLogSizes(get, history) {
+		if r.Item == "PowerShell log" && r.Status != Pass {
+			t.Errorf("1 GB holding 10 days: %+v", r)
+		}
+	}
+}

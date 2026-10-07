@@ -13,6 +13,7 @@ import (
 	"github.com/casea1/blackbox/internal/collect"
 	"github.com/casea1/blackbox/internal/lan"
 	"github.com/casea1/blackbox/internal/report"
+	"github.com/casea1/blackbox/internal/rollover"
 	"github.com/casea1/blackbox/internal/store"
 )
 
@@ -53,9 +54,9 @@ type Health struct {
 
 // LostLog is one log losing events to rollover.
 type LostLog struct {
-	Host, Channel string
-	Count         uint64
-	Since         time.Time // the first loss in this period
+	rollover.Loss
+	Count uint64    // events lost since the last report
+	Since time.Time // the first loss in this period
 }
 
 // LastRun is the outcome of the last scheduled run.
@@ -67,8 +68,10 @@ type LastRun struct {
 func lastRunPath(dataDir string) string { return filepath.Join(dataDir, "last-run.json") }
 
 // lostSince adds up the events each log overwrote before they could be
-// collected, since start (or the last week when there is no report yet).
-func lostSince(st *store.Store, start, now time.Time) []LostLog {
+// collected, since start (or the last week when there is no report yet),
+// with how long each log held when it turned over and how often its
+// system collects (LOG1): every is this computer's collect_every.
+func lostSince(st *store.Store, start, now time.Time, every time.Duration) []LostLog {
 	if start.IsZero() {
 		start = now.AddDate(0, 0, -7)
 	}
@@ -78,28 +81,49 @@ func lostSince(st *store.Store, start, now time.Time) []LostLog {
 	}
 	by := map[string]*LostLog{}
 	var order []string
+	times := map[string][]time.Time{}
 	for _, r := range runs {
+		hk := store.SystemKey(r.Host)
+		times[hk] = append(times[hk], r.Time)
 		for _, c := range r.Channels {
 			if c.Gap == nil || c.Gap.Lost == 0 {
 				continue
 			}
-			k := r.Host + "|" + c.Channel
+			k := hk + "|" + c.Channel
 			l := by[k]
 			if l == nil {
-				l = &LostLog{Host: r.Host, Channel: c.Channel, Since: r.Time}
+				l = &LostLog{Loss: rollover.Loss{Host: r.Host, Channel: c.Channel}, Since: r.Time}
 				by[k] = l
 				order = append(order, k)
 			}
 			l.Count += c.Gap.Lost
+			l.Lost = l.Count
 			if r.Time.Before(l.Since) {
 				l.Since = r.Time
 			}
+			// How far back the full log reached when it turned over: the
+			// shortest is the fastest it was written.
+			if !c.OldestTime.IsZero() && r.Time.After(c.OldestTime) {
+				if held := r.Time.Sub(c.OldestTime); l.Held == 0 || held < l.Held {
+					l.Held, l.MaxSize = held, c.MaxSizeBytes
+				}
+			}
 		}
 	}
+	self := store.SystemKey(collect.LocalHost())
 	out := make([]LostLog, 0, len(order))
 	for _, k := range order {
-		out = append(out, *by[k])
+		l := by[k]
+		hk := store.SystemKey(l.Host)
+		if hk == self && every > 0 {
+			l.Every = every
+		} else {
+			l.Every = rollover.Interval(times[hk])
+		}
+		out = append(out, *l)
 	}
+	// The audit record first (High), then the other logs.
+	sort.SliceStable(out, func(i, j int) bool { return rollover.Critical(out[i].Channel) && !rollover.Critical(out[j].Channel) })
 	return out
 }
 
@@ -162,7 +186,7 @@ func (a *App) Health() (Health, error) {
 	if l, ok := report.Latest(h.ReportsDir); ok {
 		h.Latest = &l
 	}
-	h.Lost = lostSince(st, h.PeriodStart, now)
+	h.Lost = lostSince(st, h.PeriodStart, now, a.Cfg.CollectEvery)
 
 	// Audit settings: the latest check of each system.
 	if checks, err := st.LatestChecks(now.AddDate(0, 0, -8), now); err == nil {

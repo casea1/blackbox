@@ -100,7 +100,7 @@ func TestChecklistTitlesMatchResult(t *testing.T) {
 	r := Build([]*event.Event{cleared}, runs, Options{WindowStart: end.AddDate(0, 0, -1), WindowEnd: end, Location: time.UTC, Source: "Live collection", Collector: true,
 		Systems: []SystemInfo{{Name: "WS-07", OS: "windows"}, {Name: "WS-09", OS: "windows", LastRun: end.AddDate(0, 0, -3)}}, CheckSets: []CheckSet{cs}})
 	healthy := map[string]bool{"Logs intact": true, "Every system reporting": true, "Audit settings match STIG": true,
-		"No events lost to log rollover": true, "Original logs archived": true, "Reports on time": true, "Antivirus definitions current": true, "STIG compliance (SCAP)": true}
+		"No events lost to log rollover": true, "No events lost from the audit logs": true, "Original logs archived": true, "Reports on time": true, "Antivirus definitions current": true, "STIG compliance (SCAP)": true}
 	overview := r.overview(nil).Checks
 	lines := overview
 	for _, sp := range r.systemsPage().Groups {
@@ -117,7 +117,7 @@ func TestChecklistTitlesMatchResult(t *testing.T) {
 	for _, l := range overview {
 		got[l.Title] = l
 	}
-	if l := got["Events lost to log rollover"]; l.Who != "WS-07" || l.What != "95,229 events overwritten before they were collected" || l.Href == "" {
+	if l := got["Events lost to log rollover"]; l.Who != "WS-07" || l.What != "Security log: 95,229 events overwritten before they were collected" || l.Href == "" {
 		t.Errorf("rollover line: %+v", l)
 	}
 	for _, want := range []string{"Logs cleared", "Not every system reporting", "Audit settings to fix"} {
