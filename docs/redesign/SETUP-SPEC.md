@@ -106,7 +106,7 @@ The pages ask exactly the console setup's questions, in the same order, with the
 
 ### What it shows
 
-The tray reads the same status as `blackbox status` directly, once a minute.
+The tray reads the same status as `blackbox status` directly, once a minute. The menu opens at once with the status last read; opening it also starts a fresh read, which updates the icon and the next menu (reading it first took up to 8 seconds on a collector, TRAY2).
 
 | Icon | Means |
 |---|---|
