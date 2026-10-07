@@ -65,3 +65,11 @@ tarballs and `SHA256SUMS`, and publishes them on the
 | `test` | Formatting, vet (Linux and Windows), race-enabled tests, and the package build |
 | `windows` | Tests on Windows, then `check`, `collect`, `report` and `verify` against the runner's real event logs |
 | `linux-live` | Installs auditd with the recommended rules on Ubuntu, makes account and sudoers changes, then checks the report contains them |
+
+A pull request that changes only documentation (files under `docs/`, or
+any `.md` file) runs `test` only: the `changes` job skips `linux-live`
+and `windows`, which take about 10 minutes. A push to main always runs
+every job. Package installs on the Linux runner go through
+`scripts/ci-apt.sh`, which gives up on a hung mirror after 5 minutes and
+tries again (3 attempts); `linux-live` and `windows` also stop after 30
+and 40 minutes.
