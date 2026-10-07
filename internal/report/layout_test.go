@@ -55,7 +55,7 @@ func TestLayoutFixes(t *testing.T) {
 		t.Errorf("an Overview tile lacks its full name on hover")
 	}
 	for _, want := range []string{`<th title="Removable storage">USB</th>`, `<th title="Log size and space settings">Log size</th>`,
-		`data-scrollcue`, `class="morecue"`, `class="dl gapgrid"`, "Log size and space settings"} {
+		`data-scrollcue`, `class="morecue"`, `class="stig gaps"`, `<details class="gapd"><summary>`, "Log size and space settings"} {
 		if !strings.Contains(h, want) {
 			t.Errorf("report lacks %q", want)
 		}

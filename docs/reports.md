@@ -170,7 +170,7 @@ remounts are not; network shares (`nfs`, `cifs`, `sshfs`) are Low,
 **Auditing off at collection (Linux).** Each collection checks that the
 audit service is running (`systemctl is-active auditd`) and that kernel
 auditing is on (`auditctl -s`). If not, the computer is red: "Auditing
-off" on Systems, an "Auditing is off" card on Audit health, a line in
+off" on Systems, an "Auditing is off" row in Audit health's Gaps table, a line in
 `blackbox status` (also in a collector's list of systems) and a red
 status icon with a notification.
 
@@ -499,7 +499,7 @@ that match on every check**, so the sections below stay in reach; a bar
 at the top of the page links to each section (the grid, Gaps, Antivirus,
 STIG compliance, other Security-log events) with what needs attention.
 In the **Antivirus** table, systems with current definitions are folded
-the same way. The gaps follow below the grid. **Log size and space settings** counts the
+the same way. The gaps follow below the grid as a table, one row per gap (its STIG ID, the systems and the result); click a gap for what it means and how to fix it. **Log size and space settings** counts the
 systems whose logs are smaller than the STIG asks, or, on Linux, whose
 auditd space and disk actions differ from it.
 "How to fix" gives the Group Policy location and setting for each gap
