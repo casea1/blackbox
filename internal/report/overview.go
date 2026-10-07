@@ -44,18 +44,6 @@ type CheckLine struct {
 	Ev    string // or: an event to open (see evRef)
 }
 
-// MapTile is one system on the system map.
-type MapTile struct {
-	Name, OS, Level string
-	VM              bool
-}
-
-// MapGroup is a group of tiles: Servers, Workstations or Virtual machines.
-type MapGroup struct {
-	Title string
-	Tiles []MapTile
-}
-
 // DetectionCard is one detection in a list grouped by day.
 type DetectionCard struct {
 	Day                           string
@@ -77,29 +65,33 @@ type Overview struct {
 	Alert       string
 	AlertDetail string
 	KPIs        []KPI
-	Cards       []EventCard
-	OK, Warn    int
-	Bad         int
-	Checks      []CheckLine
-	Map         []MapGroup
-	Systems     []SystemCard // standalone: one card per system
-	Detections  []DetectionCard
-	High, Med   int
-	Trends      []SmallTrend
-	Changes     []Change // What changed: the biggest moves against earlier weeks
-	HistoryN    int      // complete weeks compared with (0: not enough history)
-	TrendSpan   string   // "last 6 weeks · 1 Sep – 12 Oct 2026"
-	Standalone  bool
+	// PeriodNoun is "week" or "period" (see Report.periodNoun).
+	PeriodNoun string
+	// Quiet names the activity counters that are zero, in one line.
+	Quiet string
+	// Problems are the health lines to fix, ChecksOK the titles of those
+	// that are fine (UX3).
+	Problems   []CheckLine
+	ChecksOK   []string
+	Cards      []EventCard
+	OK, Warn   int
+	Bad        int
+	Checks     []CheckLine
+	Detections []DetectionCard
+	High, Med  int
+	Trends     []SmallTrend
+	Changes    []Change // What changed: the biggest moves against earlier weeks
+	HistoryN   int      // complete weeks compared with (0: not enough history)
+	TrendSpan  string   // "last 6 weeks · 1 Sep – 12 Oct 2026"
+	Standalone bool
 }
 
-// SystemCard is a standalone report's card for its computer or VM.
-type SystemCard struct {
-	Name, OS, Role, Status string
-	Bad, VM                bool
-	Events, Detections     string
-	DetectionsBad          bool
-	Collected, Settings    string
-	SettingsBad            bool
+// joinOr is "a, b or c".
+func joinOr(l []string) string {
+	if len(l) < 2 {
+		return strings.Join(l, "")
+	}
+	return strings.Join(l[:len(l)-1], ", ") + " or " + l[len(l)-1]
 }
 
 func osLabel(s SystemRow) string {
@@ -128,7 +120,7 @@ func isServer(s SystemRow) bool {
 
 // overview builds the Overview page.
 func (r *Report) overview(pages []*EventPage) *Overview {
-	o := &Overview{}
+	o := &Overview{PeriodNoun: r.periodNoun()}
 	m := r.metrics()
 	byHost := map[string]int{} // logs cleared, per computer
 	clearRows := map[string][]*Row{}
@@ -196,12 +188,25 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	}
 	o.High, o.Med = high, med
 	o.KPIs = append(o.KPIs, KPI{Label: "Detections", Href: "#detections", Value: commas(len(r.Findings)), Bad: len(r.Findings) > 0,
-		Note: map[bool]string{true: "none this " + map[bool]string{true: "week", false: "period"}[r.Period == "weekly" || r.Period == ""], false: fmt.Sprintf("%d high · %d medium", high, med)}[len(r.Findings) == 0], Spark: r.weekSpark(MDetections, len(r.Findings) > 0)})
+		Note: map[bool]string{true: "none this " + r.periodNoun(), false: fmt.Sprintf("%d high · %d medium", high, med)}[len(r.Findings) == 0], Spark: r.weekSpark(MDetections, len(r.Findings) > 0)})
 	o.KPIs = append(o.KPIs, KPI{Label: "Events collected", Href: "#search", Value: shortCount(len(r.Events)), Note: r.vsAverage(MEvents),
 		Spark: r.weekSpark(MEvents, false)})
-	o.KPIs = append(o.KPIs, KPI{Label: "Privileged actions", Href: "#privileged", Value: commas(m[MPrivileged]),
-		Note:  fmt.Sprintf("by %d %s", len(people), map[bool]string{true: "person", false: "people"}[len(people) == 1]),
-		Spark: r.weekSpark(MPrivileged, false)})
+	// Audit health: systems whose settings match the STIG (UX3).
+	checked, matching := 0, 0
+	for _, s := range systems {
+		if s.Checks != nil {
+			checked++
+			if s.Checks.Fail == 0 {
+				matching++
+			}
+		}
+	}
+	ah := KPI{Label: "Audit health", Href: "#health", Value: fmt.Sprintf("%d / %d", matching, checked), Bad: matching < checked,
+		Note: "systems matching the STIG"}
+	if checked == 0 {
+		ah.Value, ah.Note = "—", "settings not checked in this report"
+	}
+	o.KPIs = append(o.KPIs, ah)
 
 	// Important-event cards.
 	where := func(action string, newAdmin bool) string {
@@ -229,7 +234,7 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 		}
 		o.Cards = append(o.Cards, EventCard{Icon: icon, Label: label, Value: commas(v), Note: note, Level: lv, Href: href})
 	}
-	card("eraser", "Logs cleared", MLogsCleared, "bad", where("log_cleared", false), "#integrity")
+	// Logs cleared is a Health line, not also a counter (UX3).
 	card("user-plus", "New admins", MNewAdmins, "bad", where("group_member_added", true), "#accounts")
 	card("settings", "Policy changes", MPolicyChanges, "warn", where("audit_policy_changed", false), "#integrity")
 	lockNote := where("account_locked", false)
@@ -239,68 +244,34 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	card("lock", "Lockouts", MLockouts, "warn", lockNote, "#failed")
 	card("moon", "After-hours admin", MAfterHours, "warn", afterHoursNote(r), "#privileged")
 	card("usb", "New USB devices", MNewUSB, "", commas(m[MUSB])+" events", "#usb")
+	// Only the counters with something in them; the rest in one line
+	// (UX3).
+	var shown []EventCard
+	var zero []string
+	for _, c := range o.Cards {
+		if c.Value == "0" {
+			zero = append(zero, strings.ToLower(c.Label[:1])+c.Label[1:])
+			continue
+		}
+		shown = append(shown, c)
+	}
+	o.Cards = shown
+	if len(zero) > 0 {
+		o.Quiet = "No " + joinOr(zero) + " in this report."
+	}
 
 	// Health checklist.
 	o.Checks = r.checklist(systems, clearRows)
-
-	// System map or (standalone) system cards.
-	if o.Standalone {
-		for _, s := range systems {
-			c := SystemCard{Name: s.Name, OS: osLabel(s), VM: s.VM, Events: commas(s.Events)}
-			c.Role = "standalone"
-			if s.VM {
-				c.Role = "virtual machine on " + r.MainSystem()
-			}
-			c.Bad = level[s.Name] != "ok"
-			c.Status = map[bool]string{true: "Needs attention", false: "Healthy"}[c.Bad]
-			n := 0
-			for _, f := range r.Findings {
-				if strings.EqualFold(f.Host, s.Name) {
-					n++
-				}
-			}
-			c.Detections, c.DetectionsBad = commas(n), n > 0
-			c.Collected = "this period"
-			if s.Status == "silent" {
-				c.Collected = "nothing received"
-			} else if s.VM && s.Runs == 0 {
-				c.Collected = "nothing received"
-			} else if s.VM {
-				c.Collected = "while on"
-			}
-			c.Settings = "not checked"
-			if s.Checks != nil {
-				if s.Checks.Fail > 0 {
-					c.Settings, c.SettingsBad = fmt.Sprintf("%d %s", s.Checks.Fail, map[bool]string{true: "gap", false: "gaps"}[s.Checks.Fail == 1]), true
-				} else {
-					c.Settings = "Match STIG"
-				}
-			}
-			o.Systems = append(o.Systems, c)
+	// Each problem once; what is fine in one line (UX3).
+	var problems []CheckLine
+	for _, c := range o.Checks {
+		if c.Level == "ok" {
+			o.ChecksOK = append(o.ChecksOK, c.Title)
+			continue
 		}
-	} else {
-		groups := []*MapGroup{{Title: "Servers"}, {Title: "Workstations"}, {Title: "Virtual machines"}}
-		for _, s := range systems {
-			t := MapTile{Name: s.Name, OS: shortOS(s), Level: level[s.Name], VM: s.VM}
-			if t.Level == "ok" {
-				t.Level = ""
-			}
-			g := groups[1]
-			switch {
-			case s.VM:
-				g = groups[2]
-			case isServer(s):
-				g = groups[0]
-			}
-			g.Tiles = append(g.Tiles, t)
-		}
-		for _, g := range groups {
-			sort.SliceStable(g.Tiles, func(i, j int) bool { return naturalLess(g.Tiles[i].Name, g.Tiles[j].Name) })
-			if len(g.Tiles) > 0 {
-				o.Map = append(o.Map, *g)
-			}
-		}
+		problems = append(problems, c)
 	}
+	o.Problems = problems
 
 	// Detections, newest first, grouped by day.
 	o.Detections = r.detectionCards()
@@ -311,7 +282,9 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 		o.HistoryN = t.Complete
 	}
 	ws := r.weeks()
-	o.TrendSpan = "last " + r.weeksCrumb()
+	// Scope in the label (UX5): these count every report's events, by
+	// calendar week, not this report's.
+	o.TrendSpan = "all reports, by calendar week · last " + r.weeksCrumb()
 	if c := ws[len(ws)-1]; c.Current {
 		o.TrendSpan += " · this week: " + trimFloat(c.Days) + " of 7 days so far"
 	}

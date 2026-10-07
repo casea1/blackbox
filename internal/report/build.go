@@ -321,6 +321,7 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	events = sshAttempts(events)
 	unknownNames(events)
 	events = mergeAdminLogons(events)
+	events = sshSources(events)
 	events = r.dedupe(events)
 	own := runs
 	if opt.OwnRuns != nil {
@@ -373,6 +374,7 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	r.buildSystems(runs, events)
 	r.scapTable = r.scapRows()
 	r.checkArchives()
+	r.highDetections(rows)
 	for _, s := range r.Silent {
 		r.Health.Warnings = append(r.Health.Warnings, s.Name+": "+s.StatusMsg)
 	}

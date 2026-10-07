@@ -125,6 +125,9 @@ func stackedBars(labels []string, series []Series, hot []bool, faded bool, w, h 
 	}
 	var b strings.Builder
 	for _, v := range []float64{0, mx / 2, mx} {
+		if v != math.Trunc(v) {
+			continue // counts are whole: no "0.5" shown as "0" (UX4)
+		}
 		y := float64(h-22) - v/mx*plot
 		fmt.Fprintf(&b, `<line x1="%.0f" x2="%d" y1="%.1f" y2="%.1f" stroke="%s"/><text x="%.0f" y="%.1f" text-anchor="end" class="ax">%s</text>`,
 			x0, w, y, y, colGrid, x0-6, y+4, shortNum(v))

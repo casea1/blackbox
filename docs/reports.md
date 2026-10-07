@@ -80,6 +80,12 @@ Only High and Medium are flagged in the report: the event tables show
 the severity for those and a dash for the rest. Every event is still
 listed, whatever its severity.
 
+The report uses two words for what needs a person: **Detections**, to
+investigate, and **Health**, to fix. Every High event is in a detection:
+one that no detection rule below took is a detection of its own, one per
+kind of event on each system ("Log cleared on WS-07", with every such
+event listed in it). `summary.json`'s `high` counts High detections.
+
 ## Detections
 
 Detections are patterns across several events: steps that are ordinary on
@@ -608,6 +614,43 @@ as for Defender; the service not running is a warning (ClamAV then only
 scans when asked). A system without ClamAV says so and is not counted as
 a gap. Blackbox only reads this; it never updates definitions or starts
 the service.
+
+## Reading a report
+
+The sidebar has the pages most used: **Overview**, **Detections**,
+**Search**, **Systems**, **People**, **Audit health**, **Original logs**
+and **All reports**. The pages for each kind of event (Privileged
+activity, USB & removable, …) are under **Events by kind**, closed until
+one is opened; a kind with no events is left out. **Inventory** and
+**Trends** are under **More**. Search has the same kinds as chips, with
+their counts, and a timeline with times of day for a short period.
+
+- **Overview.** Four headline numbers for this report (systems
+  reporting, detections, events, and systems whose audit settings match
+  the STIG), the activity counters that are not zero (the rest are named
+  in one line), **Health** with each problem once and a line for what is
+  fine, and **Detections**. The trends below it, which count every
+  report by calendar week, appear once there are two full weeks.
+- **Each fact once.** The Systems page gives a system's audit settings
+  to fix as a count that links to Audit health, which lists them. A
+  system that sent nothing says so once.
+- **Columns that say nothing are hidden.** Severity when no row is High
+  or Medium; a Kind, Session or From that is the same on every row. With
+  a Person column, the summary leaves out the person's name (the event's
+  panel keeps it).
+- **Short and empty periods.** A page with no events is one line. A
+  period of a day or less is charted by hour, and "Above normal" is shown
+  only when there are at least three days with events to compare. "Not
+  enough history" is said once, and trend tiles appear once there is
+  history.
+- **A manual report** says so in a banner on the Overview, and in a
+  "Manual" chip by the title on every other page.
+- **SSH logons on Windows** show the address they came from: the 4624
+  Windows writes for an OpenSSH sign-in has none, so Blackbox reads the
+  OpenSSH server's log (`OpenSSH/Operational`) and joins sshd's
+  "Accepted … from <address>" line to the logon.
+- **Privileged actions** count people's actions, as Trends' "by person"
+  table does; actions by service accounts are listed but not counted.
 
 ## Output files
 

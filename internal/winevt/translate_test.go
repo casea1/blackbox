@@ -522,3 +522,20 @@ func TestZeroTimeChange(t *testing.T) {
 		t.Errorf("30-minute change: %+v", e)
 	}
 }
+
+// UX8: sshd's "Accepted … from <address>" is kept, to give the SSH logon
+// its address; its other lines are not rows.
+func TestOpenSSHAccepted(t *testing.T) {
+	tr := NewTranslator()
+	raw := func(msg string) *Raw {
+		return &Raw{Provider: "OpenSSH", Channel: "OpenSSH/Operational", EventID: 4, Computer: "WIN11-TEST",
+			Time: time.Date(2026, 10, 7, 13, 0, 0, 0, time.UTC), Data: map[string]string{"process": "sshd.exe", "payload": msg}}
+	}
+	e := tr.Translate(raw("Accepted publickey for claude from 10.1.1.20 port 50114 ssh2: ED25519 SHA256:abc"))
+	if e == nil || e.Action != "ssh_accepted" || e.SourceIP != "10.1.1.20" || e.User != joinAccount("WIN11-TEST", "claude", "WIN11-TEST") {
+		t.Fatalf("accepted: %+v", e)
+	}
+	if e := tr.Translate(raw("Connection closed by 10.1.1.20 port 50114")); e != nil {
+		t.Errorf("other sshd line kept: %s", e.Summary)
+	}
+}

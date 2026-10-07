@@ -105,7 +105,7 @@ func TestLANEndToEnd(t *testing.T) {
 		"3 systems",           // every system, including the silent WS-09
 		`data-pick="WS-09"`, `data-pick="ubu-ws12"`, `data-pick="WS-07"`,
 		"No collection received in this period", // WS-09 is silent
-		"Audit settings that need attention",    // failing settings shown
+		"Audit settings to fix",                 // failing settings shown
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("combined report missing %q", want)

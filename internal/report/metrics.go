@@ -68,7 +68,10 @@ func addRowMetrics(m map[string]int, row *Row) {
 	case event.CatFailedLogon:
 		m[MFailedLogons]++
 	case event.CatPrivileged:
-		m[MPrivileged]++
+		// People's actions, as Trends counts them by person (UX5).
+		if person(e.User) {
+			m[MPrivileged]++
+		}
 	case event.CatRemovable:
 		m[MUSB]++
 	case event.CatAccount:

@@ -397,11 +397,16 @@ func TestSystemsPage(t *testing.T) {
 	}
 	h := html.String()
 	for _, want := range []string{`data-view="systems"`, `data-pick="WS-03"`, `data-pane="WS-01"`, "Virtual machine on WS-01",
-		"Audit settings that need attention", "No collection received in this period", "Silent",
+		"Audit settings to fix", "No collection received in this period", "Silent",
 		"No data received", `href="#health/WS-01"`} { // Audit health
 		if !strings.Contains(h, want) {
 			t.Errorf("report HTML missing %q", want)
 		}
+	}
+	// UX3: the settings to fix are a count linking to Audit health, not
+	// a second full list.
+	if strings.Contains(h, "Audit settings that need attention") {
+		t.Error("the Systems page still lists every setting to fix")
 	}
 	sum := r.summary()
 	if len(sum.Systems) != 3 || sum.Systems[0].Status != "silent" {

@@ -248,6 +248,82 @@ func (r *Report) detectShortLivedAccounts(all []*Row) {
 	}
 }
 
+// highDetections makes every High row part of a detection (UX6): one
+// that no detection rule took is a detection of its own, one per kind of
+// event on each system ("Log cleared on WS-07", 2 events). High means
+// "investigate", and Detections is where that is listed; a High row
+// outside it, as before, was a second list of things to look at.
+func (r *Report) highDetections(rows []*Row) {
+	in := map[string]bool{}
+	for _, f := range r.Findings {
+		for _, id := range f.RowIDs {
+			in[id] = true
+		}
+		in[f.RowID] = true
+	}
+	type group struct {
+		rows []*Row
+	}
+	groups := map[string]*group{}
+	var order []string
+	for _, x := range rows {
+		if !inPeriod(x) || x.Severity != event.SevHigh || in[x.ID] {
+			continue
+		}
+		k := x.Host + "|" + x.Action
+		if groups[k] == nil {
+			groups[k] = &group{}
+			order = append(order, k)
+		}
+		groups[k].rows = append(groups[k].rows, x)
+	}
+	for _, k := range order {
+		g := groups[k].rows
+		first, last := g[0], g[len(g)-1]
+		label := highLabel(first.Action, len(g))
+		title := capitalize(label) + " on " + first.Host
+		detail := first.Summary
+		if len(g) > 1 {
+			detail = fmt.Sprintf("%d %s on %s between %s and %s. The first: %s", len(g), label, first.Host, r.stamp(first.Time), r.stamp(last.Time), first.Summary)
+		}
+		r.addFinding(event.SevHigh, first.Category, first, first, title, detail, g...)
+	}
+	sort.SliceStable(r.Findings, func(i, j int) bool {
+		a, b := r.Findings[i], r.Findings[j]
+		if a.Severity.Rank() != b.Severity.Rank() {
+			return a.Severity.Rank() > b.Severity.Rank()
+		}
+		return a.Time.Before(b.Time)
+	})
+}
+
+// highLabel names a kind of High event for its detection: "log cleared",
+// "3 audit policy changes".
+func highLabel(action string, n int) string {
+	if l, ok := actionLabels[action]; ok {
+		if n == 1 {
+			return l[0]
+		}
+		return l[1]
+	}
+	if l, ok := highNames[action]; ok {
+		return l
+	}
+	return strings.ReplaceAll(action, "_", " ")
+}
+
+// highNames name High events with no entry in actionLabels.
+var highNames = map[string]string{
+	"log_cleared": "log cleared", "log_tampered": "log altered or deleted", "audit_disabled": "auditing switched off",
+	"audit_stopped": "auditing stopped", "audit_tamper_command": "command that can clear logs or weaken auditing",
+	"blackbox_files_changed": "Blackbox's files changed", "blackbox_config_changed": "Blackbox's settings changed",
+	"blackbox_stopped": "Blackbox stopped", "blackbox_uninstalled": "Blackbox removed", "blackbox_files_removed": "Blackbox's files removed",
+	"av_disabled": "anti-malware switched off", "av_exclusion_added": "anti-malware exclusion added", "firewall_stopped": "firewall stopped",
+	"setuid_set": "program made to run as its owner (setuid)", "sudoers_changed": "sudo rules changed", "admin_group_added": "added to a privileged group",
+	"usb_new": "USB device never seen before", "logon_config_changed": "logon settings changed", "log_full": "Security log full",
+	"time_changed": "clock moved back", "usb_network_adapter": "USB network adapter connected", "malware_detected": "malware detected",
+}
+
 // clockMovedLimit is how far a person must move the clock to be a
 // detection: the time service's small corrections are not (TIME1).
 const clockMovedLimit = 5 * time.Minute
