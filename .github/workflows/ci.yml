@@ -320,16 +320,23 @@ jobs:
           sudo sh -c 'grep -q "logs-" /srv/bb-reports-2/*/manifest.sha256'
           sudo sh -c 'for d in /srv/bb-reports-2/*/; do ./blackbox verify "$d"; done'
           # LOCK1: a run killed with kill -9 while it holds the lock leaves
-          # nothing that blocks the next scheduled run.
-          sudo /usr/local/bin/blackbox run >/dev/null 2>&1 &
-          for i in $(seq 1 400); do sudo test -s /var/lib/blackbox/blackbox.lock && break; sleep 0.05; done
-          pid=$(sudo awk '{print $1}' /var/lib/blackbox/blackbox.lock)
-          test -n "$pid" || { echo "no run held the lock"; exit 1; }
+          # nothing that blocks the next scheduled run. A run is too quick
+          # to catch here, so flock(1) stands in for it: it holds the same
+          # kernel lock (-o: only flock itself, not its child), and the
+          # file says what a run would.
+          L=/var/lib/blackbox/blackbox.lock
+          sudo flock -o "$L" sleep 600 &
+          for i in $(seq 1 100); do pid=$(pgrep -nx flock) && break; sleep 0.1; done
+          test -n "$pid" || { echo "no flock holder"; exit 1; }
+          echo "$pid $(date -u +%Y-%m-%dT%H:%M:%SZ)" | sudo tee "$L" >/dev/null
+          if sudo /usr/local/bin/blackbox collect >/tmp/held.txt 2>&1; then echo "collect ran while the lock was held"; exit 1; fi
+          grep -q "another Blackbox run is in progress (PID $pid" /tmp/held.txt || { cat /tmp/held.txt; exit 1; }
           sudo kill -9 "$pid"
-          echo "Killed run $pid; its lock file: $(sudo cat /var/lib/blackbox/blackbox.lock 2>/dev/null)"
-          if sudo /usr/local/bin/blackbox status | grep -q "BLOCKED"; then echo "status says blocked after the run was killed"; exit 1; fi
+          echo "Killed holder $pid; its lock file: $(sudo cat "$L")"
+          if sudo /usr/local/bin/blackbox status | grep -q "BLOCKED"; then echo "status says blocked after the holder was killed"; exit 1; fi
           sudo systemctl start blackbox.service || { sudo journalctl -u blackbox.service --no-pager | tail -40; exit 1; }
-          if sudo journalctl -u blackbox.service --no-pager | grep -q "another Blackbox run is in progress"; then echo "the killed run's lock blocked the next run"; exit 1; fi
+          if sudo journalctl -u blackbox.service --no-pager | grep -q "another Blackbox run is in progress"; then echo "the killed holder's lock blocked the next run"; exit 1; fi
+          sudo pkill -f "sleep 600" || true
           sudo ./blackbox uninstall
           if systemctl is-enabled blackbox.timer 2>/dev/null; then echo "timer not removed"; exit 1; fi
           # Start the sender below from scratch (its first archive is due at once).
