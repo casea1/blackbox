@@ -15,6 +15,7 @@ import (
 	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/install"
 	"github.com/casea1/blackbox/internal/lan"
+	"github.com/casea1/blackbox/internal/rollover"
 	"github.com/casea1/blackbox/internal/share"
 	"github.com/casea1/blackbox/internal/store"
 )
@@ -80,9 +81,16 @@ func (a *App) Status(w io.Writer) error {
 			p("AUDITING OFF:", "%s — nothing is being recorded. Start it with: systemctl start auditd (and auditctl -e 1 if needed)", why)
 		}
 	}
-	for _, l := range lostSince(st, s.LastWindowEnd, now) {
-		p("Events lost:", "%s", LostText(l, a.loc(), a.Cfg.CollectEvery, store.SystemKey(l.Host) == store.SystemKey(host)))
-		attention = append(attention, "events were lost to log rollover") // C6
+	for _, l := range lostSince(st, s.LastWindowEnd, now, a.Cfg.CollectEvery) {
+		local := store.SystemKey(l.Host) == store.SystemKey(host)
+		if rollover.Critical(l.Channel) {
+			p("EVENTS LOST:", "%s", LostText(l, a.loc(), local))
+			attention = append(attention, "events were lost to log rollover") // C6
+			continue
+		}
+		// Another log's loss is its own, lower line (LOG1): it does not
+		// make status exit 4.
+		p("Events lost:", "%s", LostText(l, a.loc(), local))
 	}
 	// The clock moved back (T3, T1): a stored time in the future, or a
 	// change noticed since the last report.
@@ -347,35 +355,14 @@ func nextReport(every string, at config.ReportAt, lastEnd, now time.Time, loc *t
 	return at.NextBoundary(every, now, loc), false
 }
 
-// LostText describes events lost to rollover, with what to do about it:
-// collect every 15 minutes, with the command (an upgrade keeps an hourly
-// collect_every; only new installs collect every 15 minutes, C6), or, if
-// it already does, a larger log. every is this computer's collect_every,
-// local whether the log is this computer's.
-func LostText(l LostLog, loc *time.Location, every time.Duration, local bool) string {
-	return fmt.Sprintf("%s log on %s: %s events overwritten before they could be collected, since %s. %s",
-		l.Channel, l.Host, commaNum(l.Count), stampLocal(l.Since, loc), LostAdvice(l.Host, every, local))
-}
-
-// LostAdvice is what to do about events lost to rollover (see LostText).
-func LostAdvice(host string, every time.Duration, local bool) string {
-	switch {
-	case !local:
-		return fmt.Sprintf("Collect every 15 minutes (on %s: blackbox config set collect_every 15m), or make the log larger.", host)
-	case every > 15*time.Minute:
-		return fmt.Sprintf("This computer collects every %s: collect every 15 minutes with: blackbox config set collect_every 15m. Or make the log larger.", everyWords(every))
-	}
-	return "Make the log larger (blackbox check gives the size the STIG requires)."
-}
-
-func everyWords(d time.Duration) string {
-	if d%time.Hour == 0 {
-		if d == time.Hour {
-			return "hour"
-		}
-		return fmt.Sprintf("%d hours", int(d.Hours()))
-	}
-	return fmt.Sprintf("%d minutes", int(d.Minutes()))
+// LostText describes events lost to rollover, named by log, with what to
+// do about it (LOG1): collect every 15 minutes (an upgrade keeps an hourly
+// collect_every, C6) when that would help; when the log turned over faster
+// than collection, a larger log, with the size. local says whether the
+// log is this computer's.
+func LostText(l LostLog, loc *time.Location, local bool) string {
+	return fmt.Sprintf("%s on %s: %s events overwritten before they could be collected, since %s. %s",
+		rollover.Name(l.Channel), l.Host, commaNum(l.Count), stampLocal(l.Since, loc), l.Advice(local))
 }
 
 func commaNum(n uint64) string {

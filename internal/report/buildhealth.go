@@ -11,6 +11,7 @@ import (
 
 	"github.com/casea1/blackbox/internal/event"
 	"github.com/casea1/blackbox/internal/linuxlog"
+	"github.com/casea1/blackbox/internal/rollover"
 	"github.com/casea1/blackbox/internal/store"
 	"github.com/casea1/blackbox/internal/winevt"
 )
@@ -33,6 +34,7 @@ func (r *Report) buildHealth(runs []*store.Run, events []*event.Event) {
 	vol := map[string]*VolumeRow{}
 	lastRun := map[string]time.Time{} // by host, for gaps between runs
 	pause := map[string]time.Duration{}
+	times := map[string][]time.Time{} // by host, for how often it collects
 	for _, run := range runs {
 		h.Runs++
 		if h.FirstRun.IsZero() {
@@ -49,6 +51,7 @@ func (r *Report) buildHealth(runs []*store.Run, events []*event.Event) {
 			}
 		}
 		lastRun[hk] = run.Time
+		times[hk] = append(times[hk], run.Time)
 		for _, c := range run.Channels {
 			k := run.Host + "|" + c.Channel
 			ch := chIdx[k]
@@ -74,7 +77,11 @@ func (r *Report) buildHealth(runs []*store.Run, events []*event.Event) {
 			}
 			if c.Gap != nil {
 				ch.Lost += c.Gap.Lost
-				h.Gaps = append(h.Gaps, GapItem{Host: run.Host, Channel: c.Channel, Lost: c.Gap.Lost, From: c.Gap.From, To: c.Gap.To, Note: c.Gap.Note})
+				g := GapItem{Host: run.Host, Channel: c.Channel, Lost: c.Gap.Lost, From: c.Gap.From, To: c.Gap.To, Note: c.Gap.Note, MaxSize: c.MaxSizeBytes}
+				if !c.OldestTime.IsZero() && run.Time.After(c.OldestTime) {
+					g.Held = run.Time.Sub(c.OldestTime)
+				}
+				h.Gaps = append(h.Gaps, g)
 			}
 			if c.Reset {
 				ch.Resets++
@@ -106,6 +113,9 @@ func (r *Report) buildHealth(runs []*store.Run, events []*event.Event) {
 	for _, k := range chOrder {
 		h.Channels = append(h.Channels, *chIdx[k])
 	}
+	for i := range h.Gaps {
+		h.Gaps[i].Every = rollover.Interval(times[store.SystemKey(h.Gaps[i].Host)])
+	}
 	for _, v := range vol {
 		if h.TotalRead > 0 {
 			v.Percent = 100 * float64(v.Count) / float64(h.TotalRead)
@@ -135,8 +145,8 @@ func (r *Report) buildHealth(runs []*store.Run, events []*event.Event) {
 			h.Warnings = append(h.Warnings, fmt.Sprintf("%s: the %s log was cleared or recreated before %s; events in it that had not yet been collected are gone.", g.Host, g.Channel, r.stamp(g.To)))
 			continue
 		}
-		h.Warnings = append(h.Warnings, fmt.Sprintf("%s: %s events in the %s log were overwritten before Blackbox could collect them (between %s and %s). Collect every 15 minutes (on %s: blackbox config set collect_every 15m) or increase the log size.",
-			g.Host, commas(g.Lost), g.Channel, r.stamp(g.From), r.stamp(g.To), g.Host))
+		h.Warnings = append(h.Warnings, fmt.Sprintf("%s on %s: %s events were overwritten before Blackbox could collect them (between %s and %s). %s",
+			rollover.Name(g.Channel), g.Host, commas(g.Lost), r.stamp(g.From), r.stamp(g.To), g.Loss().Advice(false)))
 	}
 	for _, ch := range h.Channels {
 		if ch.LastError != "" {

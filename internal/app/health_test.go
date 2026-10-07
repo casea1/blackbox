@@ -15,6 +15,7 @@ import (
 	"github.com/casea1/blackbox/internal/collect"
 	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/lan"
+	"github.com/casea1/blackbox/internal/rollover"
 	"github.com/casea1/blackbox/internal/store"
 )
 
@@ -267,16 +268,60 @@ func TestSendingFailedSince(t *testing.T) {
 	}
 }
 
-// C6 note: an upgraded install still collecting hourly is told the exact
-// command; one already at 15 minutes is told to make the log larger.
+// C6 note, LOG1: an upgraded install still collecting hourly is told
+// the exact command; one already at 15 minutes is told to make the log
+// larger, never to collect every 15 minutes.
 func TestLostAdvice(t *testing.T) {
-	if got := LostAdvice("WIN11", time.Hour, true); !strings.Contains(got, "This computer collects every hour") || !strings.Contains(got, "blackbox config set collect_every 15m") {
+	adv := func(host string, every time.Duration, local bool) string {
+		return LostLog{Loss: rollover.Loss{Host: host, Channel: "Security", Every: every}}.Advice(local)
+	}
+	if got := adv("WIN11", time.Hour, true); !strings.Contains(got, "This computer collects every hour") || !strings.Contains(got, "blackbox config set collect_every 15m") {
 		t.Errorf("hourly: %s", got)
 	}
-	if got := LostAdvice("WIN11", 15*time.Minute, true); strings.Contains(got, "collect_every") || !strings.Contains(got, "larger") {
+	if got := adv("WIN11", 15*time.Minute, true); strings.Contains(got, "collect_every") || strings.Contains(got, "every 15 minutes (") || !strings.Contains(got, "larger") {
 		t.Errorf("15 minutes: %s", got)
 	}
-	if got := LostAdvice("ubuntu-server", 15*time.Minute, false); !strings.Contains(got, "on ubuntu-server: blackbox config set collect_every 15m") {
+	if got := adv("ubuntu-server", time.Hour, false); !strings.Contains(got, "on ubuntu-server: blackbox config set collect_every 15m") {
 		t.Errorf("another computer: %s", got)
+	}
+	if got := adv("ubuntu-server", 15*time.Minute, false); strings.Contains(got, "collect_every") {
+		t.Errorf("another computer already at 15 minutes: %s", got)
+	}
+}
+
+// LOG1: a PowerShell log that turned over in 9 minutes on a computer
+// collecting every 15 minutes: named, told the log is too small (not to
+// collect every 15 minutes), and shown apart from audit-record losses,
+// without making status exit 4.
+func TestPowerShellLogLoss(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	now := time.Date(2026, 10, 7, 15, 0, 0, 0, time.UTC)
+	st.State.LastWindowEnd = now.Add(-24 * time.Hour)
+	st.State.LastCollect = now.Add(-5 * time.Minute)
+	st.Save()
+	host := collect.LocalHost()
+	for i := 0; i < 8; i++ {
+		at := now.Add(time.Duration(i-8) * 15 * time.Minute)
+		r := &store.Run{Time: at, Host: host, OS: "windows", Channels: []store.ChannelRun{{Channel: "Security", MaxSizeBytes: 5 << 30}}}
+		if i == 5 {
+			r.Channels = append(r.Channels, store.ChannelRun{Channel: "Microsoft-Windows-PowerShell/Operational", MaxSizeBytes: 15 << 20,
+				OldestTime: at.Add(-9 * time.Minute), Gap: &store.Gap{Lost: 447}})
+		}
+		st.AppendRun(r)
+	}
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportEvery: "weekly", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute},
+		Now: func() time.Time { return now }, Loc: time.UTC}
+	var b bytes.Buffer
+	if err := a.Status(&b); err != nil {
+		t.Errorf("status = %v; a PowerShell log loss alone should not exit 4\n%s", err, b.String())
+	}
+	out := b.String()
+	if !strings.Contains(out, "PowerShell log on "+host+": 447 events overwritten") || !strings.Contains(out, "too small for how fast it is written") ||
+		!strings.Contains(out, "at least 1 GB") || strings.Contains(out, "collect_every") || strings.Contains(out, "EVENTS LOST") {
+		t.Errorf("status:\n%s", out)
+	}
+	h, _ := a.Health()
+	if len(h.Lost) != 1 || h.Lost[0].Held != 9*time.Minute || h.Lost[0].Every != 15*time.Minute {
+		t.Errorf("health lost: %+v", h.Lost)
 	}
 }

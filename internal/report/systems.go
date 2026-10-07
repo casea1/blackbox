@@ -56,7 +56,7 @@ type SystemRow struct {
 	auditAt  time.Time
 
 	runTimes []time.Time          // collection runs in this period
-	gaps     []store.Gap          // events lost before they were collected
+	gaps     []GapItem            // events lost before they were collected
 	resets   []time.Time          // runs that found a log cleared or recreated
 	holds    map[string]time.Time // oldest event still in each log, at the last run
 	holdsAt  time.Time
@@ -138,7 +138,7 @@ func (r *Report) buildSystems(runs []*store.Run, events []*event.Event) {
 				s.Problems++
 			}
 			if c.Gap != nil {
-				s.gaps = append(s.gaps, *c.Gap)
+				s.gaps = append(s.gaps, GapItem{Host: run.Host, Channel: c.Channel, Lost: c.Gap.Lost, From: c.Gap.From, To: c.Gap.To, Note: c.Gap.Note})
 			}
 			if c.Reset {
 				s.resets = append(s.resets, run.Time)

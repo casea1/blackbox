@@ -119,7 +119,7 @@ func TestHealthGapWarning(t *testing.T) {
 		Channels: []store.ChannelRun{{Channel: "Security", Read: 10, Gap: &store.Gap{Lost: 4200,
 			From: time.Date(2026, 9, 28, 9, 0, 0, 0, time.UTC), To: time.Date(2026, 9, 28, 11, 0, 0, 0, time.UTC)}}}}}
 	r := Build(nil, runs, Options{Location: time.UTC, Source: "Live collection"})
-	if len(r.Health.Gaps) != 1 || !strings.Contains(strings.Join(r.Health.Warnings, " "), "4,200 events in the Security log were overwritten") {
+	if len(r.Health.Gaps) != 1 || !strings.Contains(strings.Join(r.Health.Warnings, " "), "Security log on WS-07: 4,200 events were overwritten") {
 		t.Errorf("gap not reported: %+v", r.Health.Warnings)
 	}
 }
