@@ -509,6 +509,30 @@ type IndexRow struct {
 	Week, Dir, Trail, TrailClass, Search string
 	Systems, Events, High, Medium        int
 	Interim, Incomplete                  bool
+	// Missing is set for a scheduled report that is gone or changed: the
+	// row says so and has nothing to open.
+	Missing string
+	end     time.Time
+}
+
+// MissingReport is a scheduled report that was deleted, moved or changed
+// after it was written (from the report ledger), and not accepted.
+type MissingReport struct {
+	Name, Dir string
+	From, To  time.Time
+	Problem   string // "missing" or "changed"
+}
+
+// missingRow is a missing scheduled report's line on the index page.
+func missingRow(m MissingReport, loc *time.Location) IndexRow {
+	r := IndexRow{Week: periodLabel(m.From, m.To, loc), Dir: m.Name, Incomplete: true, TrailClass: "bad", end: m.To,
+		Missing: "Missing: deleted or moved"}
+	if m.Problem == "changed" {
+		r.Missing = "Changed after it was written"
+	}
+	r.Trail = r.Missing + " · its original logs were only in it"
+	r.Search = r.Week + " " + m.Name + " missing"
+	return r
 }
 
 // periodLabel is a report's period on the index (UI6): one date for one
@@ -544,7 +568,7 @@ func indexRow(e IndexEntry, loc *time.Location) IndexRow {
 		start = e.WindowEnd.AddDate(0, 0, -7)
 	}
 	week := periodLabel(start, e.WindowEnd, loc)
-	row := IndexRow{Week: week, Dir: e.Dir, Systems: len(e.Hosts), Events: e.Events, Interim: e.Interim}
+	row := IndexRow{Week: week, Dir: e.Dir, Systems: len(e.Hosts), Events: e.Events, Interim: e.Interim, end: e.WindowEnd}
 	for _, d := range e.Detections { // detections by severity, as in the chart
 		if d.Severity == "high" {
 			row.High++
@@ -588,7 +612,8 @@ func indexRow(e IndexEntry, loc *time.Location) IndexRow {
 
 // WriteIndex rebuilds reportsDir/index.html from every report's
 // summary.json. schedule describes when reports are made.
-func WriteIndex(reportsDir, site, schedule string, loc *time.Location) error {
+// missing are the scheduled reports gone or changed, listed in their place.
+func WriteIndex(reportsDir, site, schedule string, loc *time.Location, missing []MissingReport) error {
 	matches, err := filepath.Glob(filepath.Join(reportsDir, "*", "summary.json"))
 	if err != nil {
 		return err
@@ -621,12 +646,20 @@ func WriteIndex(reportsDir, site, schedule string, loc *time.Location) error {
 		}
 		rows = append(rows, row)
 	}
+	for _, m := range missing {
+		rows = append(rows, missingRow(m, loc))
+		incomplete++
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].end.After(rows[j].end) })
 	// Detections per week (UI8): by calendar week, from the scheduled
 	// reports only, once there are minWeeks complete weeks.
 	chart, weeks := indexChart(entries, loc)
 	latest := ""
-	if len(rows) > 0 {
-		latest = rows[0].Dir
+	for _, r := range rows {
+		if r.Missing == "" {
+			latest = r.Dir
+			break
+		}
 	}
 	err = t.Execute(&buf, map[string]any{"Site": site, "Entries": entries, "Rows": rows, "Incomplete": incomplete, "Latest": latest,
 		"Chart": chart, "Weeks": weeks, "Schedule": schedule})

@@ -214,7 +214,7 @@ func TestDemoReport(t *testing.T) {
 		if err := r.Write(filepath.Join(idx, end.Format("2006-01-02_1504")+"_Lab3")); err != nil {
 			t.Fatal(err)
 		}
-		if err := WriteIndex(idx, site, "weekly, ready Wednesday 00:00 (each covers the week to Tuesday night)", time.UTC); err != nil {
+		if err := WriteIndex(idx, site, "weekly, ready Wednesday 00:00 (each covers the week to Tuesday night)", time.UTC, nil); err != nil {
 			t.Fatal(err)
 		}
 	}

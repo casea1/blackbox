@@ -343,6 +343,7 @@ blackbox send                 # collect and send to the collector now (e.g. befo
 blackbox send --resend 214-219  # send kept batches again to fill a gap the collector reports
 blackbox systems              # the computers a collector reports on (remove NAME to retire one)
 blackbox verify <report-dir>  # check the SHA-256 manifest
+blackbox reports              # scheduled reports made here, and any missing or changed (accept NAME "why")
 blackbox uninstall            # remove the task/timer; reports are kept
 ```
 

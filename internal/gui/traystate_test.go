@@ -236,3 +236,17 @@ func TestBlockedIsRed(t *testing.T) {
 		t.Errorf("notified twice: %+v", ns)
 	}
 }
+
+// A scheduled report deleted or changed is notified once.
+func TestMissingReportNotice(t *testing.T) {
+	h := healthy()
+	h.MissingReports = []report.MissingReport{{Name: "2026-09-30_CI", From: trayNow.AddDate(0, 0, -14), To: trayNow.AddDate(0, 0, -7), Problem: "missing"}}
+	v := classify(h, nil, trayNow)
+	ns, m := notices(trayMemory{Seen: true}, h, v, "0.19.0", trayNow)
+	if len(ns) != 1 || !strings.Contains(ns[0].Text, "is missing from the reports folder") || !ns[0].Warn {
+		t.Fatalf("notices: %+v", ns)
+	}
+	if ns, _ = notices(m, h, v, "0.19.0", trayNow); len(ns) != 0 {
+		t.Errorf("notified twice: %+v", ns)
+	}
+}

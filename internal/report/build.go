@@ -86,8 +86,11 @@ type Options struct {
 	Collector bool
 	// ClockBack are the times the clock was found to have been moved back
 	// since the last scheduled report (T3).
-	ClockBack   []ClockJump
-	LANWarnings []string
+	ClockBack []ClockJump
+	// MissingReports are earlier scheduled reports deleted, moved or
+	// changed since they were written (the report ledger).
+	MissingReports []MissingReport
+	LANWarnings    []string
 	// Removed are earlier reports deleted under retention_days, with their
 	// original logs, since the last scheduled report (A9).
 	Removed       []string

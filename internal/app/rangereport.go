@@ -129,9 +129,7 @@ func (a *App) reportRange(st *store.Store, from, to time.Time) (string, error) {
 	if err := r.Write(dir); err != nil {
 		return "", err
 	}
-	if err := report.WriteIndex(a.ReportsDir(), a.Cfg.SiteName, a.Cfg.ReportAt.Describe(a.Cfg.ReportEvery), loc); err != nil {
-		a.logf("updating report index: %v", err)
-	}
+	a.refreshIndex(st)
 	return dir, nil
 }
 

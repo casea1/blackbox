@@ -806,6 +806,9 @@ func (a *App) Scheduled() (string, error) {
 	end, due := DueWindowEnd(a.Cfg.ReportEvery, a.Cfg.ReportAt, st.State.LastWindowEnd, a.now(), a.loc())
 	if !due {
 		a.packLogs(st, false)
+		// Reports deleted since the last one drop off the index, and
+		// missing scheduled ones show, without waiting for a report.
+		a.refreshIndex(st)
 		return "", nil
 	}
 	return a.report(st, end, true)
@@ -1038,8 +1041,8 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		Scap: scans, ScapEnabled: len(scans) > 0 || (a.Cfg.ScapResults != "" && a.Cfg.ScapDir() != ""), ScapMaxAgeDays: a.Cfg.ScapMaxAgeDays,
 		Site:        a.Cfg.SiteName,
 		WindowStart: windowStart, WindowEnd: end, Generated: generated, Version: a.Version,
-		ClockBack: clockJumps(clockBack),
-		Source:    "Live collection", Location: a.loc(), InReportsDir: true, Interim: !advance, Period: a.Cfg.ReportEvery,
+		ClockBack: clockJumps(clockBack), MissingReports: reportProblems(st),
+		Source: "Live collection", Location: a.loc(), InReportsDir: true, Interim: !advance, Period: a.Cfg.ReportEvery,
 		History:      report.History(a.ReportsDir(), end, report.HistoryWeeks),
 		ExcludeUsers: a.Cfg.ExcludeUsers, ExcludeProcesses: a.Cfg.ExcludeProcesses,
 		KnownDevices: st.State.KnownDevices, CheckSets: sets,
@@ -1075,6 +1078,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		st.State.LastWindowEnd = end
 		st.State.LastGenerated = generated
 		st.State.ReportedTo = marks
+		noteReport(st, dir, windowStart, end, generated)
 		st.State.ClockBack = nil // shown in this report
 		for k, t := range r.NewDevices {
 			st.State.KnownDevices[k] = t
@@ -1092,6 +1096,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		}
 		// Listed in the next scheduled report; this one listed the last.
 		st.State.RemovedReports = removed
+		markRemoved(st, a.ReportsDir(), removed, generated)
 		if err := st.Save(); err != nil {
 			a.logf("noting removed reports: %v", err)
 		}
@@ -1101,9 +1106,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 			}
 		}
 	}
-	if err := report.WriteIndex(a.ReportsDir(), a.Cfg.SiteName, a.Cfg.ReportAt.Describe(a.Cfg.ReportEvery), a.loc()); err != nil {
-		a.logf("updating report index: %v", err)
-	}
+	a.refreshIndex(st)
 	return dir, nil
 }
 

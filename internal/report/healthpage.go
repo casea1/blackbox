@@ -539,9 +539,23 @@ func (r *Report) healthPage() *HealthPage {
 	for _, k := range gapOrder {
 		hp.Gaps = append(hp.Gaps, *gapCards[k])
 	}
+	if len(r.MissingReports) > 0 {
+		g := GapCard{Title: "Earlier reports missing or changed", Level: "bad",
+			Explain: "A scheduled report holds the only copy of its period's original logs and their hashes. These were deleted, moved or changed after they were written:"}
+		for _, m := range r.MissingReports {
+			what := "missing"
+			if m.Problem == "changed" {
+				what = "changed (its manifest no longer matches)"
+			}
+			g.Explain += fmt.Sprintf(" %s (%s to %s), %s;", m.Name, r.stamp(m.From), r.stamp(m.To), what)
+		}
+		g.Explain = strings.TrimSuffix(g.Explain, ";") + "."
+		g.Fix = "restore them from the backup. If they were moved or removed on purpose, record why: blackbox reports accept <name> \"why\"."
+		hp.Gaps = append(hp.Gaps, g)
+	}
 	// Cleared logs, silence and lost events first, then settings; gaps
 	// before warnings.
-	prio := map[string]int{"Security log was cleared": 0, "No data received": 1, "Collection was blocked": 2, "Events lost to log rollover": 2, "Other logs overwrote events": 3}
+	prio := map[string]int{"Earlier reports missing or changed": 0, "Security log was cleared": 0, "No data received": 1, "Collection was blocked": 2, "Events lost to log rollover": 2, "Other logs overwrote events": 3}
 	p := func(g GapCard) int {
 		n, ok := prio[g.Title]
 		if !ok {

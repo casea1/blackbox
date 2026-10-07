@@ -226,7 +226,7 @@ func TestWriteAndVerify(t *testing.T) {
 	if p, _ := Verify(dir); len(p) != 2 || !strings.Contains(p[0], "CHANGED") || !strings.Contains(p[1], "CHANGED") {
 		t.Errorf("tampering not detected: %v", p)
 	}
-	if err := WriteIndex(filepath.Dir(dir), "Test Site", "weekly", time.UTC); err != nil {
+	if err := WriteIndex(filepath.Dir(dir), "Test Site", "weekly", time.UTC, nil); err != nil {
 		t.Fatal(err)
 	}
 	idx, _ := os.ReadFile(filepath.Join(filepath.Dir(dir), "index.html"))

@@ -339,13 +339,37 @@ compressed. It depends on how busy the Security log is.
   (`summary.json`). The collected events stay in the data folder (kept
   for good unless `retention_days` is set), so `blackbox report` can make
   a report for that period again, but without the original logs, and as
-  a manual report that Trends do not count. All reports no longer lists
-  it, Trends show a gap for its weeks, and if it was the latest, the next
-  scheduled report says it does not start where the previous one ended.
+  a manual report that Trends do not count. Trends show a gap for its
+  weeks. Blackbox keeps a record of every scheduled report it made (its
+  folder, period and the hash of its manifest), so a scheduled report
+  that is deleted, moved or changed afterwards is pointed out until
+  someone says why: `blackbox status` says "REPORT MISSING" (or
+  "CHANGED") and exits 4, the status icon notifies once, the next report
+  has "Earlier reports missing or changed" on the Overview and in Audit
+  health's gaps, and All reports lists it as "Missing: deleted or moved".
+  `blackbox reports` lists them; when one was moved or removed on
+  purpose, `blackbox reports accept NAME "why"` records who, when and why
+  (a row in the next report and a copy in the system log) and stops
+  pointing it out. Removal under `retention_days` is expected and not
+  pointed out. The record starts with the first scheduled report made by
+  0.19.
 - **A manual report** holds nothing that is not kept elsewhere: its
   original logs still wait in `archive_dir` for the scheduled report,
   which also covers the same time. Only that snapshot of the report is
   gone.
+
+All reports (`index.html`) is rebuilt at every collection, so a deleted
+report drops off it within one collection interval.
+
+**Keeping them safe.** An administrator on the computer can always delete
+files there, so the protection is a copy elsewhere and the record above.
+Back up the whole data folder (`C:\ProgramData\Blackbox`, or
+`/var/lib/blackbox` and `report_dir`) after each scheduled report (reports
+are ready at `report_at`, Wednesday 00:00 by default), to storage the
+computer's own administrators can't delete from. The data folder also
+holds the collected events and `archive_dir`, the current period's
+original logs, which are in no report yet. Keeping `archive_dir` on
+another disk of the same computer does not protect it.
 
 On Windows, deleting a report under `C:\ProgramData\Blackbox` is a High
 row ("deleted the report …") in the next report when that folder has an
