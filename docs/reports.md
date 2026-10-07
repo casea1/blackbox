@@ -124,6 +124,28 @@ second are five rows, so fast password guessing is detected. Removing a
 deleted account from its primary group ("None" or "Domain Users") is not
 shown as a separate change.
 
+**Repeats are one row.** The console host Windows starts for every
+console program run with administrator rights (`conhost.exe 0xffffffff
+-ForceV1`) is not a row of its own: the program that started it says
+"Also started: N console windows" in its details. Identical records (the
+same system, person, action and text within a minute) are one row marked
+**×N**, with the time of each in its details ("Recorded: 7 times: …").
+Failed logons are never folded: each is an attempt. Every count in the
+report (the sidebar, the tiles, People, Trends) counts rows.
+
+**Blackbox's own writes.** The Event Log service writing the original-log
+pieces during a Blackbox run is not a row, also in a manual report made
+right after a run that made a scheduled report: the report looks at
+Blackbox's runs from an hour before its earliest event.
+
+**Audit integrity kinds.** Each row has its kind: Log cleared, Audit
+policy changed, Logging stopped (the event log or audit service stopping,
+a full log, dropped records), Blackbox (its install, upgrade, settings and
+files), Firewall, Clock, Startup and shutdown, or Other. The **Logging
+stopped** tile counts only stops of Medium severity or above: the event
+log service stopping as Windows shuts down, or auditd as a restart ends,
+is not counted.
+
 **Linux sign-ins and restarts.** One SSH sign-in or sign-out is one row,
 even when it is recorded twice (two audit login records, or the same
 line read from two logs). The audit service stopping during a planned

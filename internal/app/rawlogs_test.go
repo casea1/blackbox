@@ -5,6 +5,7 @@ package app
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/casea1/blackbox/internal/archive"
 	"github.com/casea1/blackbox/internal/collect"
 	"github.com/casea1/blackbox/internal/config"
+	"github.com/casea1/blackbox/internal/event"
 	"github.com/casea1/blackbox/internal/report"
 	"github.com/casea1/blackbox/internal/store"
 )
@@ -332,5 +334,49 @@ func TestManualReportSaysWhereLogsWait(t *testing.T) {
 	}
 	if l, _ := archive.List(a.pendingLogsDir()); len(l) != 1 {
 		t.Errorf("the manual report moved the waiting archives: %d left", len(l))
+	}
+}
+
+// AR2c, as on the Windows 11 VM on 7 Oct: a hand-run "blackbox run" made
+// the scheduled report at 13:53:04, then went on exporting the original
+// logs; the Event Log service's writes of the pieces (4663 at 13:53:08,
+// collected by the next run) were High rows in a manual report made
+// after, because it read only the runs since 13:53:04. They are
+// Blackbox's own, whenever the report is made; another write stays.
+func TestManualReportAfterRunDropsExportWrites(t *testing.T) {
+	base := t.TempDir()
+	st, _ := store.Open(filepath.Join(base, "data"))
+	at := func(h, m, s int) time.Time { return time.Date(2026, 10, 7, h, m, s, 0, time.UTC) }
+	now := at(14, 0, 0)
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportDir: filepath.Join(base, "reports"), ReportEvery: "daily", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute},
+		Version: "test", Loc: time.UTC, Now: func() time.Time { return now }, LogStates: func() []archive.LogState { return nil }}
+	host := collect.LocalHost()
+	st.AppendRun(&store.Run{Time: at(13, 53, 0), Host: host, Duration: 6, Version: "0.19.0"})
+	st.AppendRun(&store.Run{Time: at(13, 58, 0), Host: host, Duration: 5, Version: "0.19.0"})
+	st.State.LastWindowEnd, st.State.LastGenerated = at(0, 0, 0), at(13, 53, 4)
+	write := func(sec int, name string, piece bool) *event.Event {
+		e := &event.Event{Time: at(13, 53, sec), Host: host, Category: event.CatIntegrity, Severity: event.SevHigh, Action: "blackbox_files_changed",
+			User: host + `\tester`, Process: `C:\Windows\System32\svchost.exe`, Target: `C:\ProgramData\Blackbox\archive-pieces\000011\` + name,
+			Summary: host + `\tester changed C:\ProgramData\Blackbox\archive-pieces\000011\` + name + " (using svchost.exe)."}
+		if piece {
+			e.Fields = map[string]string{event.ExportPieceFlag: "1"}
+		}
+		return e
+	}
+	evs := []*event.Event{write(8, "Security.evtx", true), write(8, "System.evtx", true), write(8, "Application.evtx", true), write(8, "Microsoft-Windows-PowerShell-Operational.evtx", true),
+		write(30, "notes.txt", false)} // not a piece: someone else
+	evs[4].Process = `C:\Windows\System32\notepad.exe`
+	st.AppendEvents(at(13, 58, 0), evs)
+	st.Save()
+
+	dir, err := a.report(st, now, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "summary.json"))
+	var s report.Summary
+	json.Unmarshal(b, &s)
+	if s.High != 1 || s.Events != 1 {
+		t.Errorf("manual report: %d events, %d high; want only the notepad write", s.Events, s.High)
 	}
 }

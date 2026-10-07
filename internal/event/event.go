@@ -133,6 +133,11 @@ type Event struct {
 	// period but was collected after the previous report was produced.
 	Late bool `json:"late,omitempty"`
 
+	// Repeat is set by the report when identical records (same system,
+	// person, action and text within a minute) are shown as one row: how
+	// many there were (UX1). Each one's time is in the details.
+	Repeat int `json:"repeat,omitempty"`
+
 	// Unreported is set when the event was read from the spool after the
 	// point the last scheduled report had read to: collected since then,
 	// whatever the clock said (T3). It is not stored.
