@@ -539,6 +539,34 @@ func (r *Report) healthPage() *HealthPage {
 	for _, k := range gapOrder {
 		hp.Gaps = append(hp.Gaps, *gapCards[k])
 	}
+	// The original logs: not being archived, or parts lost or changed
+	// before they were (AR5, AR6).
+	if f := r.PackFailing; f != nil {
+		hp.Gaps = append(hp.Gaps, GapCard{Title: "Original logs not archived", Level: "bad", Systems: []string{f.Host},
+			Explain: f.Text(r.stamp),
+			Fix:     "make the archive folder writable again (blackbox status shows the reason at every run); nothing is lost while the exports are kept."})
+	}
+	for _, a := range r.Archives {
+		var lost, changed []string
+		for _, g := range a.Gaps {
+			if g.Reason != "" {
+				lost = append(lost, g.Reason)
+			}
+		}
+		for _, f := range a.Changed {
+			changed = append(changed, f.Name)
+		}
+		if len(lost) > 0 {
+			hp.Gaps = append(hp.Gaps, GapCard{Title: "Original logs incomplete", Level: "bad", Systems: []string{a.Host},
+				Explain: "Exports deleted or unreadable before they were archived: " + strings.Join(lost, "; ") + ". Their events are in this report; the original copy of that time is not in " + a.Name + ".",
+				Fix:     "find who or what removed them: Blackbox's own folder is only changed by Blackbox."})
+		}
+		if len(changed) > 0 {
+			hp.Gaps = append(hp.Gaps, GapCard{Title: "Original logs changed before archiving", Level: "bad", Systems: []string{a.Host},
+				Explain: "Changed after they were exported, and archived as found: " + strings.Join(changed, ", ") + " in " + a.Name + ". See Detections.",
+				Fix:     "compare them with the events in this report, and find who could write to the Blackbox data folder."})
+		}
+	}
 	if len(r.MissingReports) > 0 {
 		g := GapCard{Title: "Earlier reports missing or changed", Level: "bad",
 			Explain: "A scheduled report holds the only copy of its period's original logs and their hashes. These were deleted, moved or changed after they were written:"}
@@ -546,6 +574,9 @@ func (r *Report) healthPage() *HealthPage {
 			what := "missing"
 			if m.Problem == "changed" {
 				what = "changed (its manifest no longer matches)"
+				if m.What != "" {
+					what = "changed (" + m.What + ")"
+				}
 			}
 			g.Explain += fmt.Sprintf(" %s (%s to %s), %s;", m.Name, r.stamp(m.From), r.stamp(m.To), what)
 		}
@@ -555,7 +586,7 @@ func (r *Report) healthPage() *HealthPage {
 	}
 	// Cleared logs, silence and lost events first, then settings; gaps
 	// before warnings.
-	prio := map[string]int{"Earlier reports missing or changed": 0, "Security log was cleared": 0, "No data received": 1, "Collection was blocked": 2, "Events lost to log rollover": 2, "Other logs overwrote events": 3}
+	prio := map[string]int{"Earlier reports missing or changed": 0, "Original logs changed before archiving": 0, "Original logs not archived": 1, "Original logs incomplete": 1, "Security log was cleared": 0, "No data received": 1, "Collection was blocked": 2, "Events lost to log rollover": 2, "Other logs overwrote events": 3}
 	p := func(g GapCard) int {
 		n, ok := prio[g.Title]
 		if !ok {

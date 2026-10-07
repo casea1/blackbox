@@ -512,7 +512,9 @@ type IndexRow struct {
 	// Missing is set for a scheduled report that is gone or changed: the
 	// row says so and has nothing to open.
 	Missing string
-	end     time.Time
+	// Accepted: gone on purpose, recorded with blackbox reports accept.
+	Accepted bool
+	end      time.Time
 }
 
 // MissingReport is a scheduled report that was deleted, moved or changed
@@ -521,6 +523,11 @@ type MissingReport struct {
 	Name, Dir string
 	From, To  time.Time
 	Problem   string // "missing" or "changed"
+	// What says which file, e.g. "logs-WS-07.zip is missing" (LEDGER1).
+	What string
+	// Accepted, on the index only, is who accepted it as gone, when and
+	// why: the row stays, muted (LEDGER2).
+	Accepted string
 }
 
 // missingRow is a missing scheduled report's line on the index page.
@@ -530,7 +537,14 @@ func missingRow(m MissingReport, loc *time.Location) IndexRow {
 	if m.Problem == "changed" {
 		r.Missing = "Changed after it was written"
 	}
+	if m.What != "" {
+		r.Missing += ": " + m.What
+	}
 	r.Trail = r.Missing + " · its original logs were only in it"
+	if m.Accepted != "" {
+		r.Incomplete, r.TrailClass, r.Accepted = false, "mute", true
+		r.Trail = m.Accepted
+	}
 	r.Search = r.Week + " " + m.Name + " missing"
 	return r
 }
@@ -647,8 +661,11 @@ func WriteIndex(reportsDir, site, schedule string, loc *time.Location, missing [
 		rows = append(rows, row)
 	}
 	for _, m := range missing {
-		rows = append(rows, missingRow(m, loc))
-		incomplete++
+		row := missingRow(m, loc)
+		if row.Incomplete {
+			incomplete++
+		}
+		rows = append(rows, row)
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].end.After(rows[j].end) })
 	// Detections per week (UI8): by calendar week, from the scheduled

@@ -58,6 +58,10 @@ type Health struct {
 	// MissingReports are scheduled reports deleted, moved or changed since
 	// they were written, and not accepted (the report ledger).
 	MissingReports []report.MissingReport
+
+	// PackFailing is set while the exported original logs cannot be
+	// packed into an archive (AR5).
+	PackFailing *store.PackFailure
 }
 
 // LostLog is one log losing events to rollover.
@@ -186,6 +190,7 @@ func (a *App) Health() (Health, error) {
 	h.WaitingSince = a.waitingSince(st)
 	h.LowSpace = lowSpace(a.Cfg.DataDir)
 	h.Blocked = blockedNow(a.Cfg.DataDir, st)
+	h.PackFailing = s.PackFailing
 	if !a.Cfg.MakesReports() {
 		return h, nil
 	}

@@ -294,6 +294,26 @@ coverage under `logs`), and `blackbox status` says **LOGS INCOMPLETE**
 for 14 days and exits with code 4. The fix is a larger log (`blackbox
 check` gives the size the STIG requires) or more frequent collection.
 
+**Exports lost or changed before packing.** Each export's files are
+hashed when they are written (`piece.json`). When they are packed, a file
+that has been deleted or can't be read is left out and the rest are still
+packed: `archive.json` records it under `gaps` with its log, its period
+and the reason (e.g. "Application.evtx, exported for … was missing when
+the logs were packed"), and the Original logs page, Audit health and
+`blackbox status` (**LOGS INCOMPLETE**) say so. Its events are still in
+the reports; only the original copy of that part is gone. A file whose
+hash no longer matches is packed as it was found, marked `changed` in
+`archive.json`, and the report has a High detection, "Saved original
+log changed before it was archived". On Linux, `blackbox check
+--audit-rules` also watches `/var/lib/blackbox/archive-pieces/` for
+writes by anything but Blackbox, a root script included.
+
+If packing fails altogether (the archive folder can't be written, for
+example), the exports are kept and packing is tried again at every run.
+Until it works, `blackbox status` says **ORIGINAL LOGS NOT ARCHIVED
+since <time>: <reason>** and exits with code 4, the status icon notifies
+once, and reports say so on Original logs and in Audit health.
+
 **After the clock is moved back.** Exports follow on from the end of the
 last one. If the clock was ahead and is then corrected, what is written
 afterwards is stamped before that end. Blackbox notices, starts the next
@@ -347,10 +367,14 @@ compressed. It depends on how busy the Security log is.
   "CHANGED") and exits 4, the status icon notifies once, the next report
   has "Earlier reports missing or changed" on the Overview and in Audit
   health's gaps, and All reports lists it as "Missing: deleted or moved".
-  `blackbox reports` lists them; when one was moved or removed on
-  purpose, `blackbox reports accept NAME "why"` records who, when and why
-  (a row in the next report and a copy in the system log) and stops
-  pointing it out. Removal under `retention_days` is expected and not
+  Every run checks that each file the manifest lists is there, at the
+  size it was written with; once a day every file is hashed again. A
+  file deleted or changed is named, e.g. "REPORT CHANGED: … logs-WS-07.zip
+  is missing". `blackbox reports` lists them; when one was moved or
+  removed on purpose, `blackbox reports accept NAME "why"` records who,
+  when and why (a row in the next report and a copy in the system log)
+  and stops pointing it out. All reports keeps its row, muted: "Accepted
+  as moved by <who> on <date>: <why>". Removal under `retention_days` is expected and not
   pointed out. The record starts with the first scheduled report made by
   0.19.
 - **A manual report** holds nothing that is not kept elsewhere: its

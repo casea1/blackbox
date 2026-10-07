@@ -11,6 +11,10 @@ type Gap struct {
 	Source string    `json:"source"`
 	From   time.Time `json:"from"`
 	To     time.Time `json:"to"`
+	// Reason is set when the gap is not the log overwriting itself: an
+	// exported file was missing or unreadable when the logs were packed
+	// (AR5).
+	Reason string `json:"reason,omitempty"`
 }
 
 // LogState is how far back a log reaches now, and whether it is full and

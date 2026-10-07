@@ -146,6 +146,9 @@ func classify(h app.Health, err error, now time.Time) trayView {
 	if !h.WaitingSince.IsZero() && now.Sub(h.WaitingSince) > app.SendStaleAfter {
 		v.Items = append(v.Items, "Data has waited to be sent to the collector since "+when(h.WaitingSince, now))
 	}
+	if f := h.PackFailing; f != nil {
+		v.Items = append(v.Items, "Original logs not archived since "+when(f.Since, now))
+	}
 	if h.LowSpace != "" {
 		v.Items = append(v.Items, "Low disk space: "+h.LowSpace)
 	}
@@ -192,6 +195,7 @@ type trayMemory struct {
 	Lost    string            `json:"lost"`    // report period whose lost events were notified
 	Off     map[string]string `json:"off"`     // host → auditing-off reason notified
 	Missing string            `json:"missing"` // missing or changed scheduled reports notified
+	Packing string            `json:"packing"` // packing failure notified (its start)
 }
 
 // notice is one notification.
@@ -205,7 +209,7 @@ type notice struct {
 // look nothing is notified: only what changes after it.
 func notices(m trayMemory, h app.Health, v trayView, version string, now time.Time) ([]notice, trayMemory) {
 	var out []notice
-	next := trayMemory{Seen: true, Report: m.Report, Stopped: m.Stopped, Quiet: map[string]string{}, Gaps: map[string]bool{}, Version: version, Lost: m.Lost, Missing: m.Missing,
+	next := trayMemory{Seen: true, Report: m.Report, Stopped: m.Stopped, Quiet: map[string]string{}, Gaps: map[string]bool{}, Version: version, Lost: m.Lost, Missing: m.Missing, Packing: m.Packing,
 		Off: map[string]string{}}
 	first := !m.Seen
 
@@ -268,10 +272,20 @@ func notices(m trayMemory, h app.Health, v trayView, version string, now time.Ti
 		next.Quiet[host] = key
 	}
 
+	// The original logs not being archived: once per failure.
+	next.Packing = ""
+	if f := h.PackFailing; f != nil {
+		key := f.Since.String()
+		if key != m.Packing && !first {
+			out = append(out, notice{Title: "Blackbox", Warn: true, Text: fmt.Sprintf("The original logs have not been archived since %s: %s. Run blackbox status for details.", when(f.Since, now), strings.TrimRight(f.Reason, ". "))})
+		}
+		next.Packing = key
+	}
+
 	// Scheduled reports deleted, moved or changed: once per set.
 	var gone []string
 	for _, r := range h.MissingReports {
-		gone = append(gone, r.Name+" "+r.Problem)
+		gone = append(gone, r.Name+" "+r.Problem+" "+r.What)
 	}
 	if key := strings.Join(gone, ","); key != m.Missing {
 		if key != "" && !first {
@@ -279,6 +293,9 @@ func notices(m trayMemory, h app.Health, v trayView, version string, now time.Ti
 			what := "is missing from the reports folder"
 			if r.Problem == "changed" {
 				what = "was changed after it was written"
+				if r.What != "" {
+					what += " (" + r.What + ")"
+				}
 			}
 			text := fmt.Sprintf("The scheduled report for %s – %s %s. It held the only copy of that period's original logs.", when(r.From, now), when(r.To, now), what)
 			if len(gone) > 1 {

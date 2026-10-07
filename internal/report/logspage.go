@@ -39,6 +39,9 @@ type LogsPage struct {
 	// they wait instead (UI5).
 	Manual  bool
 	Waiting string
+	// Failing says the original logs on this computer could not be
+	// archived, and why (AR5).
+	Failing string
 }
 
 // WaitingLogs is what of the original logs waits in archive_dir for the
@@ -78,6 +81,9 @@ type LogGroup struct {
 
 func (r *Report) logsPage() *LogsPage {
 	lp := &LogsPage{Kept: r.ArchivesKept || len(r.Archives) > 0}
+	if f := r.PackFailing; f != nil {
+		lp.Failing = f.Text(r.stamp)
+	}
 	if r.Interim && len(r.Archives) == 0 {
 		lp.Manual, lp.Waiting = true, r.waitingText()
 		return lp
@@ -137,6 +143,8 @@ func (r *Report) logsPage() *LogsPage {
 			files     int
 			notes     []string
 			gaps      []string
+			lostFiles []string // exports deleted or unreadable before packing (AR5)
+			changed   bool     // an export changed before packing (AR6)
 		}
 		logs := map[string]*agg{}
 		var order []string
@@ -162,6 +170,7 @@ func (r *Report) logsPage() *LogsPage {
 				g.bytes += f.Bytes
 				g.files++
 				g.hash = f.SHA256
+				g.changed = g.changed || f.Changed
 			}
 			for _, c := range info.Logs {
 				g := logs[strings.ToLower(c.Source)]
@@ -181,9 +190,19 @@ func (r *Report) logsPage() *LogsPage {
 				g.lostOut += c.Overwritten
 			}
 			for _, gp := range info.Gaps {
+				if gp.Reason != "" && logs[strings.ToLower(gp.Source)] == nil {
+					// Its only export was lost: the log is still listed.
+					logs[strings.ToLower(gp.Source)] = &agg{file: "—", log: gp.Source, from: info.From, to: info.To}
+					order = append(order, strings.ToLower(gp.Source))
+				}
 				for _, g := range logs {
 					if strings.EqualFold(g.log, gp.Source) {
-						g.gaps = append(g.gaps, gp.From.In(r.Location).Format("2 Jan 15:04")+" – "+gp.To.In(r.Location).Format("2 Jan 15:04"))
+						span := gp.From.In(r.Location).Format("2 Jan 15:04") + " – " + gp.To.In(r.Location).Format("2 Jan 15:04")
+						if gp.Reason != "" {
+							g.lostFiles = append(g.lostFiles, span)
+							continue
+						}
+						g.gaps = append(g.gaps, span)
 					}
 				}
 			}
@@ -238,6 +257,14 @@ func (r *Report) logsPage() *LogsPage {
 				lf.NoteBad = true
 			case lost[h+"|"+strings.ToLower(g.log)] > 0:
 				parts = append(parts, plural(int(lost[h+"|"+strings.ToLower(g.log)]), "event")+" overwritten before export")
+				lf.NoteBad = true
+			}
+			if g.changed {
+				parts = append(parts, "Changed after it was exported: packed as it was found (see Detections)")
+				lf.NoteBad = true
+			}
+			if len(g.lostFiles) > 0 {
+				parts = append(parts, "Missing "+strings.Join(g.lostFiles, ", ")+": the export was deleted or unreadable before it was archived")
 				lf.NoteBad = true
 			}
 			if len(g.gaps) > 0 {
