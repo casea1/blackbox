@@ -473,7 +473,9 @@
     x: function (r) { return '<span title="' + esc(r[18]) + '">' + esc(r[18]) + '</span>'; },
     cmd: function (r) { var c = (r[12] || r[8]).split('\n')[0]; return '<span class="mono" title="' + esc(c) + '">' + esc(c) + '</span>'; },
     sum: function (r) {
-      return '<span class="what" title="' + esc(r[8]) + '">' + esc(r[8]) + (r[14] ? ' <i class="flag">' + esc(r[14].split(',').join(' · ')) + '</i>' : '') + '</span>';
+      // Flags ("×7", "Late", "First time") first, so a long summary's
+      // ellipsis never hides them (UX1).
+      return '<span class="what" title="' + esc(r[8]) + '">' + (r[14] ? '<i class="flag">' + esc(r[14].split(',').join(' · ')) + '</i> ' : '') + esc(r[8]) + '</span>';
     },
     sev: function (r) { return '<span>' + sevCell(r[3]) + '</span>'; },
     event: function (r) { var a = (r[4] || '').replace(/_/g, ' '); return '<span>' + esc(a.charAt(0).toUpperCase() + a.slice(1)) + '</span>'; }

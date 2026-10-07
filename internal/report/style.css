@@ -82,7 +82,7 @@ table.fleet tr.sel td{background:rgba(11,95,255,.06)}
 table.mx{border-collapse:separate;border-spacing:2px}table.mx th{font-size:10.5px;padding:0 6px 4px;text-align:center;white-space:nowrap}table.mx th:first-child{text-align:left}
 table.mx{width:100%}table.mx td{padding:5px 8px;font:12px 'Source Code Pro';text-align:center;border:0}table.mx td:first-child{text-align:left;font:600 12.5px 'Public Sans';padding-left:0;white-space:nowrap}
 table.mx td.z0{color:#9AA5BF}
-.legend{display:flex;gap:14px;font-size:11.5px;color:#5A6785;margin-top:8px}.legend i{display:inline-block;width:10px;height:10px;margin-right:5px;vertical-align:-1px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:#5A6785;margin-top:8px}.legend i{display:inline-block;width:10px;height:10px;margin-right:5px;vertical-align:-1px}
 .sys2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .sc{display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:center}
 .sc .ic{width:44px;height:44px;display:grid;place-items:center;border:1px solid rgba(0,30,98,.12);color:#0A2A7A;background:rgba(255,255,255,.7)}
@@ -395,7 +395,7 @@ select.dd:focus,input.dd:focus{border-color:#0B5FFF}
 .vt-row b{font-weight:600}
 .vt-row .mono{font-size:12px}
 .vt-msg{padding:28px 10px;color:#5A6785;font-size:13px}
-.flag{font-style:normal;font-size:11px;font-weight:650;color:#8F4F00;margin-left:6px}
+.flag{font-style:normal;font-size:11px;font-weight:650;color:#8F4F00;margin-right:4px}
 .pager [data-csv]{cursor:pointer;color:#0B5FFF;font-weight:600}
 .drawer{overflow-y:auto}.drawer .x{cursor:pointer}
 .drawer h3{padding-right:90px;font-size:17px;line-height:1.35}

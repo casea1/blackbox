@@ -236,8 +236,9 @@ func (t *Translator) timeChanged(r *Raw) *event.Event {
 	var delta time.Duration
 	if err1 == nil && err2 == nil {
 		delta = next.Sub(prev)
-		// Routine clock sync by the Windows Time service.
-		if svc && delta.Abs() < 5*time.Minute {
+		// Routine clock sync by the Windows Time service; and a change of
+		// under a second, which each Set-Date also logs (TIME1).
+		if (svc && delta.Abs() < 5*time.Minute) || delta.Abs() < time.Second {
 			return nil
 		}
 	}

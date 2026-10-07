@@ -5,6 +5,7 @@ package app
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/casea1/blackbox/internal/archive"
 	"github.com/casea1/blackbox/internal/collect"
 	"github.com/casea1/blackbox/internal/config"
+	"github.com/casea1/blackbox/internal/event"
 	"github.com/casea1/blackbox/internal/report"
 	"github.com/casea1/blackbox/internal/store"
 )
@@ -335,6 +337,122 @@ func TestManualReportSaysWhereLogsWait(t *testing.T) {
 	}
 }
 
+// AR2c, as on the Windows 11 VM on 7 Oct: a hand-run "blackbox run" made
+// the scheduled report at 13:53:04, then went on exporting the original
+// logs; the Event Log service's writes of the pieces (4663 at 13:53:08,
+// collected by the next run) were High rows in a manual report made
+// after, because it read only the runs since 13:53:04. They are
+// Blackbox's own, whenever the report is made; another write stays.
+func TestManualReportAfterRunDropsExportWrites(t *testing.T) {
+	base := t.TempDir()
+	st, _ := store.Open(filepath.Join(base, "data"))
+	at := func(h, m, s int) time.Time { return time.Date(2026, 10, 7, h, m, s, 0, time.UTC) }
+	now := at(14, 0, 0)
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportDir: filepath.Join(base, "reports"), ReportEvery: "daily", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute},
+		Version: "test", Loc: time.UTC, Now: func() time.Time { return now }, LogStates: func() []archive.LogState { return nil }}
+	host := collect.LocalHost()
+	st.AppendRun(&store.Run{Time: at(13, 53, 0), Host: host, Duration: 6, Version: "0.19.0"})
+	st.AppendRun(&store.Run{Time: at(13, 58, 0), Host: host, Duration: 5, Version: "0.19.0"})
+	st.State.LastWindowEnd, st.State.LastGenerated = at(0, 0, 0), at(13, 53, 4)
+	write := func(sec int, name string, piece bool) *event.Event {
+		e := &event.Event{Time: at(13, 53, sec), Host: host, Category: event.CatIntegrity, Severity: event.SevHigh, Action: "blackbox_files_changed",
+			User: host + `\tester`, Process: `C:\Windows\System32\svchost.exe`, Target: `C:\ProgramData\Blackbox\archive-pieces\000011\` + name,
+			Summary: host + `\tester changed C:\ProgramData\Blackbox\archive-pieces\000011\` + name + " (using svchost.exe)."}
+		if piece {
+			e.Fields = map[string]string{event.ExportPieceFlag: "1"}
+		}
+		return e
+	}
+	evs := []*event.Event{write(8, "Security.evtx", true), write(8, "System.evtx", true), write(8, "Application.evtx", true), write(8, "Microsoft-Windows-PowerShell-Operational.evtx", true),
+		write(30, "notes.txt", false)} // not a piece: someone else
+	evs[4].Process = `C:\Windows\System32\notepad.exe`
+	st.AppendEvents(at(13, 58, 0), evs)
+	st.Save()
+
+	dir, err := a.report(st, now, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "summary.json"))
+	var s report.Summary
+	json.Unmarshal(b, &s)
+	if s.High != 1 || s.Events != 1 {
+		t.Errorf("manual report: %d events, %d high; want only the notepad write", s.Events, s.High)
+	}
+}
+
+// LC2: a log cleared since the last export reaches back only to the clear,
+// and its file keeps its size: that is not a gap in the saved original
+// logs, and status gives no "LOGS INCOMPLETE" or size advice for it.
+func TestClearedLogIsNotAGap(t *testing.T) {
+	base := t.TempDir()
+	day := time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC)
+	at := func(h, m int) time.Time { return day.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute) }
+	audit := auditFixture(t, base, at(5, 0), at(6, 10))
+	st, _ := store.Open(filepath.Join(base, "data"))
+	now := at(6, 0)
+	var states []archive.LogState
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportEvery: "weekly", CollectEvery: 15 * time.Minute}, Loc: time.UTC,
+		Now: func() time.Time { return now }, LogStates: func() []archive.LogState { return states }}
+	states = []archive.LogState{{Source: audit, Oldest: at(5, 0), Wraps: true}}
+	a.saveLogPiece(st, auditRun(now, 1, 0, at(5, 0)), time.Time{})
+
+	// 06:17: cleared. The log now starts at 06:17 and is still "full".
+	prev := now
+	now = at(6, 30)
+	states = []archive.LogState{{Source: audit, Oldest: at(6, 17), Wraps: true}}
+	run := auditRun(now, 1, 0, at(6, 17))
+	run.Channels[0].Cleared = true
+	st.AppendRun(run)
+	a.saveLogPiece(st, run, prev)
+	if len(st.State.LogGaps) != 0 {
+		t.Errorf("a clear recorded as a gap: %+v", st.State.LogGaps)
+	}
+	pieces, _ := archive.Pieces(a.piecesDir())
+	for _, p := range pieces {
+		if len(p.Info.Gaps) != 0 {
+			t.Errorf("piece gaps: %+v", p.Info.Gaps)
+		}
+	}
+	st.Save()
+	var b bytes.Buffer
+	a.Status(&b)
+	if strings.Contains(b.String(), "LOGS INCOMPLETE") || strings.Contains(b.String(), "Make it at least") || strings.Contains(b.String(), "EVENTS LOST") {
+		t.Errorf("status:\n%s", b.String())
+	}
+}
+
+// LOG1b: an incomplete PowerShell log is its own, lower line (status
+// does not exit 4 for it alone), a gap within one minute reads "at about",
+// and "collect more often" is said only when it would help.
+func TestLogsIncompleteSplit(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	at := time.Date(2026, 10, 7, 6, 17, 0, 0, time.UTC)
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportEvery: "weekly", CollectEvery: 15 * time.Minute}, Loc: time.UTC,
+		Now: func() time.Time { return at.Add(time.Hour) }}
+	st.State.LogGaps = []store.LogGap{{Source: "Microsoft-Windows-PowerShell/Operational", From: at, To: at.Add(20 * time.Second), Noted: at}}
+	st.Save()
+	var b bytes.Buffer
+	if err := a.Status(&b); err != nil {
+		t.Errorf("status exits for the PowerShell log alone: %v\n%s", err, b.String())
+	}
+	if !strings.Contains(b.String(), "Logs incomplete:") || !strings.Contains(b.String(), "at about 2026-10-07 06:17") ||
+		strings.Contains(b.String(), "from 2026-10-07 06:17 to 2026-10-07 06:17") || strings.Contains(b.String(), "collect more often") {
+		t.Errorf("status:\n%s", b.String())
+	}
+	// The Security log's gap still makes it exit 4; collecting hourly,
+	// collecting more often is offered.
+	a.Cfg.CollectEvery = time.Hour
+	st.State.LogGaps = append(st.State.LogGaps, store.LogGap{Source: "Security", From: at.Add(-time.Hour), To: at, Noted: at})
+	st.Save()
+	b.Reset()
+	var na *NeedsAttention
+	if err := a.Status(&b); !errors.As(err, &na) || !strings.Contains(b.String(), "LOGS INCOMPLETE:  Security had already overwritten its events from 2026-10-07 05:17 to 2026-10-07 06:17") ||
+		!strings.Contains(b.String(), "or collect more often") {
+		t.Errorf("status (%v):\n%s", err, b.String())
+	}
+}
+
 // AR5: while the exports cannot be packed, status says so and exits 4,
 // and the report says why; once packing works, an export lost in the
 // meantime is a gap with its reason, and packing goes on without it.
@@ -396,7 +514,7 @@ func TestPackFailingAndLostExport(t *testing.T) {
 	// Fixed; meanwhile one export was deleted.
 	os.Remove(block)
 	pieces, _ := archive.Pieces(a.piecesDir())
-	os.Remove(filepath.Join(pieces[0].Dir, "Application.evtx"))
+	os.Remove(filepath.Join(pieces[0].Dir, "Security.evtx"))
 	a.packLogs(st, true)
 	st, _ = store.Open(st.Dir)
 	if st.State.PackFailing != nil {
@@ -405,16 +523,16 @@ func TestPackFailingAndLostExport(t *testing.T) {
 	if p, _ := archive.Pieces(a.piecesDir()); len(p) != 0 {
 		t.Errorf("pieces left: %d", len(p))
 	}
-	if len(st.State.LogGaps) != 1 || st.State.LogGaps[0].Source != "Application" || !strings.Contains(st.State.LogGaps[0].Reason, "was missing") {
+	if len(st.State.LogGaps) != 1 || st.State.LogGaps[0].Source != "Security" || !strings.Contains(st.State.LogGaps[0].Reason, "was missing") {
 		t.Fatalf("gaps: %+v", st.State.LogGaps)
 	}
 	b.Reset()
-	if err := a.Status(&b); !errors.As(err, &na) || strings.Contains(b.String(), "NOT ARCHIVED") || !strings.Contains(b.String(), "LOGS INCOMPLETE:  Application.evtx, exported for 2026-10-07T11:00:00Z") {
+	if err := a.Status(&b); !errors.As(err, &na) || strings.Contains(b.String(), "NOT ARCHIVED") || !strings.Contains(b.String(), "LOGS INCOMPLETE:  Security.evtx, exported for 2026-10-07T11:00:00Z") {
 		t.Errorf("status (%v):\n%s", err, b.String())
 	}
 	refs, _ := a.bundleLogs(now)
 	r = report.Build(nil, nil, report.Options{WindowEnd: now, Location: time.UTC, Archives: refs, ArchivesKept: true})
-	if w := strings.Join(r.Health.Warnings, "\n"); !strings.Contains(w, "the original logs are incomplete: Application.evtx") {
+	if w := strings.Join(r.Health.Warnings, "\n"); !strings.Contains(w, "the original logs are incomplete: Security.evtx") {
 		t.Errorf("report warnings: %s", w)
 	}
 }

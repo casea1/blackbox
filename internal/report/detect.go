@@ -141,6 +141,7 @@ func (r *Report) detect(rows, all []*Row) {
 	r.detectAdminAfterNewDevice(rows)
 	r.detectOffHours(rows)
 	r.detectFirstTime(rows)
+	r.detectClockMoved(rows)
 	sort.SliceStable(r.Findings, func(i, j int) bool {
 		a, b := r.Findings[i], r.Findings[j]
 		if a.Severity.Rank() != b.Severity.Rank() {
@@ -245,6 +246,47 @@ func (r *Report) detectShortLivedAccounts(all []*Row) {
 			break
 		}
 	}
+}
+
+// clockMovedLimit is how far a person must move the clock to be a
+// detection: the time service's small corrections are not (TIME1).
+const clockMovedLimit = 5 * time.Minute
+
+// A person moving the clock more than a few minutes (AU-8): event times
+// around it don't line up, and moving it is a way to hide activity (T3).
+// Back is High, forward Medium.
+func (r *Report) detectClockMoved(rows []*Row) {
+	for _, x := range rows {
+		if !inPeriod(x) || x.Action != "time_changed" || !person(x.User) {
+			continue
+		}
+		prev, err1 := time.Parse(time.RFC3339Nano, x.Fields["PreviousTime"])
+		next, err2 := time.Parse(time.RFC3339Nano, x.Fields["NewTime"])
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		d := next.Sub(prev)
+		if d.Abs() <= clockMovedLimit {
+			continue
+		}
+		sev, way := event.SevMedium, "forward"
+		if d < 0 {
+			sev, way = event.SevHigh, "back"
+		}
+		r.addFinding(sev, event.CatIntegrity, x, x, "The clock was moved "+way+" by a person",
+			fmt.Sprintf("%s moved the clock on %s %s by %s at %s%s. Event times around the change don't line up with other systems, and moving the clock is a way to make activity look as if it happened at another time. Every collected event is still reported, in the order it was collected.",
+				x.User, x.Host, way, roughDuration(d.Abs()), r.stamp(x.Time), usingText(x.Process)))
+	}
+}
+
+func usingText(proc string) string {
+	if proc == "" {
+		return ""
+	}
+	if i := strings.LastIndexAny(proc, `/\`); i >= 0 {
+		proc = proc[i+1:]
+	}
+	return " (using " + proc + ")"
 }
 
 func capitalize(s string) string {

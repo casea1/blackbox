@@ -317,7 +317,8 @@ What is checked:
   - the others (Defender, Firewall, Remote Desktop, Print, USB) only when
     they hold less than a week.
 
-  Group Policy has no setting for these logs under Event Log Service.
+  `blackbox status` gives the same capped size when one of these logs
+  loses events. Group Policy has no setting for these logs under Event Log Service.
   `blackbox check` gives the command, for example (as administrator):
 
   ```
