@@ -2,6 +2,7 @@ package report
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -121,12 +122,20 @@ type GapCard struct {
 	STIGs []string
 	// Advice: Blackbox's advice, not a STIG rule (COMP2).
 	Advice bool
+	// OS is the operating systems it is on ("Windows", "Windows · Ubuntu"),
+	// Affects what the report misses without it, and OneFix how one change
+	// clears it everywhere ("One GPO on the OU fixes all 9.") (UI-R1).
+	OS, Affects, OneFix string
+	os                  []string
+	// FixDot: Fix needs a full stop before OneFix.
+	FixDot bool
+	// IDs are the STIG IDs alone, for the row (STIG has each one's OS).
+	IDs []string
 }
 
 // HealthPage is the Audit health page.
 type HealthPage struct {
-	Stats []EventCard
-	Cols  []HealthCol
+	Cols []HealthCol
 	// ColKey are the columns whose heading is short for more, in a key
 	// under the table: the full names without hovering (UI19).
 	ColKey  []HealthCol
@@ -139,16 +148,47 @@ type HealthPage struct {
 	AV      []AVRow    // antivirus definitions and protection, by system
 
 	// The grid lists systems with a gap or warning; those that match on
-	// every check are folded away (Passing), so the sections below are
-	// in reach. Jump links to each section.
+	// every check are folded away (Passing).
 	Attention, Passing []HealthGroup
 	PassingN           int
-	Jump               []JumpLink
+
+	// UI-R1 (design 08): four cards, the tabs, and the settings to fix
+	// (Gaps) split into the first eight and the rest, folded (More, with
+	// MoreText saying what they are).
+	Cards    []HealthCard
+	Tabs     []HealthTab
+	Top      []GapCard
+	More     []GapCard
+	MoreText string
+	// Excluded is what your settings leave out of the report, if anything.
+	Excluded string
+	// Losses are the logs that overwrote events before they were read, on
+	// the Log sizes tab.
+	Losses []LossRow
+	// LostCritical: events lost from the Security log or the audit log.
+	LostCritical bool
+	// LossNote says why the original logs do not have the lost events.
+	LossNote string
 }
 
-// JumpLink is one section of the Audit health page in the bar at its top.
-type JumpLink struct {
-	Label, Note, Target, Level string
+// HealthCard is one of Audit health's four cards. Meter, when set, is the
+// share matching in percent, drawn as a green/amber bar.
+type HealthCard struct {
+	Label, Value, Note, Level, Tab string
+	Meter                          int
+	HasMeter                       bool
+}
+
+// HealthTab is one tab of Audit health: Settings to fix, By system, SCAP,
+// Antivirus, Log sizes.
+type HealthTab struct {
+	ID, Label, Count, Level string
+}
+
+// LossRow is one log on one system that overwrote events before Blackbox
+// read them, with what to do.
+type LossRow struct {
+	Host, Log, Lost, When, Advice, Level string
 }
 
 // OtherRow is one Security-log event ID Blackbox has no translation for,
@@ -245,9 +285,8 @@ func (r *Report) healthPage() *HealthPage {
 		}
 	}
 
-	matching, gaps, warns, advice, clearedN, small := 0, 0, 0, 0, 0, 0
+	matching := 0
 	var totalLost, totalOther uint64
-	var clearedWho, smallWho []string
 	gapCards := map[string]*GapCard{}
 	var gapOrder []string
 	// Each system's own STIG IDs for a gap (STIG1): Windows 11 and Server
@@ -382,62 +421,21 @@ func (r *Report) healthPage() *HealthPage {
 		if row.Checked && s.Checks.STIGFail == 0 {
 			matching++
 		}
-		if s.Checks != nil {
-			gaps += s.Checks.STIGFail
-			warns += s.Checks.STIGWarn
-			advice += s.Checks.Advice
-		}
 
-		// Gaps, as rows of the Gaps table.
-		if n := len(cleared[h]); n > 0 {
-			clearedN++
-			clearedWho = append(clearedWho, s.Name)
-			by := ""
-			if u := cleared[h][0].User; u != "" {
-				by = " by " + u
-			}
-			addGap("cleared", GapCard{Title: "Logs cleared", Level: "bad",
-				Explain: fmt.Sprintf("%s cleared%s on %s%s. Events from before then are only in the original-log archive.", clearedWhat(cleared[h]), times(n),
-					cleared[h][0].Time.In(r.Location).Format("2 Jan 15:04"), by)}, s.Name)
-		}
-		if s.AuditOff != "" {
-			addGap("auditoff", GapCard{Title: "Auditing is off", Level: "bad",
-				Explain: "At the last collection auditing was not running (the audit service stopped, or kernel auditing switched off), so nothing was being recorded. Start it with systemctl start auditd, and auditctl -e 1 if kernel auditing is off. The system's own page says which."}, s.Name)
-		}
-		if s.Status == "silent" {
-			addGap("silent", GapCard{Title: "No data received", Level: "bad",
-				Explain: "No collection arrived in this period. Check the system is on and can reach the collector. If it no longer sends here (it was made standalone, or retired), remove it from the report with: blackbox systems remove <name>."}, s.Name)
-		}
-		if bs := blocked[h]; len(bs) > 0 {
-			addGap("blocked", GapCard{Title: "Collection was blocked", Level: "bad",
-				Explain: "Scheduled runs were refused because another Blackbox run held its lock, so nothing was collected or sent in that time. " +
-					"The next run collected what the logs still held. A run that dies no longer leaves the lock behind; a run that hangs still holds it, and blackbox status says so."}, s.Name)
-			c := gapCards["blocked"]
-			for _, b := range bs {
-				c.Explain += fmt.Sprintf(" %s: %s to %s, %s refused (PID %d).", s.Name, r.stamp(b.From), r.stamp(b.To), plural(b.Refused, "run"), b.PID)
-			}
-		}
+		// Settings to fix (UI-R1): one row per setting, every system it is
+		// on. Cleared logs, silent systems, blocked collections and the
+		// original logs are on Overview, Systems, Detections and Original
+		// logs; lost events on the Log sizes tab; antivirus on its own tab.
 		if lost[h] > 0 {
 			totalLost += lost[h]
-			addGap("lost", GapCard{Title: "Events lost to log rollover", Level: "bad",
-				Explain: "The audit log filled up and overwrote events before Blackbox read them. " + rollover.NotInExports}, s.Name)
-			gapCards["lost"].Explain += " " + lostAdvice(gapsOn[h], true)
 		}
 		if otherLost[h] > 0 {
 			totalOther += otherLost[h]
-			addGap("otherlost", GapCard{Title: "Other logs overwrote events", Level: "warn",
-				Explain: "Not the audit record: a log Blackbox also reads (such as the PowerShell log, where script block logging writes large events) filled up and overwrote events before Blackbox read them. " + rollover.NotInExports}, s.Name)
-			gapCards["otherlost"].Explain += " " + lostAdvice(gapsOn[h], false)
 		}
-
 		if s.Checks != nil {
 			for _, res := range s.Checks.Results {
-				if res.Status != check.Fail && res.Status != check.Warn {
+				if res.Status != check.Fail && res.Status != check.Warn || res.Area == "Antivirus" {
 					continue
-				}
-				if healthColumn(res) == "Log size" {
-					small++
-					smallWho = append(smallWho, s.Name+" "+res.Have)
 				}
 				lv := "bad"
 				adv := res.IsAdvice()
@@ -454,9 +452,6 @@ func (r *Report) healthPage() *HealthPage {
 						explain = fmt.Sprintf("Set to %s; the STIG requires %s.", orDash(res.Have), orDash(res.Want))
 					}
 				}
-				if res.Affects != "" {
-					explain = strings.TrimSpace(explain + " Without it the report is missing: " + res.Affects + ".")
-				}
 				key, stig := "check|"+res.Item, res.STIG
 				if adv {
 					// Kept apart from the same setting where a STIG
@@ -464,8 +459,15 @@ func (r *Report) healthPage() *HealthPage {
 					// rule on Server 2025).
 					key, stig = key+"|advice", ""
 				}
-				addGap(key, GapCard{Title: res.Item, STIG: stig, Explain: explain, Fix: res.Fix, Level: lv, Advice: adv}, s.Name)
+				addGap(key, GapCard{Title: res.Item, STIG: stig, Explain: explain, Fix: res.Fix, Level: lv, Advice: adv, Affects: res.Affects}, s.Name)
 				addSTIG(key, osLabel(s), stig)
+				c := gapCards[key]
+				if fam := osFamily(s); !slices.Contains(c.os, fam) {
+					c.os = append(c.os, fam)
+				}
+				if c.Affects == "" {
+					c.Affects = res.Affects
+				}
 			}
 		}
 
@@ -518,6 +520,15 @@ func (r *Report) healthPage() *HealthPage {
 			rep.Want, rep.Have, rep.Result, rep.Class = "—", "Not collected live", "—", "na"
 		} else if c.Class != "ok" {
 			rep.Result, rep.Class = map[string]string{"bad": "Gap", "warn": "Warning"}[c.Class], c.Class
+		}
+		// A blocked collection is told here, on the system's own table
+		// (it was a gap of its own before UI-R1).
+		for _, b := range blocked[h] {
+			rep.Note = strings.TrimSpace(rep.Note + fmt.Sprintf(" Collection blocked %s to %s: %s refused because another Blackbox run held its lock (PID %d). The next run collected what the logs still held.",
+				r.stamp(b.From), r.stamp(b.To), plural(b.Refused, "run"), b.PID))
+		}
+		if s.AuditOff != "" {
+			intact.Note = "Auditing was off at the last collection: " + s.AuditOff + "."
 		}
 		row.Table = append(row.Table, intact, rep)
 		if l, ok := r.scapSetting(h); ok {
@@ -588,126 +599,272 @@ func (r *Report) healthPage() *HealthPage {
 			hp.Groups = append(hp.Groups, *g)
 		}
 	}
-	if t := r.excludedText(); t != "" {
-		var on []string
-		for h := range r.ExcludedOn {
-			on = append(on, h)
-		}
-		sort.Slice(on, func(i, j int) bool { return naturalLess(on[i], on[j]) })
-		hp.Gaps = append(hp.Gaps, GapCard{Title: "Left out by your settings", Level: "warn", Systems: on,
-			Explain: "Not in this report: " + t + ". Failed logons against these accounts, changes to them, log clears and audit changes, and anything of Medium severity or above are always included."})
-	}
+	hp.Excluded = r.excludedText()
 	for _, k := range gapOrder {
+		c := gapCards[k]
 		if ids := gapSTIGs[k]; len(ids) > 1 {
 			var parts []string
 			for _, s := range ids {
 				parts = append(parts, s.ids+" ("+s.label+")")
 			}
-			gapCards[k].STIG, gapCards[k].STIGs = strings.Join(parts, " · "), parts
+			c.STIG, c.STIGs = strings.Join(parts, " · "), parts
 		}
-		hp.Gaps = append(hp.Gaps, *gapCards[k])
+		for _, id := range gapSTIGs[k] {
+			c.IDs = append(c.IDs, id.ids)
+		}
+		c.OS = strings.Join(c.os, " · ")
+		c.OneFix = oneFix(*c)
+		c.FixDot = c.OneFix != "" && !strings.HasSuffix(c.Fix, ".")
+		hp.Gaps = append(hp.Gaps, *c)
 	}
-	// The original logs: not being archived, or parts lost or changed
-	// before they were (AR5, AR6).
-	if f := r.PackFailing; f != nil {
-		hp.Gaps = append(hp.Gaps, GapCard{Title: "Original logs not archived", Level: "bad", Systems: []string{f.Host},
-			Explain: f.Text(r.stamp),
-			Fix:     "make the archive folder writable again (blackbox status shows the reason at every run); nothing is lost while the exports are kept."})
-	}
-	for _, l := range r.LeftOut {
-		hp.Gaps = append(hp.Gaps, GapCard{Title: "Original logs not in the report", Level: "bad", Systems: []string{l.Host},
-			Explain: l.Text(r.stamp),
-			Fix:     "check the file set aside (blackbox status names it): a damaged disk or someone changing Blackbox's folder. Keep it with the report if it is sound."})
-	}
-	for _, o := range r.Overdue {
-		hp.Gaps = append(hp.Gaps, GapCard{Title: "Original logs never put in a report", Level: "bad", Systems: []string{o.Host},
-			Explain: o.Text(r.stamp),
-			Fix:     "find why no scheduled report took them (blackbox status, blackbox.log), and keep them with your records until your records schedule lets them go; Blackbox never deletes them."})
-	}
-	for _, a := range r.Archives {
-		var lost, changed []string
-		var missing []string
-		for _, g := range a.Gaps {
-			switch {
-			case g.Records != "":
-				missing = append(missing, g.Source+": "+g.Records)
-			case g.Reason != "":
-				lost = append(lost, g.Reason)
-			}
+	// The setting on most systems first; STIG gaps before warnings and
+	// Blackbox's advice.
+	sort.SliceStable(hp.Gaps, func(i, j int) bool {
+		a, b := hp.Gaps[i], hp.Gaps[j]
+		if len(a.Systems) != len(b.Systems) {
+			return len(a.Systems) > len(b.Systems)
 		}
-		if len(missing) > 0 {
-			hp.Gaps = append(hp.Gaps, GapCard{Title: "Original logs incomplete", Level: "bad", Systems: []string{a.Host},
-				Explain: "Records not in the log when it was exported, so not in " + a.Name + ": " + strings.Join(missing, "; ") + ". The logs are exported in record order, so this is not the clock: the log overwrote them first, or they were never written.",
-				Fix:     "make the log larger (blackbox check gives the size); for audit serials, check auditd's lost count (auditctl -s)."})
+		return a.Level == "bad" && b.Level != "bad"
+	})
+	hp.Top = hp.Gaps
+	if len(hp.Gaps) > settingsShown {
+		hp.Top, hp.More = hp.Gaps[:settingsShown], hp.Gaps[settingsShown:]
+		hi, lo := len(hp.More[0].Systems), len(hp.More[len(hp.More)-1].Systems)
+		on := plural(hi, "system")
+		if lo != hi {
+			on = fmt.Sprintf("%d–%d systems", lo, hi)
 		}
-		for _, f := range a.Changed {
-			changed = append(changed, f.Name)
-		}
-		if len(lost) > 0 {
-			hp.Gaps = append(hp.Gaps, GapCard{Title: "Original logs incomplete", Level: "bad", Systems: []string{a.Host},
-				Explain: "Exports deleted or unreadable before they were archived: " + strings.Join(lost, "; ") + ". Their events are in this report; the original copy of that time is not in " + a.Name + ".",
-				Fix:     "find who or what removed them: Blackbox's own folder is only changed by Blackbox."})
-		}
-		if len(changed) > 0 {
-			hp.Gaps = append(hp.Gaps, GapCard{Title: "Original logs changed before archiving", Level: "bad", Systems: []string{a.Host},
-				Explain: "Changed after they were exported, and archived as found: " + strings.Join(changed, ", ") + " in " + a.Name + ". See Detections.",
-				Fix:     "compare them with the events in this report, and find who could write to the Blackbox data folder."})
+		hp.MoreText = fmt.Sprintf("%d more settings, each on %s", len(hp.More), on)
+		if len(hp.More) == 1 {
+			hp.MoreText = "1 more setting, on " + on
 		}
 	}
-	if len(r.MissingReports) > 0 {
-		g := GapCard{Title: "Earlier reports missing or changed", Level: "bad",
-			Explain: "A scheduled report holds the only copy of its period's original logs and their hashes. These were deleted, moved or changed after they were written:"}
-		for _, m := range r.MissingReports {
-			what := "missing"
-			if m.Problem == "changed" {
-				what = "changed (its manifest no longer matches)"
-				if m.What != "" {
-					what = "changed (" + m.What + ")"
-				}
-			}
-			g.Explain += fmt.Sprintf(" %s (%s to %s), %s;", m.Name, r.stamp(m.From), r.stamp(m.To), what)
-		}
-		g.Explain = strings.TrimSuffix(g.Explain, ";") + "."
-		g.Fix = "restore them from the backup. If they were moved or removed on purpose, record why: blackbox reports accept <name> \"why\"."
-		hp.Gaps = append(hp.Gaps, g)
-	}
-	// Cleared logs, silence and lost events first, then settings; gaps
-	// before warnings.
-	prio := map[string]int{"Earlier reports missing or changed": 0, "Original logs changed before archiving": 0, "Original logs not archived": 1, "Original logs incomplete": 1, "Logs cleared": 0, "No data received": 1, "Collection was blocked": 2, "Events lost to log rollover": 2, "Other logs overwrote events": 3}
-	p := func(g GapCard) int {
-		n, ok := prio[g.Title]
-		if !ok {
-			n = 3
-		}
-		if g.Level != "bad" {
-			n += 10
-		}
-		return n
-	}
-	sort.SliceStable(hp.Gaps, func(i, j int) bool { return p(hp.Gaps[i]) < p(hp.Gaps[j]) })
 	if len(systems) == 1 {
 		hp.Single = systems[0].Name
 	}
+	hp.Losses, hp.LossNote = r.lossRows(), rollover.NotInExports
+	hp.LostCritical = totalLost > 0
+	hp.cards(r, len(systems), matching, totalLost, totalOther)
+	hp.fold()
+	return hp
+}
 
-	total := len(systems)
+// settingsShown is how many settings to fix are listed before the rest
+// are folded.
+const settingsShown = 8
+
+// osFamily is a system's operating system without its version: Windows,
+// Ubuntu, RHEL.
+func osFamily(s SystemRow) string {
+	l := osLabel(s)
+	if f, _, ok := strings.Cut(l, " "); ok {
+		return f
+	}
+	return l
+}
+
+// oneFix says how one change clears a setting on every system listed: a
+// Group Policy path is one GPO on their OU.
+func oneFix(g GapCard) string {
+	n := len(g.Systems)
+	if n < 2 || g.Fix == "" {
+		return ""
+	}
+	if g.OS == "Windows" && strings.HasPrefix(g.Fix, "Computer Configuration") {
+		return fmt.Sprintf("One GPO on the OU fixes all %d.", n)
+	}
+	return fmt.Sprintf("The same fix on all %d.", n)
+}
+
+// lossRows are the logs that overwrote events before Blackbox read them,
+// one row per system and log: the audit record first, then by how many.
+func (r *Report) lossRows() []LossRow {
+	type key struct{ host, ch string }
+	n := map[key]uint64{}
+	first, last, fast := map[key]time.Time{}, map[key]time.Time{}, map[key]GapItem{}
+	var order []key
+	for _, g := range r.Health.Gaps {
+		if g.Lost == 0 {
+			continue
+		}
+		k := key{g.Host, g.Channel}
+		if _, ok := n[k]; !ok {
+			order = append(order, k)
+		}
+		n[k] += g.Lost
+		if first[k].IsZero() || g.From.Before(first[k]) {
+			first[k] = g.From
+		}
+		if g.To.After(last[k]) {
+			last[k] = g.To
+		}
+		if prev := fast[k]; prev.Host == "" || prev.Held == 0 || (g.Held > 0 && g.Held < prev.Held) {
+			fast[k] = g // the fastest turnover says most
+		}
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		a, b := order[i], order[j]
+		if ca, cb := rollover.Critical(a.ch), rollover.Critical(b.ch); ca != cb {
+			return ca
+		}
+		if n[a] != n[b] {
+			return n[a] > n[b]
+		}
+		return naturalLess(a.host, b.host)
+	})
+	var out []LossRow
+	for _, k := range order {
+		row := LossRow{Host: k.host, Log: rollover.Name(k.ch), Lost: commas(int(n[k])), Advice: fast[k].Loss().Advice(true), Level: "warn"}
+		if rollover.Critical(k.ch) {
+			row.Level = "bad"
+		}
+		if !first[k].IsZero() {
+			row.When = first[k].In(r.Location).Format("2 Jan 15:04")
+			if !last[k].IsZero() {
+				row.When += " – " + last[k].In(r.Location).Format("15:04")
+			}
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// cards builds Audit health's four cards and its tabs (design 08).
+func (hp *HealthPage) cards(r *Report, total, matching int, lost, other uint64) {
 	lvl := func(bad bool, l string) string {
 		if bad {
 			return l
 		}
 		return ""
 	}
-	hp.Stats = []EventCard{
-		{Icon: "shield-check", Label: "Systems matching STIG", Scroll: "h-matrix", Value: fmt.Sprintf("%d / %d", matching, total),
-			Note: plural(gaps, "gap") + " · " + plural(warns, "warning"), Level: lvl(matching < total, "bad")},
-		// Checks with no STIG rule, counted on their own (COMP2).
-		{Icon: "list-checks", Label: "Blackbox's advice", Scroll: "h-gaps", Value: commas(advice),
-			Note: "to look at · not STIG rules", Level: lvl(advice > 0, "warn")},
-		{Icon: "eraser", Label: "Logs cleared", Href: searchLink("page", "integrity", "text", "cleared"), Value: commas(clearedN), Note: short(set(clearedWho), 2), Level: lvl(clearedN > 0, "bad")},
-		{Icon: "circle-check", Label: "Events lost to rollover", Scroll: "h-gaps", Value: commas(int(totalLost)), Note: lostNote(totalOther, r.Health.Runs), Level: lvl(totalLost > 0, "bad")},
-		{Icon: "hard-drive", Label: "Log size and space settings", Scroll: "h-gaps", Value: commas(small), Note: short(set(smallWho), 1), Level: lvl(small > 0, "warn")},
+	n, on := 0, map[string]bool{}
+	for _, g := range hp.Gaps {
+		n += len(g.Systems)
+		for _, s := range g.Systems {
+			on[s] = true
+		}
 	}
-	hp.fold()
-	return hp
+	note := "every system matches"
+	if n > 0 {
+		note = fmt.Sprintf("%s to fix on %s", plural(n, "setting"), plural(len(on), "system"))
+	}
+	pct := 0
+	if total > 0 {
+		pct = matching * 100 / total
+	}
+	hp.Cards = []HealthCard{{Label: "Audit settings match the STIG", Value: fmt.Sprintf("%d / %d", matching, total), Note: note,
+		Level: lvl(matching < total, "bad"), Meter: pct, HasMeter: true, Tab: "settings"}}
+	settingsLevel := ""
+	if len(hp.Gaps) > 0 {
+		settingsLevel = "warn"
+		for _, g := range hp.Gaps {
+			if g.Level == "bad" {
+				settingsLevel = "bad"
+			}
+		}
+	}
+	hp.Tabs = []HealthTab{{ID: "settings", Label: "Settings to fix", Count: commas(len(hp.Gaps)), Level: settingsLevel},
+		{ID: "systems", Label: "By system", Count: commas(total)}}
+
+	if v := hp.Scap; v != nil {
+		cat1, cat1On, stale := 0, 0, len(v.Missing)
+		low, lowV, scored := "", 101.0, 0
+		for _, row := range v.Main {
+			cat1 += row.Cat[1]
+			if row.Cat[1] > 0 {
+				cat1On++
+			}
+			if row.Stale {
+				stale++
+			}
+			var f float64
+			if _, err := fmt.Sscanf(row.Score, "%f%%", &f); err == nil {
+				scored++
+				if f < lowV {
+					lowV, low = f, row.Score
+				}
+			}
+		}
+		c := HealthCard{Label: "SCAP (latest scans)", Value: "—", Tab: "scap", Level: lvl(cat1 > 0, "bad")}
+		var parts []string
+		if scored > 0 {
+			c.Value = low
+			if scored > 1 {
+				parts = append(parts, "lowest")
+			}
+		}
+		if cat1 > 0 {
+			parts = append(parts, fmt.Sprintf("%d open CAT I on %s", cat1, plural(cat1On, "system")))
+		} else {
+			parts = append(parts, "no open CAT I")
+		}
+		if stale > 0 {
+			days := r.ScapMaxAgeDays
+			if days <= 0 {
+				days = 30
+			}
+			parts = append(parts, fmt.Sprintf("%d not scanned in %d days", stale, days))
+			if c.Level == "" {
+				c.Level = "warn"
+			}
+		}
+		c.Note = strings.Join(parts, " · ")
+		hp.Cards = append(hp.Cards, c)
+		hp.Tabs = append(hp.Tabs, HealthTab{ID: "scap", Label: "SCAP", Count: fmt.Sprintf("%d CAT I", cat1), Level: lvl(cat1 > 0, "bad")})
+	}
+
+	if len(hp.AV) > 0 {
+		// UI13: "not checked" (no antivirus found, or nothing read) is
+		// counted too, never "current".
+		ok, bad, unchecked := 0, 0, 0
+		for _, a := range hp.AV {
+			switch a.Level {
+			case "ok":
+				ok++
+			case "bad":
+				bad++
+			default:
+				unchecked++
+			}
+		}
+		parts := []string{"current"}
+		if bad > 0 {
+			parts = append(parts, fmt.Sprintf("%d out of date", bad))
+		}
+		if unchecked > 0 {
+			parts = append(parts, fmt.Sprintf("%d not checked", unchecked))
+		}
+		level := lvl(unchecked > 0, "warn")
+		if bad > 0 {
+			level = "bad"
+		}
+		hp.Cards = append(hp.Cards, HealthCard{Label: "Antivirus", Value: fmt.Sprintf("%d / %d", ok, len(hp.AV)), Note: strings.Join(parts, " · "), Level: level, Tab: "av"})
+		hp.Tabs = append(hp.Tabs, HealthTab{ID: "av", Label: "Antivirus", Count: commas(bad + unchecked), Level: level})
+	}
+
+	hosts, logs := map[string]bool{}, []string{}
+	for _, l := range hp.Losses {
+		hosts[strings.ToLower(l.Host)] = true
+		if l.Level != "bad" && !slices.Contains(logs, l.Log) {
+			logs = append(logs, l.Log)
+		}
+	}
+	c := HealthCard{Label: "Logs", Value: commas(len(hosts)), Tab: "logs", Level: lvl(other > 0, "warn")}
+	if lost > 0 {
+		c.Level = "bad"
+	}
+	switch {
+	case len(hosts) == 0:
+		c.Note = "no log overwrote events · " + lostNote(0, r.Health.Runs)
+	default:
+		c.Note = map[bool]string{true: "system", false: "systems"}[len(hosts) == 1] + " overwrote events"
+		if lost == 0 && len(logs) > 0 {
+			c.Note += " (" + strings.Join(logs, ", ") + ")"
+		}
+		c.Note += " · " + commas(int(lost)) + " Security/audit lost"
+	}
+	hp.Cards = append(hp.Cards, c)
+	hp.Tabs = append(hp.Tabs, HealthTab{ID: "logs", Label: "Log sizes", Count: commas(len(hosts)), Level: c.Level})
 }
 
 func set(l []string) map[string]bool {
@@ -733,9 +890,8 @@ func stampOrDash(t time.Time, loc *time.Location) string {
 }
 
 // fold splits the grid into systems that need attention and those that
-// match on every check, and builds the jump bar.
+// match on every check.
 func (hp *HealthPage) fold() {
-	needs := 0
 	for _, g := range hp.Groups {
 		var att, pass []*HealthRow
 		for _, row := range g.Rows {
@@ -757,80 +913,7 @@ func (hp *HealthPage) fold() {
 		if len(pass) > 0 {
 			hp.Passing = append(hp.Passing, HealthGroup{Title: g.Title, Rows: pass})
 		}
-		needs += len(att)
 		hp.PassingN += len(pass)
-	}
-	lvl := func(bad bool, l string) string {
-		if bad {
-			return l
-		}
-		return ""
-	}
-	note := "all match"
-	if needs > 0 {
-		note = fmt.Sprintf("%d of %d need attention", needs, needs+hp.PassingN)
-	}
-	hp.Jump = append(hp.Jump, JumpLink{Label: "Audit settings by system", Note: note, Target: "h-matrix", Level: lvl(needs > 0, "bad")},
-		JumpLink{Label: "Gaps", Note: commas(len(hp.Gaps)), Target: "h-gaps", Level: lvl(len(hp.Gaps) > 0, "bad")})
-	if len(hp.AV) > 0 {
-		// UI13: "not checked" (no antivirus found, or nothing read) is
-		// counted too, never "all current".
-		bad, unchecked := 0, 0
-		for _, a := range hp.AV {
-			switch a.Level {
-			case "bad":
-				bad++
-			case "warn":
-				unchecked++
-			}
-		}
-		var parts []string
-		if bad > 0 {
-			parts = append(parts, fmt.Sprintf("%d out of date", bad))
-		}
-		if unchecked > 0 {
-			parts = append(parts, fmt.Sprintf("%d not checked", unchecked))
-		}
-		n := "all current"
-		if len(parts) > 0 {
-			n = strings.Join(parts, " · ")
-		}
-		level := lvl(unchecked > 0, "warn")
-		if bad > 0 {
-			level = "bad"
-		}
-		hp.Jump = append(hp.Jump, JumpLink{Label: "Antivirus", Note: n, Target: "h-av", Level: level})
-	}
-	if hp.Scap != nil {
-		cat1, missing := 0, len(hp.Scap.Missing)
-		for _, row := range hp.Scap.Main {
-			cat1 += row.Cat[1]
-		}
-		n := fmt.Sprintf("%d open CAT I", cat1)
-		var low string
-		lowV, scored := 101.0, 0
-		for _, row := range hp.Scap.Main {
-			var v float64
-			if _, err := fmt.Sscanf(row.Score, "%f%%", &v); err == nil {
-				scored++
-				if v < lowV {
-					lowV, low = v, row.Score
-				}
-			}
-		}
-		switch {
-		case scored == 1:
-			n = "score " + low + " · " + n
-		case scored > 1:
-			n = "lowest score " + low + " · " + n
-		}
-		if missing > 0 {
-			n += fmt.Sprintf(" · %d not scanned", missing)
-		}
-		hp.Jump = append(hp.Jump, JumpLink{Label: "STIG compliance (SCAP)", Note: n, Target: "h-scap", Level: lvl(cat1 > 0, "bad")})
-	}
-	if len(hp.Other) > 0 {
-		hp.Jump = append(hp.Jump, JumpLink{Label: "Other Security-log events", Note: commas(len(hp.Other)) + " kinds", Target: "h-other"})
 	}
 }
 
@@ -858,32 +941,6 @@ func lostTitle(gaps []GapItem, critical bool) string {
 		parts = append(parts, fmt.Sprintf("%s: %s overwritten", name, plural(int(n[name]), "event")))
 	}
 	return strings.Join(parts, "; ")
-}
-
-// lostAdvice is, for each log on a system that lost events, how many and
-// what to do (the latest gap's advice: the log's size and rate then).
-func lostAdvice(gaps []GapItem, critical bool) string {
-	last := map[string]GapItem{}
-	total := map[string]uint64{}
-	var order []string
-	for _, g := range gaps {
-		if rollover.Critical(g.Channel) != critical {
-			continue
-		}
-		if _, ok := last[g.Channel]; !ok {
-			order = append(order, g.Channel)
-		}
-		total[g.Channel] += g.Lost
-		if prev := last[g.Channel]; prev.Held == 0 || (g.Held > 0 && g.Held < prev.Held) {
-			last[g.Channel] = g // the fastest turnover says most
-		}
-	}
-	var parts []string
-	for _, ch := range order {
-		g := last[ch]
-		parts = append(parts, fmt.Sprintf("%s on %s: %s overwritten. %s", rollover.Name(ch), g.Host, plural(int(total[ch]), "event"), g.Loss().Advice(false)))
-	}
-	return strings.Join(parts, " ")
 }
 
 // lostNote says what the count covers: the collections whose record

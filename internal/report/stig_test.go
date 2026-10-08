@@ -23,11 +23,11 @@ func TestAdviceNotSTIG(t *testing.T) {
 	runs := []*store.Run{{Time: at, Host: "ubu-01", OS: "linux"}}
 	r := Build(nil, runs, Options{Location: time.UTC, WindowStart: at.Add(-24 * time.Hour), WindowEnd: at, Generated: at, CheckSets: sets})
 	hp := r.healthPage()
-	if hp.Stats[0].Label != "Systems matching STIG" || hp.Stats[0].Value != "1 / 1" || hp.Stats[0].Note != "0 gaps · 0 warnings" {
-		t.Errorf("advice counted against the STIG: %+v", hp.Stats[0])
+	if c := hp.Cards[0]; c.Label != "Audit settings match the STIG" || c.Value != "1 / 1" || c.Level != "" || c.Meter != 100 {
+		t.Errorf("advice counted against the STIG: %+v", c)
 	}
-	if hp.Stats[1].Label != "Blackbox's advice" || hp.Stats[1].Value != "1" || hp.Stats[1].Level != "warn" {
-		t.Errorf("advice count: %+v", hp.Stats[1])
+	if tab := hp.Tabs[0]; tab.Label != "Settings to fix" || tab.Count != "1" || tab.Level != "warn" {
+		t.Errorf("advice count: %+v", tab)
 	}
 	found := false
 	for _, g := range hp.Gaps {

@@ -941,6 +941,13 @@ func (r *Report) readme(scap map[string]string) []byte {
 	}
 	line("The original-log archives are named, and their archive.json written, in UTC.")
 	line("")
+	// The same three steps as the Original logs page's box (UI-R1).
+	line("GIVING THESE TO AN ASSESSOR")
+	line("  These are the systems' own log files, unchanged, so they can be checked without Blackbox:")
+	line("  1. Check the folder: sha256sum -c manifest.sha256 (Linux) or blackbox verify <folder>.")
+	line("  2. Open a .evtx in Event Viewer (Windows) or read audit.log with ausearch -if (Linux).")
+	line("  3. Each zip's archive.json lists every file with its hash, and any gap with its reason.")
+	line("")
 	line("FILES")
 	line("  report.html        the report: open it in a web browser (it needs no network)")
 	line("  data/              the report's event data, read by report.html")

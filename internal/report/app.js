@@ -294,8 +294,9 @@
     if (!a1) return null;
     key = key || a1.getAttribute('data-single') || '';
     // "#health/HOST/scap" opens the system and goes to its open STIG rules (SC3).
-    // "#health/@av" goes to the Antivirus table.
-    if (key === '@av') { a1.hidden = false; a3.hidden = true; return document.getElementById('h-av'); }
+    // "#health/@av" opens the Antivirus tab (UI-R1: @settings, @systems,
+    // @scap, @av, @logs); "#health" the first.
+    if (key.charAt(0) === '@' || (!key && view.querySelector('[data-htabs]'))) { a1.hidden = false; a3.hidden = true; healthTab(view, key.slice(1)); return null; }
     var scap = /\/scap$/.test(key);
     if (scap) key = key.replace(/\/scap$/, '');
     a1.hidden = !!key; a3.hidden = !key;
@@ -303,6 +304,57 @@
     if (scap) return a3.querySelector('[data-pane="' + key.replace(/["\\]/g, '\\$&') + '"] [data-scapopen]');
     return null;
   }
+  // Audit health's tabs (UI-R1): one shown at a time; arrow keys move
+  // between them.
+  function healthTab(view, name) {
+    var bar = view.querySelector('[data-htabs]');
+    if (!bar) return null;
+    var tabs = bar.querySelectorAll('[data-htab]');
+    if (!Array.prototype.some.call(tabs, function (t) { return t.getAttribute('data-htab') === name; })) name = tabs[0].getAttribute('data-htab');
+    tabs.forEach(function (t) {
+      var on = t.getAttribute('data-htab') === name;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+    });
+    bar.querySelectorAll('[data-hpane]').forEach(function (p) { p.hidden = p.getAttribute('data-hpane') !== name; });
+    scrollCues();
+    return bar;
+  }
+  document.querySelectorAll('[data-htabs]').forEach(function (bar) {
+    var view = bar.closest('.view');
+    bar.addEventListener('click', function (e) {
+      var t = e.target.closest('[data-htab]');
+      if (!t) return;
+      var name = t.getAttribute('data-htab');
+      healthTab(view, name);
+      if (history.replaceState) history.replaceState(null, '', '#health/@' + name);
+    });
+    bar.addEventListener('keydown', function (e) {
+      var t = e.target.closest('[data-htab]');
+      if (!t || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End')) return;
+      var tabs = Array.prototype.slice.call(bar.querySelectorAll('[data-htab]')), i = tabs.indexOf(t);
+      i = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      e.preventDefault();
+      tabs[i].focus();
+      tabs[i].click();
+    });
+  });
+  // Original logs (UI-R1): All / Gaps and missing.
+  document.querySelectorAll('[data-lt]').forEach(function (box) {
+    box.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-lfilter]');
+      if (!b) return;
+      var gaps = b.getAttribute('data-lfilter') === 'gaps', any = false;
+      box.querySelectorAll('[data-lfilter]').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      box.querySelectorAll('tbody').forEach(function (tb) {
+        var shown = 0;
+        tb.querySelectorAll('[data-lrow]').forEach(function (r) { r.hidden = gaps && r.hasAttribute('data-ok'); if (!r.hidden) shown++; });
+        tb.hidden = shown === 0;
+        if (shown) any = true;
+      });
+      box.querySelector('[data-lnone]').hidden = any;
+    });
+  });
   // Hide group headings with nothing left under them.
   function tidyHeads(list, head) {
     list.querySelectorAll(head).forEach(function (h) {

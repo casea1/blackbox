@@ -44,9 +44,8 @@ func TestClearedLogNamed(t *testing.T) {
 	if !strings.Contains(html.String(), "PowerShell log cleared at 07:00 on 7 Oct by LAB\\claude") {
 		t.Error("Systems page does not name the PowerShell log")
 	}
-	if !strings.Contains(html.String(), "PowerShell log cleared on 7 Oct 07:00 by LAB\\claude") {
-		t.Error("Audit health does not name the PowerShell log")
-	}
+	// UI-R1: cleared logs are on Overview, Systems and Detections, not
+	// Audit health.
 	if strings.Contains(html.String(), "WIN-498EC8UMUEL: Security log cleared") {
 		t.Error("the PowerShell clear still reads as a Security clear")
 	}

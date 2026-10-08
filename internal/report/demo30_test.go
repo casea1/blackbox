@@ -249,10 +249,14 @@ func demo30Network(t testing.TB) *demo30Net {
 		}
 		items := demo30Settings(s.OS)
 		for k, it := range items {
-			r := check.Result{Area: it[0], Item: it[1], Want: it[2], Have: it[2], STIG: it[3], Status: check.Pass}
+			r := check.Result{Area: it[0], Item: it[1], Want: it[2], Have: it[2], STIG: it[3], Status: check.Pass, Affects: demo30Affects[it[1]]}
+			if s.Server {
+				// Server 2025 has its own STIG IDs for the same settings.
+				r.STIG = strings.Replace(r.STIG, "WN11-", "WN25-", 1)
+			}
 			if k < fails {
 				r.Have, r.Status = "Not set", check.Fail
-				r.Fix = "Set " + it[1] + " to " + it[2] + "."
+				r.Fix = demo30Fix(it)
 			}
 			res = append(res, r)
 		}
@@ -318,7 +322,11 @@ func demo30Network(t testing.TB) *demo30Net {
 				if err := os.WriteFile(p, []byte(strings.Repeat(s.Name+" "+f+"\n", 40)), 0o600); err != nil {
 					t.Fatal(err)
 				}
-				srcs = append(srcs, archive.Source{Name: f, Source: strings.TrimSuffix(f, filepath.Ext(f)), Path: p})
+				src := strings.TrimSuffix(f, filepath.Ext(f))
+				if f == "PowerShell-Operational.evtx" {
+					src = powerShellLog // the channel, as the collector names it
+				}
+				srcs = append(srcs, archive.Source{Name: f, Source: src, Path: p})
 			}
 			zp := filepath.Join(tmp, "day-"+s.Name+".zip")
 			if _, err := archive.Write(zp, archive.Info{Host: s.Name, OS: s.OS, From: start, To: end, Created: end}, srcs); err != nil {
@@ -479,6 +487,29 @@ func demo30Network(t testing.TB) *demo30Net {
 		KnownDevices: map[string]time.Time{}, WorkingHours: mustHours("Mon-Fri 07:00-19:00"), Archives: archives, ArchivesKept: true,
 		Scap: scans, ScapEnabled: true, ScapMaxAgeDays: 30, InReportsDir: true}
 	return net
+}
+
+// demo30Affects is what the report misses without each setting.
+var demo30Affects = map[string]string{"Logon": "Logon Activity and Failed Logons", "Logoff": "Logon Activity", "Credential Validation": "Failed Logons",
+	"User Account Management": "Account & Group Changes", "Security Group Management": "Account & Group Changes", "Audit Policy Change": "Audit & System Integrity",
+	"Sensitive Privilege Use": "Privileged Activity", "Process Creation": "Privileged Activity (elevated programs)", "Removable Storage": "USB & Removable Media",
+	"PowerShell script block logging": "PowerShell", "Command line in process creation events": "command lines", "Security log": "Events may be overwritten before collection on busy systems",
+	"Watch /etc/passwd": "Account & Group Changes", "Watch /etc/shadow": "Account & Group Changes", "Watch /etc/sudoers and /etc/sudoers.d": "sudoers changes",
+	"Programs run with raised privileges (execve, uid!=euid)": "Privileged Activity", "Commands run as root by a person (execve, euid=0, auid set)": "Privileged Activity",
+	"Filesystem mounts": "USB & Removable Media", "Audit configuration watched (/etc/audit)": "Audit & System Integrity", "auditd running": "every section",
+	"Audit log space": "events lost when busy", "Action when the disk is full": "auditing stops silently"}
+
+// demo30Fix is how to fix a setting, worded as the checks word it.
+func demo30Fix(it [4]string) string {
+	switch it[0] {
+	case "Audit policy":
+		return "Computer Configuration > Policies > Windows Settings > Security Settings > Advanced Audit Policy Configuration > Audit Policies > Audit " + it[1] + ": Configure the following audit events: " + it[2]
+	case "Audit settings", "Event log size":
+		return "Computer Configuration > Policies > Administrative Templates > " + it[1] + ": " + it[2]
+	case "Audit rules":
+		return "blackbox check --audit-rules --missing | install -m 0600 /dev/stdin /etc/audit/rules.d/blackbox.rules, then augenrules --load"
+	}
+	return "set " + it[1] + " to " + it[2] + " in /etc/audit/auditd.conf, then restart auditd"
 }
 
 // demo30Settings are the audit settings checked on each system: area,

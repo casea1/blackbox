@@ -55,6 +55,20 @@ try { pw = require('playwright-core'); } catch (e) { pw = require('playwright');
   await page.goto(url + '#health');
   await page.click('aside [data-vline]');
   if (await page.$eval('[data-vhead]', h => h.classList.contains('bad'))) fail('Verified is red');
+  // Audit health's tabs (UI-R1): a link opens its tab, a click another.
+  if (await page.$('[data-htabs]')) {
+    await page.goto(url + '#health/@systems');
+    await page.waitForTimeout(150);
+    if (!await page.$('[data-hpane="systems"]:not([hidden]) #h-matrix')) fail('#health/@systems did not open By system');
+    await page.click('[data-htab="settings"]');
+    if (!await page.$('[data-hpane="settings"]:not([hidden])')) fail('the Settings to fix tab did not open');
+  }
+  // Original logs: Gaps and missing hides the complete systems.
+  if (await page.$('[data-lfilter="gaps"]')) {
+    await page.goto(url + '#logs');
+    await page.click('[data-lfilter="gaps"]');
+    if (await page.$('[data-lrow][data-ok]:not([hidden])')) fail('Gaps and missing still shows complete systems');
+  }
 
   // Every link inside the report leads to a page that exists, and a link
   // to one event opens its panel.
