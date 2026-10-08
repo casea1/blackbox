@@ -40,7 +40,20 @@ try { pw = require('playwright-core'); } catch (e) { pw = require('playwright');
       await page.keyboard.press('Escape');
     }
   }
-  for (const v of ['systems', 'detections', 'people']) {
+  // Systems (UI-R1): the list shows its rows, and a system's link shows
+  // that system alone.
+  await page.goto(url + '#systems');
+  await page.waitForTimeout(150);
+  const sysRows = await page.$$eval('.view[data-view="systems"] [data-sysrow]', x => x.filter(r => r.offsetParent).length);
+  const firstSys = await page.$eval('.view[data-view="systems"] [data-sysrow]', r => r.getAttribute('data-sysrow')).catch(() => null);
+  if (firstSys) {
+    if (!sysRows) fail('systems: the list is empty');
+    await page.goto(url + '#systems/' + encodeURIComponent(firstSys));
+    await page.waitForTimeout(150);
+    const one = await page.$$eval('.view[data-view="systems"] [data-sys]:not([hidden])', x => x.length);
+    if (one !== 1 || !(await page.$eval('[data-syslist]', l => l.hidden))) fail('systems: ' + firstSys + ' is not shown alone');
+  }
+  for (const v of ['detections', 'people', 'inventory']) {
     await page.goto(url + '#' + v);
     await page.waitForTimeout(150);
     const n = await page.$$eval('.view[data-view="' + v + '"] [data-pane]:not([hidden])', x => x.length);
@@ -68,6 +81,18 @@ try { pw = require('playwright-core'); } catch (e) { pw = require('playwright');
     await page.goto(url + '#logs');
     await page.click('[data-lfilter="gaps"]');
     if (await page.$('[data-lrow][data-ok]:not([hidden])')) fail('Gaps and missing still shows complete systems');
+  }
+
+  // Trends: the range switch shows that range's page and breadcrumb.
+  await page.goto(url + '#trends');
+  if (await page.$('[data-trange="4"]')) {
+    await page.click('[data-trange="4"]');
+    const four = await page.evaluate(() => {
+      const v = document.querySelector('.view[data-view="trends"]'), on = v.querySelector('[data-trview]:not([hidden])');
+      return on && on.getAttribute('data-trview') === '4' && v.querySelector('.head .crumb').textContent.indexOf(on.getAttribute('data-crumb')) >= 0;
+    });
+    if (!four) fail('Trends: 4 weeks did not show its weeks');
+    await page.click('[data-trange="8"]');
   }
 
   // Every link inside the report leads to a page that exists, and a link

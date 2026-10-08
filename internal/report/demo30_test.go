@@ -194,6 +194,9 @@ func demo30Network(t testing.TB) *demo30Net {
 		if s.Server {
 			inv.Drives = append(inv.Drives, inventory.Drive{Model: "SEAGATE ST4000NM0035", Serial: fmt.Sprintf("ZC1%05dK", 20000+i*97), Size: 4000787030016, Interface: "SATA", Media: "HDD"})
 		}
+		if s.Name == "WS-ADM-01" { // a USB stick in at the settings check
+			inv.Drives = append(inv.Drives, inventory.Drive{Model: "Kingston DataTraveler 3.0", Serial: "E0D55EA573F2F3B1A9", Size: 64023257088, Interface: "USB", Media: "Removable"})
+		}
 		for k, n := range names {
 			a := inventory.Account{Name: n, Enabled: n != "Guest" && n != "DefaultAccount" && n != "WDAGUtilityAccount", Admin: admins[n], Kind: "Local"}
 			if s.OS == "windows" {
@@ -382,13 +385,35 @@ func demo30Network(t testing.TB) *demo30Net {
 			}
 			switch {
 			case r < 55:
+				// Each logon is followed by its logoff (People's sessions),
+				// 15 minutes to 2¾ hours later; no one logs on as root: its
+				// turns are root's scheduled jobs.
+				dur := time.Duration(15+int(rec[s.Name]*37%150)) * time.Minute
 				if s.OS == "windows" {
+					id := fmt.Sprintf("0x%x", 0x3e7000+rec[s.Name])
 					e := add(at, s, event.CatLogon, event.SevInfo, "logon", u, fmt.Sprintf("%s logged on (Remote Desktop) from %s.", u, ip))
 					e.EventID, e.SourceIP, e.Interactive = 4624, ip, true
 					e.AddDetail("Logon type", "10 (Remote Desktop)")
+					e.AddDetail("Logon ID", id)
+					if at.Add(dur).Before(end) {
+						e = add(at.Add(dur), s, event.CatLogon, event.SevInfo, "logoff", u, fmt.Sprintf("%s logged off.", u))
+						e.EventID = 4647
+						e.AddDetail("Logon ID", id)
+					}
 				} else {
-					e := add(at, s, event.CatLogon, event.SevInfo, "logon", u, fmt.Sprintf("%s logged on over SSH from %s port %d.", u, ip, 40000+rnd.Intn(20000)))
+					port := 40000 + rnd.Intn(20000)
+					if u == "root" {
+						job := []string{"/usr/local/sbin/backup.sh", "/usr/sbin/logrotate /etc/logrotate.conf", "/usr/lib/apt/apt.systemd.daily"}[port%3]
+						e := add(at, s, event.CatPrivileged, event.SevLow, "root_command", u, fmt.Sprintf("root ran as root: %s (cron)", job))
+						e.Command, e.Process = job, "/usr/sbin/cron"
+						continue
+					}
+					e := add(at, s, event.CatLogon, event.SevInfo, "logon", u, fmt.Sprintf("%s logged on over SSH from %s port %d.", u, ip, port))
 					e.Source, e.SourceIP, e.Interactive, e.RecordType = "auth", ip, true, "sshd"
+					if at.Add(dur).Before(end) {
+						e = add(at.Add(dur), s, event.CatLogon, event.SevInfo, "logoff", u, fmt.Sprintf("%s's SSH session from %s ended.", u, ip))
+						e.Source = "auth"
+					}
 				}
 			case r < 85:
 				if s.OS == "windows" {
@@ -425,6 +450,7 @@ func demo30Network(t testing.TB) *demo30Net {
 		}
 	}
 
+	routine := len(evs) // the routine activity, before the story
 	// The mockups' story.
 	at := func(h, m int) time.Time { return start.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute) }
 	sys := byName
@@ -460,6 +486,7 @@ func demo30Network(t testing.TB) *demo30Net {
 	e.Target, e.EventID = "labadmin", 4732
 	e = add(at(10, 18), sys["SRV-APP01"], event.CatRemovable, event.SevMedium, "usb_connected", "kpatel", "USB storage connected: SanDisk Cruzer Blade (serial 4C530001230615117).")
 	e.Target, e.EventID = "SanDisk Cruzer Blade", 6416
+	e.AddDetail("Serial number", "4C530001230615117")
 	e = add(at(9, 47), sys["WS-ADM-02"], event.CatOther, event.SevHigh, "powershell_suspicious", "jlee",
 		"jlee ran a PowerShell script that downloads: Invoke-WebRequest https://github.com/tools/x.ps1 -OutFile x.ps1")
 	e.Source, e.EventID, e.Command = powerShellLog, 4104, "Invoke-WebRequest https://github.com/tools/x.ps1 -OutFile x.ps1"
@@ -472,15 +499,29 @@ func demo30Network(t testing.TB) *demo30Net {
 	e.EventID, e.SourceIP, e.Interactive = 4624, "10.20.3.44", true
 	e.AddDetail("Privileges", "SeDebugPrivilege, SeBackupPrivilege")
 	e = add(at(10, 20), sys["SRV-APP01"], event.CatOther, event.SevMedium, "service_installed", "kpatel", `kpatel installed the service UpdaterSvc (C:\ProgramData\upd\svc.exe).`)
-	e.EventID = 4697
-
-	// The previous daily report, so this one continues with no gap.
-	var history []Summary
-	for d := 6; d >= 1; d-- {
-		we := start.AddDate(0, 0, -d+1)
-		history = append(history, Summary{WindowStart: we.AddDate(0, 0, -1), WindowEnd: we, Generated: we.Add(2 * time.Minute), Events: 15000 + rnd.Intn(4000),
-			Metrics: map[string]int{MPrivileged: 8000 + rnd.Intn(2000), MFailedLogons: 300 + rnd.Intn(200), MSystems: 30}})
+	e.EventID, e.Target = 4697, "UpdaterSvc"
+	// Acting as the built-in accounts (People's shared accounts): su to
+	// root, RunAs Administrator, and one direct logon as Administrator at
+	// a lab workstation's keyboard.
+	e = add(at(15, 40), sys["ubu-git01"], event.CatPrivileged, event.SevLow, "switch_user", "kpatel", "kpatel switched to root with su (a root shell: commands run in it are listed as \"ran as root\").")
+	e.Target = "root"
+	for _, x := range []struct {
+		host, who string
+		h, m      int
+	}{{"SRV-DC01", "jlee", 10, 12}, {"SRV-DC01", "jlee", 16, 3}, {"SRV-FS01", "jlee", 11, 47}, {"WS-LAB-01", "tlopez", 8, 50}} {
+		e = add(at(x.h, x.m), sys[x.host], event.CatPrivileged, event.SevMedium, "explicit_credentials", x.who,
+			fmt.Sprintf("%s used the credentials of Administrator to run mmc.exe (RunAs / alternate credentials).", x.who))
+		e.Target, e.Process, e.EventID = "Administrator", `C:\Windows\System32\mmc.exe`, 4648
 	}
+	e = add(at(8, 41), sys["WS-LAB-01"], event.CatLogon, event.SevInfo, "logon", "Administrator", "Administrator logged on at the keyboard.")
+	e.EventID, e.Interactive = 4624, true
+	e.AddDetail("Logon type", "Keyboard")
+	e = add(at(9, 6), sys["WS-LAB-01"], event.CatLogon, event.SevInfo, "logoff", "Administrator", "Administrator logged off.")
+	e.EventID = 4647
+
+	// Twelve weeks of earlier daily reports (UI-R1 Trends), the last one
+	// the day before, so this one continues with no gap.
+	history := demo30History(start, net.Systems, evs[:routine], checks)
 	net.Events = evs
 	net.Options = Options{Site: "ENG-NET", WindowStart: start, WindowEnd: end, Generated: end.Add(2 * time.Minute), Location: demo30Zone,
 		Version: "0.23.0", Source: "Live collection", Collector: true, Period: "daily", Systems: infos, CheckSets: checks, History: history,

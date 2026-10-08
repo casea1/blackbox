@@ -221,7 +221,7 @@ func (r *Report) detectionViews() []DetectionView {
 		}
 		pk := ""
 		if who != "" {
-			pk = personKey(who)
+			pk = r.pkey(who)
 			v.PersonKey, v.Person, v.PersonHref = pk, displayName(who), searchLink("user", pk)
 		}
 		first := f.Time
@@ -271,7 +271,7 @@ func (r *Report) detectionViews() []DetectionView {
 			if !strings.EqualFold(x.Host, f.Host) || x.Time.Before(from) || x.Time.After(to) {
 				continue
 			}
-			if isKey[x] || pk == "" || personKey(x.User) == pk || personKey(x.Target) == pk {
+			if isKey[x] || pk == "" || r.pkey(x.User) == pk || r.pkey(x.Target) == pk {
 				tl = append(tl, x)
 			}
 		}
@@ -343,7 +343,7 @@ func (r *Report) relatedDetections(cards []DetectionCard, c DetectionCard, pk st
 	return out, strings.Join(note, " ")
 }
 
-// findingPerson is the person a detection is about (personKey), or "".
+// findingPerson is the person a detection is about (personKey with people_aliases), or "".
 func (r *Report) findingPerson(f Finding) string {
 	var target string
 	for _, id := range append([]string{f.RowID}, f.RowIDs...) {
@@ -353,10 +353,10 @@ func (r *Report) findingPerson(f Finding) string {
 		}
 		x := r.rows[i]
 		if person(x.User) {
-			return personKey(x.User)
+			return r.pkey(x.User)
 		}
 		if target == "" && person(x.Target) {
-			target = personKey(x.Target)
+			target = r.pkey(x.Target)
 		}
 	}
 	return target
@@ -426,7 +426,7 @@ func (r *Report) personRole(key, host string) string {
 		return "service account"
 	}
 	for _, x := range r.rows {
-		if strings.EqualFold(x.Host, host) && personKey(x.User) == key && adminActivity(x) {
+		if strings.EqualFold(x.Host, host) && r.pkey(x.User) == key && adminActivity(x) {
 			return "administrator on " + host
 		}
 	}

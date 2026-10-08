@@ -147,7 +147,7 @@ func TestWriteAndVerify(t *testing.T) {
 		`data-view="privileged"`, `data-view="usb"`, `data-view="failed"`, `data-view="accounts"`, `data-view="integrity"`,
 		`data-view="powershell"`, `data-view="other"`, `data-view="logons"`,
 		`data-view="health"`, `data-view="trends"`, `data-view="logs"`, "Test Site",
-		`data-pick="admin_jd"`, `data-pane="admin_jd"`, "When they were active", // People
+		`data-pick="admin_jd"`, `data-pane="admin_jd"`, "Where and when", // People
 		`data-preset="psdownload"`, `data-q="text"`, // Search
 		`href="../index.html"`,                                                   // the date range opens the list of reports
 		`data-pop="export"`, `data-pop="verified"`, `href="events.zip" download`, // Export menu, Verified
@@ -403,8 +403,8 @@ func TestSystemsPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := html.String()
-	for _, want := range []string{`data-view="systems"`, `data-pick="WS-03"`, `data-pane="WS-01"`, "Virtual machine on WS-01",
-		"Audit settings to fix", "No collection received in this period", "Silent",
+	for _, want := range []string{`data-view="systems"`, `data-pick="WS-03"`, `data-sys="WS-01"`, `data-sysrow="WS-03"`, "virtual machine on WS-01",
+		"Audit settings", "nothing since", "Problem: not reporting",
 		`href="#health/WS-01"`} { // Audit health
 		if !strings.Contains(h, want) {
 			t.Errorf("report HTML missing %q", want)

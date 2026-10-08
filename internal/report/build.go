@@ -39,6 +39,9 @@ type Options struct {
 	// Range describes a report for a period chosen by hand (blackbox
 	// report --from): where its events came from. Set with Interim.
 	Range string
+	// Reason is why a manual report was made, when the person said
+	// ("jlee incident check"): shown on the list of reports.
+	Reason string
 
 	// History is the summaries of earlier scheduled reports, oldest first
 	// (up to eleven), for twelve-week trends.
@@ -67,6 +70,11 @@ type Options struct {
 
 	// WorkingHours: administrator activity outside them is detected.
 	WorkingHours config.WorkingHours
+
+	// PeopleAliases merges differently spelled accounts into one person on
+	// the People page: other spelling → name shown, lower case
+	// (config people_aliases).
+	PeopleAliases map[string]string
 
 	// Archives are the original logs for this period, one zip per
 	// computer, stored in the report folder. ArchivesKept says logs are
@@ -280,6 +288,8 @@ type BlockedItem struct {
 // Report is everything the template needs.
 type Report struct {
 	weeksCache []trendWeek // see weeks()
+	seenCache  seenSet     // see seenNow()
+	seenHist   *[]seenSet  // see seenHistory()
 
 	Options
 	Hosts      []string

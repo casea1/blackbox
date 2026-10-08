@@ -92,39 +92,48 @@
   var SEV = { high: 'High', medium: 'Medium' };
   function sevCell(s) { return SEV[s] ? '<span class="sv ' + s + '">' + SEV[s] + '</span>' : '<span class="mute">—</span>'; }
 
-  // "0-17" (a People heatmap cell) as "Mondays 17:00–18:00".
+  // ---- People (UI-R1): the list's search box and All / Detections /
+  // Admins; a person named in a link by any spelling ("SRV-DC02\jlee",
+  // a people_aliases spelling) opens their row ----
+  // "0-17" (a weekday-hour in a Search link) as "Mondays 17:00–18:00".
   function slotLabel(slot) {
     var p = slot.split('-'), h = +p[1];
     return ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'][+p[0]] + ' ' + pad(h) + ':00–' + pad((h + 1) % 24) + ':00';
   }
-
-  // People heatmap: a red hour shows the person's detections in it.
-  document.addEventListener('click', function (ev) {
-    var a = ev.target.closest && ev.target.closest('[data-hslot]');
-    if (!a) return;
-    ev.preventDefault();
-    var slot = a.getAttribute('data-hslot'), box = document.getElementById('pdet-' + a.getAttribute('data-person'));
-    if (!box) return;
-    var n = 0;
-    box.querySelectorAll('.dc').forEach(function (c) {
-      var on = (' ' + (c.getAttribute('data-slots') || '') + ' ').indexOf(' ' + slot + ' ') >= 0;
-      c.hidden = !on;
-      if (on) n++;
-    });
-    var note = box.querySelector('[data-slotnote]');
-    if (note) {
-      if (!note.hasAttribute('data-all')) note.setAttribute('data-all', note.textContent);
-      note.innerHTML = esc(n + ' at ' + slotLabel(slot)) + ' · <a href="#" class="link" data-slotall>Show all</a>';
+  BB.personKey = function (u) {
+    u = (u || '').toLowerCase();
+    var i = u.lastIndexOf('\\');
+    if (i >= 0) u = u.slice(i + 1);
+    i = u.indexOf('@');
+    if (i > 0) u = u.slice(0, i);
+    return (meta.palias && meta.palias[u]) || u;
+  };
+  document.querySelectorAll('[data-plist]').forEach(function (list) {
+    var box = list.querySelector('[data-pfind]'), tab = '';
+    function apply() {
+      var q = box.value.trim().toLowerCase(), any = false;
+      list.classList.toggle('pfx', !!(q || tab));
+      list.querySelectorAll('[data-pick]').forEach(function (a) {
+        var text = (a.textContent + ' ' + (a.getAttribute('data-alias') || '')).toLowerCase();
+        a.hidden = !!(q && text.indexOf(q) < 0) || !!(tab && (' ' + a.getAttribute('data-pt') + ' ').indexOf(' ' + tab + ' ') < 0);
+      });
+      list.querySelectorAll('[data-pg]').forEach(function (g) {
+        g.hidden = !g.querySelector('[data-pick]:not([hidden])');
+        if (!g.hidden) any = true;
+      });
+      list.querySelector('[data-pnone]').hidden = any;
     }
-    box.scrollIntoView({ block: 'start' });
-  });
-  document.addEventListener('click', function (ev) {
-    var a = ev.target.closest && ev.target.closest('[data-slotall]');
-    if (!a) return;
-    ev.preventDefault();
-    var box = a.closest('.panel'), note = box.querySelector('[data-slotnote]');
-    box.querySelectorAll('.dc').forEach(function (c) { c.hidden = false; });
-    note.textContent = note.getAttribute('data-all');
+    box.addEventListener('input', apply);
+    list.querySelectorAll('[data-ptab]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        tab = b.getAttribute('data-ptab');
+        list.querySelectorAll('[data-ptab]').forEach(function (x) {
+          x.classList.toggle('on', x === b);
+          x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+        });
+        apply();
+      });
+    });
   });
 
   // ---- Sidebar (UI-R1): its groups are always open. On a narrow window
@@ -171,93 +180,95 @@
       else fd.open(decodeURIComponent(h.split('/').slice(1).join('/')));
     }
     var to = null;
-    if (id === 'health' || id === 'logs') to = showHealth(view, decodeURIComponent(location.hash.split('/').slice(1).join('/')));
-    else if (id === 'inventory') {
-      var ik = decodeURIComponent(location.hash.split('/').slice(1).join('/'));
-      if (ik) to = inv.open(ik);
-    }
+    if (id === 'systems') showSystem(view, decodeURIComponent(location.hash.split('/').slice(1).join('/')));
+    else if (id === 'health' || id === 'logs') to = showHealth(view, decodeURIComponent(location.hash.split('/').slice(1).join('/')));
     else if (view.querySelector('[data-pick]')) {
       var pk = decodeURIComponent(location.hash.split('/').slice(1).join('/'));
+      if (id === 'people' && pk) pk = BB.personKey(pk);
       showPick(view, pk);
-      // Inventory: a system named in the link opens with its details.
-      if (id === 'inventory' && pk) to = inv.open(pk);
     }
+    if (id === 'inventory') inv.load();
     if (to) to.scrollIntoView();
     else window.scrollTo(0, 0);
     scrollCues();
   }
 
-  // ---- Inventory: Systems, Drives and Accounts tabs; a system's row opens
-  // its drives and accounts under it; a filter for each tab (UI15) ----
-  var inv = (function () {
-    var root = document.querySelector('[data-inv]');
-    var acct = '';
-    function q(sel) { return root ? root.querySelectorAll(sel) : []; }
-    function active() { var t = root && root.querySelector('[data-invtab].on'); return t ? t.getAttribute('data-invtab') : 'systems'; }
-    function filter() {
-      if (!root) return;
-      var f = (root.querySelector('[data-invfind]').value || '').toLowerCase(), shown = 0, tab = active();
-      if (tab === 'systems') {
-        q('[data-invsys]').forEach(function (b) {
-          var ok = !f || b.textContent.toLowerCase().indexOf(f) >= 0;
-          b.hidden = !ok; if (ok) shown++;
-        });
-      } else {
-        root.querySelectorAll('[data-invsec="' + tab + '"] [data-invitem]').forEach(function (r) {
-          var ok = (!f || r.textContent.toLowerCase().indexOf(f) >= 0) && (tab !== 'accounts' || !acct || r.hasAttribute('data-' + acct));
-          r.hidden = !ok; if (ok) shown++;
-        });
-      }
-      root.querySelector('[data-invnone]').hidden = shown > 0;
-    }
-    function tab(name, accounts) {
-      if (!root) return null;
-      q('[data-invtab]').forEach(function (t) { t.classList.toggle('on', t.getAttribute('data-invtab') === name); });
-      q('[data-invsec]').forEach(function (s) { s.hidden = s.getAttribute('data-invsec') !== name; });
-      if (accounts !== undefined) {
-        acct = accounts;
-        q('[data-invacct]').forEach(function (c) { c.classList.toggle('on', c.getAttribute('data-invacct') === acct); });
-      }
-      filter();
-      return root;
-    }
-    function toggle(row, open) {
-      var d = row.nextElementSibling;
-      if (open === undefined) open = d.hidden;
-      d.hidden = !open;
-      var b = row.querySelector('[data-invbtn]');
-      if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false');
-    }
-    if (root) {
-      root.addEventListener('click', function (e) {
-        var t = e.target.closest('[data-invtab]');
-        if (t) { tab(t.getAttribute('data-invtab')); return; }
-        var a = e.target.closest('[data-invacct]');
-        if (a) { tab('accounts', a.getAttribute('data-invacct')); return; }
-        if (e.target.closest('[data-invexpand]')) {
-          var b = e.target.closest('[data-invexpand]'), open = b.textContent.indexOf('Expand') === 0;
-          q('[data-invtoggle]').forEach(function (r) { toggle(r, open); });
-          b.textContent = open ? 'Collapse all' : 'Expand all';
-          return;
-        }
-        var r = e.target.closest('[data-invtoggle]');
-        if (r && !e.target.closest('a')) toggle(r);
+  // ---- Systems (UI-R1): the list, or one system (#systems/NAME) ----
+  function showSystem(view, key) {
+    var list = view.querySelector('[data-syslist]'), found = null;
+    if (!list) return;
+    view.querySelectorAll('[data-sys]').forEach(function (d) {
+      var on = !!key && d.getAttribute('data-sys').toLowerCase() === key.toLowerCase();
+      d.hidden = !on;
+      if (on) found = d;
+    });
+    list.hidden = !!found;
+  }
+  (function () {
+    var bar = document.querySelector('[data-sysfilter]');
+    if (!bar) return;
+    var view = bar.closest('.view'), lv = '';
+    var find = bar.querySelector('[data-sysfind]'), os = bar.querySelector('[data-sysos]'), kind = bar.querySelector('[data-syskind]');
+    function apply() {
+      var q = find.value.trim().toLowerCase(), shown = 0;
+      view.querySelectorAll('[data-sysrow]').forEach(function (tr) {
+        var ok = (!q || tr.getAttribute('data-sysrow').toLowerCase().indexOf(q) >= 0) && (!lv || tr.getAttribute('data-lv') === lv) &&
+          (!os.value || tr.getAttribute('data-os') === os.value) && (!kind.value || tr.getAttribute('data-kind') === kind.value);
+        tr.hidden = !ok; if (ok) shown++;
       });
-      root.querySelector('[data-invfind]').addEventListener('input', filter);
+      view.querySelectorAll('[data-sysgroup]').forEach(function (g) { g.hidden = !g.querySelector('[data-sysrow]:not([hidden])'); });
+      view.querySelector('[data-sysnone]').hidden = shown > 0;
     }
-    return {
-      tab: tab,
-      // open shows a system's row with its details, for a link.
-      open: function (host) {
-        if (!root) return null;
-        tab('systems');
-        var b = null;
-        q('[data-invsys]').forEach(function (x) { if (x.getAttribute('data-invsys').toLowerCase() === host.toLowerCase()) b = x; });
-        if (!b) return null;
-        toggle(b.querySelector('[data-invtoggle]'), true);
-        return b;
-      }
-    };
+    bar.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-syslv]');
+      if (!b) return;
+      lv = b.getAttribute('data-syslv');
+      bar.querySelectorAll('[data-syslv]').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      apply();
+    });
+    find.addEventListener('input', apply);
+    os.addEventListener('change', apply);
+    kind.addEventListener('change', apply);
+    // A click anywhere on a row (not on one of its links) opens the system.
+    view.querySelector('.syst').addEventListener('click', function (e) {
+      var tr = e.target.closest('[data-sysrow]');
+      if (tr && !e.target.closest('a')) location.hash = '#systems/' + encodeURIComponent(tr.getAttribute('data-sysrow'));
+    });
+  })();
+
+  // ---- Inventory (UI-R1): each system shows five accounts; the rest, and
+  // the Export's account rows, are in data/inventory-accounts.js, read when
+  // the page is opened ----
+  var inv = (function () {
+    var root = document.querySelector('[data-inv]'), data = null, loading = null;
+    function load() {
+      if (!root || data || loading) return loading;
+      loading = getData('inventory/accounts', 'inventory-accounts.js').then(function (d) { data = d; return d; }).catch(function () { loading = null; });
+      return loading;
+    }
+    function row(a) {
+      return '<a href="#search?user=' + encodeURIComponent(a[4]) + '" title="This account’s events in this report"><span><b>' + esc(a[0]) + '</b>' +
+        (a[5] ? ' <small class="mono">' + esc(a[5]) + '</small>' : '') + '</span><span class="r">' + esc(a[1]) + (a[2] ? ' · disabled' : '') + ' <em>' + esc(a[3]) + '</em></span></a>';
+    }
+    if (root) root.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-invall]');
+      if (!b) return;
+      var host = b.getAttribute('data-invall'), box = b.closest('.inva').querySelector('[data-invaccts]');
+      b.disabled = true;
+      Promise.resolve(load()).then(function () {
+        if (!data || !data.h[host]) { b.disabled = false; b.textContent = 'Could not read the accounts file'; return; }
+        box.innerHTML = data.h[host].map(row).join('');
+        b.parentNode.remove();
+      });
+    });
+    // Export: the drives (in this page) and every account (the data file).
+    function exporter() {
+      var f = meta.pagecsv && meta.pagecsv.inventory;
+      if (!f) return null;
+      if (!data) load();
+      return { label: data ? f.label : 'Drives (accounts still loading)', file: f.file, rows: data ? f.rows.concat(data.csv) : f.rows };
+    }
+    return { load: load, exporter: exporter };
   })();
 
   // A wide table that still scrolls sideways says "more →" until its end
@@ -366,8 +377,14 @@
   document.querySelectorAll('[data-find]').forEach(function (box) {
     box.addEventListener('input', function () {
       var q = box.value.toLowerCase(), list = box.closest('[data-picklist]');
-      list.querySelectorAll('[data-pick]').forEach(function (a) { a.hidden = q && a.textContent.toLowerCase().indexOf(q) < 0; });
+      var shown = 0;
+      list.querySelectorAll('[data-pick]').forEach(function (a) {
+        a.hidden = q && (a.textContent + ' ' + (a.getAttribute('data-keys') || '')).toLowerCase().indexOf(q) < 0;
+        if (!a.hidden) shown++;
+      });
       tidyHeads(list, '.grp2');
+      var none = list.querySelector('[data-findnone]');
+      if (none) none.hidden = shown > 0;
     });
   });
   // ---- Detections (UI-R1): severity, system, person and servers /
@@ -445,8 +462,8 @@
   var TOO_OLD = 'This browser is too old to show the events. Open events.zip in this report\'s folder instead, or use a current version of Edge, Chrome or Firefox.';
 
   // A person's key, as People and summary.json have it: lower case,
-  // without a domain or host.
-  function key(u) { u = (u || '').toLowerCase(); var i = u.lastIndexOf('\\'); if (i >= 0) u = u.slice(i + 1); i = u.indexOf('@'); return i > 0 ? u.slice(0, i) : u; }
+  // without a domain or host, with people_aliases applied (BB.personKey).
+  function key(u) { return BB.personKey(u); }
   function actLabel(a) { a = (a || '').replace(/_/g, ' '); return a.charAt(0).toUpperCase() + a.slice(1); }
   function sevBucket(s) { return s === 'high' || s === 'medium' ? s : 'li'; }
   var SEVWORD = { high: 'High', medium: 'Medium', li: 'Low / info' };
@@ -891,6 +908,7 @@
     });
     this.reset();
     if (p.host && p.host.charAt(0) === '@') { p.role = p.host.slice(1); p.host = ''; }
+    if (p.user) p.user = key(p.user); // any spelling: "SRV-DC02\\jlee", an alias
     if (p.sort === 'host') { p.group = 'host'; p.sort = ''; }
     ['page', 'user', 'host', 'role', 'sev', 'when', 'text'].forEach(function (k) { self.set(k, p[k]); });
     this.q.group.value = Array.prototype.some.call(this.q.group.options, function (o) { return o.value === p.group; }) ? p.group : '';
@@ -982,7 +1000,7 @@
         (det !== undefined ? '<span>part of the detection <a class="link" href="#detections/' + det + '">' + esc(meta.dets[det]) + ' →</a></span>' : '') + '</div>' : '') +
       '<dl class="evf">' + facts + '</dl>' +
       '<div class="sub2">Around it on ' + esc(host) + '</div><div class="near">Loading…</div>' +
-      '<div class="sub2">Context</div><dl class="evf ctx">' + seenBefore(r) +
+      '<div class="sub2">Context</div><dl class="evf ctx"><dt hidden>Seen before</dt><dd data-f="seen" hidden></dd>' +
       '<dt>ATT&amp;CK</dt><dd data-f="attack">—</dd>' + (r[12] ? '<dt>Same command</dt><dd data-f="same">counting…</dd>' : '') + '</dl>' +
       '<div class="dbtns">' + btns + '</div><div class="raw" id="ev-raw">Loading the original event data…</div>';
     lastFocus = document.activeElement;
@@ -1021,6 +1039,7 @@
       ticket.as = ex.rec ? '' : x[2] || '';
       put('rec', '<code>' + esc(ex.piece || ticket.rec.split(', record')[0]) + '</code>' + (ex.rec ? ', record ' + commas(ex.rec) : '') + (x[2] && !ex.rec ? '<small>' + esc(x[2]) + '</small>' : ''));
       put('attack', ex.attack ? esc(ex.attack) : '');
+      put('seen', ex.seen ? esc(ex.seen) : '');
       var out = '';
       (x[0] || []).forEach(function (d) { out += '<span class="t">' + esc(d.label) + ':</span> <span class="v">' + esc(d.value) + '</span>\n'; });
       var f = x[1] || {};
@@ -1045,16 +1064,6 @@
     };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, old);
     else old();
-  }
-
-  // Seen before: from earlier reports' summaries, when this report has
-  // them (meta.seen: { reports: N, pairs: { "HOST|person": reports
-  // seen in } }); left out otherwise.
-  function seenBefore(r) {
-    var s = meta.seen, pk = key(r[5]);
-    if (!s || !s.reports || !pk) return '';
-    var n = (s.pairs || {})[r[2] + '|' + pk] || 0;
-    return '<dt>Seen before</dt><dd>' + esc(r[5] + (n ? ' on ' + r[2] + ' in ' + n + ' of ' + s.reports + ' earlier reports' : ' never on ' + r[2] + ' in ' + s.reports + ' earlier reports')) + '</dd>';
   }
 
   // Same command: how many other systems ran it this period.
@@ -1136,6 +1145,7 @@
     var rows = f.rows.filter(function (r, i) { return i === 0 || all || keep[i]; });
     return { label: 'Detections shown', file: f.file + (all ? '' : '-filtered'), rows: rows };
   });
+  BB.exportPage('inventory', inv.exporter);
   function exportPage() {
     var x = pageExport();
     if (x) save(x.file + (stamp ? '-' + stamp : '') + '.csv', toCSV(x.rows));
@@ -1242,19 +1252,56 @@
       return;
     }
     var sc = e.target.closest('[data-scroll]');
-    if (sc && sc.getAttribute('data-scroll').indexOf('inv-tab-') === 0) {
-      // Inventory's tiles open their tab: Systems, Drives, Accounts, Administrators.
-      e.preventDefault();
-      var name = sc.getAttribute('data-scroll').slice(8), el = name === 'admin' ? inv.tab('accounts', 'admin') : inv.tab(name, name === 'accounts' ? '' : undefined);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
-    }
     if (sc) {
       e.preventDefault();
       var el = document.getElementById(sc.getAttribute('data-scroll'));
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   });
+
+  // ---- Trends (UI-R1): the 4 / 8 / 12-week switch, its CSV and the
+  // Monthly summary (the page at 4 weeks, printed) ----
+  (function () {
+    var view = document.querySelector('.view[data-view="trends"]');
+    if (!view) return;
+    var weeks = 8;
+    function range(n) {
+      var crumb = view.querySelector('.head .crumb'), was = view.querySelector('[data-trview]:not([hidden])');
+      var to = view.querySelector('[data-trview="' + n + '"]');
+      if (!to) return;
+      if (crumb && was) crumb.textContent = crumb.textContent.replace(was.getAttribute('data-crumb'), to.getAttribute('data-crumb'));
+      view.querySelectorAll('[data-trview]').forEach(function (v) { v.hidden = v !== to; });
+      view.querySelectorAll('[data-trange]').forEach(function (b) {
+        var on = +b.getAttribute('data-trange') === n;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      weeks = n;
+    }
+    view.querySelectorAll('[data-trange]').forEach(function (b) {
+      b.addEventListener('click', function () { range(+b.getAttribute('data-trange')); });
+    });
+    BB.exportPage('trends', function () {
+      var f = meta.pagecsv && meta.pagecsv.trends;
+      if (!f) return null;
+      var rows = [f.rows[0]].concat(f.rows.slice(1).slice(-weeks));
+      return { label: 'Weekly counts, ' + (rows.length - 1) + ' weeks', file: f.file + '-' + weeks + 'w', rows: rows };
+    });
+    var pb = view.querySelector('[data-trprint]');
+    if (pb) pb.addEventListener('click', function () {
+      var back = weeks;
+      range(4);
+      document.body.classList.add('trprint');
+      var over = false, done = function () {
+        if (over) return;
+        over = true;
+        document.body.classList.remove('trprint'); range(back); window.removeEventListener('afterprint', done);
+      };
+      window.addEventListener('afterprint', done);
+      window.print();
+      setTimeout(done, 1000);
+    });
+  })();
 
   // Search and the event pages (after BB.exportPage is set up).
   document.querySelectorAll('[data-sq]').forEach(function (root) {

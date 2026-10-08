@@ -656,25 +656,35 @@ checked**) and the next report at once, not after the next daily check:
   with a key or through sudo; one whose shell refuses logons, or that has
   expired, is disabled. Nothing about passwords is read or kept.
 
-The page has three tabs, each with a filter box:
+The page (UI-R1) has the systems on the left, grouped **Servers** and
+**Workstations**, each with its operating system, and the one selected on
+the right. **Find a system or serial** finds a system by its name or by a
+drive's serial number. A link to `#inventory/WS-07` opens that system.
 
-- **Systems**: one row per system (make, model and serial, operating
-  system, processor and memory, how many drives and accounts, how many
-  administrators). Click a row, or press Enter on it, to open that
-  system's drives (with serial numbers) and accounts right under it;
-  several can be open at once, and **Expand all** opens every one. A link
-  to `#inventory/WS-07` opens that system.
-- **Drives**: every drive on every system, with its serial number.
-- **Accounts**: every account on every system, with **Administrators** and
-  **Enabled** filters, so all administrator accounts on the network are in
-  one list. Click an account to search its events.
+- **The system:** its name; operating system, role and make and model;
+  serial number, memory, and accounts ("63 (9 administrators, 12 used this
+  period)"), then processor, BIOS, domain and when it was read.
+- **Drives:** model, type ("NVMe · SSD", "SATA · HDD", "USB ·
+  removable"), size, **serial number** and a note: "internal"; for a
+  removable drive in the inventory, "connected at the settings check"; and
+  for a removable drive seen only in the USB events, "seen 7 Oct 10:18",
+  with "not connected now" when the settings check after that did not
+  find it. The serial of a drive seen in the events comes from the event
+  (its "Serial number" detail).
+- **Accounts:** five shown (administrators first, then the most recently
+  used): name, the last digits of its SID or its UID, admin or user,
+  disabled, and when it was last used (its last logon, or its latest event
+  in this report). "N more · Show all" lists the rest. The accounts are in
+  `data/inventory-accounts.js`, read when the page opens, so a network of
+  thousands of accounts keeps the page light; the file is in the manifest
+  like the event data. Click an account to search its events.
 
-The four tiles at the top open their tab (Administrators opens Accounts
-filtered to administrators). **Export > Inventory as CSV** saves every
-system, drive and account, one per line. Systems with no inventory yet
-are named under the table with the reason: it has sent nothing since a
-given time, it runs a Blackbox from before 0.13, or it has sent no
-settings check yet.
+**Export CSV** saves one row per drive (system, model, type, size, serial
+number, note) and one row per account (system, name, kind and rights,
+SID or UID, status and last use), with the time each system was read.
+Systems with no inventory yet are listed with the reason (on the right,
+and under the page): it has sent nothing since a given time, it runs a
+Blackbox from before 0.13, or it has sent no settings check yet.
 
 How it is read: on Windows, one PowerShell query of CIM
 (`Win32_ComputerSystem`, `Win32_BIOS`, `Win32_DiskDrive`,
@@ -907,7 +917,11 @@ system's original-log zip that holds it and its record number
 (`logs-SRV-DC02.zip › Security.evtx, record 884,212`), for an assessor to
 find it in Event Viewer or with `ausearch`. **Around it on <system>** lists
 the four events before and after it on that system (click one to open
-it). **Context** gives the ATT&CK technique its action stands for, where
+it). **Context** gives **Seen before** (whether earlier scheduled reports
+saw the event's person on its system, or else its USB device, service or
+source address: "never on SRV-DC02 in 84 reports", "on SRV-DC01 in all 84
+earlier reports"; left out when no earlier report kept what it saw), the
+ATT&CK technique its action stands for, where
 the mapping is clear (a log cleared is T1070.001 on Windows, T1070.002 on
 Linux; a program run has none), and, for a command, how many other
 systems ran it this period. Then **Everything <person> did**, **±10 min on
@@ -919,7 +933,7 @@ record ▾**, the event's original fields.
 holds, as CSV: "Detections shown (12)" (only those the filters show), the
 rows an event page or Search shows, Systems, every audit setting on Audit
 health, Inventory's systems, drives and accounts, the original-log zips. A
-page with nothing to list (the Overview, People, Trends) has no This page
+page with nothing to list (the Overview) has no This page
 part. **Whole report** has the printable **Summary** (print it or save it
 as PDF), **All events (n)** (`events.zip`), **Systems and drives** (each
 system with its make, model and serial number, one row per drive with the
@@ -969,6 +983,33 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
   more systems with no problems (20 with warnings, 3 all OK)" and a link
   to all of them on the Systems page. The trends and "what changed" are on
   Trends.
+- **Systems** (UI-R1). One table of every system, grouped **Servers** and
+  **Workstations**, worst first, with a filter bar: **Find a system**,
+  **All / Problems / Warnings / OK** with their counts, **OS** and
+  **Role**. Each row: a status dot and the name, the OS, six squares
+  (green ok, amber warning, red problem, grey no data) for **Reporting**
+  (collections received against those expected), **Logs intact** (none
+  cleared, nothing overwritten), **Settings** (audit settings to fix),
+  **Antivirus**, **Orig. logs** (its zip in this report) and **SCAP**,
+  then its events, detections and when it was last seen. A square links to
+  where the detail is (the Overview's Systems at a glance shows the same
+  squares); a row opens the system.
+- **One system** (`#systems/NAME`): "Systems › Servers › NAME", **Search
+  this system** and **Prev / Next** through the list. Its problem in one
+  chip, then what it is (OS · role · make and model · the collector it
+  sends to, when known). Six facts: events, detections, last collection
+  and how often it collects (read from its collections), audit settings
+  to fix of those checked, SCAP score and open CAT I, and the size of its
+  original logs. The **collection strip** has one cell for each
+  collection expected in the period (24 for an hourly system over a
+  day; a long period puts several in one cell): green when it came, grey
+  when it was missed, amber when events were overwritten before they were
+  collected, and a red mark where a log was cleared. Then the six
+  **Checks** in one line each (problems first, with **Audit health →**),
+  **Detections** on it, its **Activity** per hour with a red dot on each
+  hour with a detection, **Who was active** (the busiest accounts, what
+  they are and their events) and **Events by kind** (noting a kind well
+  above the typical system on the network).
 - **Detections** (UI-R1). A **filter bar**: All / High / Medium with
   counts, System, Person, and Servers / workstations. On the left, the
   detections grouped **High · n** and **Medium · n**, newest first in each,
@@ -1001,6 +1042,63 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
   "Accepted … from <address>" line to the logon.
 - **Privileged actions** count people's actions, as Trends' "by person"
   table does; actions by service accounts are listed but not counted.
+
+### People
+
+![People: a person](testing/2026-10-02-v0.10.1/shots/ui/uir1-people-after-1440.png)
+
+**People** lists every account that did something this period. With local
+accounts (no domain) the same person has a separate account on each
+system: accounts with the same name are **one row** ("jlee" on 9 systems),
+whatever system or domain prefix the logs give them. A different spelling
+("j.lee") is a different row unless the `people_aliases` setting names it
+([configuration](configuration.md)): `blackbox config set people_aliases
+"jlee=j.lee,jlee2"`.
+
+- **The list** has "Find a person or account" (it also finds the
+  spellings people_aliases merges) and **All / Detections / Admins** with
+  their counts, then three groups: **Administrators** (an administrator in
+  a system's inventory, or someone who used administrator rights),
+  **Users**, and **Shared and service accounts** (root, Administrator and
+  service accounts). Each name has one line ("admin on 9 systems", "3
+  systems", "built-in, Linux · on 15 systems") and a badge with its
+  detections. People with a detection come first; after ten in a group the
+  rest are folded ("+293 more administrators with no detections · Show").
+  The footnote says how many other local accounts on the systems were not
+  used this period, with a link to Inventory.
+- **A person** has a summary line ("Local account on 9 systems ·
+  administrator on all 9 · used on 5 this period") and a detection chip;
+  six facts (systems used, of those with the account; logons, with how many
+  by Remote Desktop and SSH; failed logons; privileged actions; after
+  hours; detections); **Where and when**, one lane per system they used
+  across the period, with their sessions as bars and a red mark at each
+  detection (six lanes, the rest in one "… N more" lane); **Notable
+  actions**, the high and medium ones, one line each, and "all N in
+  Search →"; and **Accounts named jlee**, one row per system's account
+  (`SRV-DC02\jlee`) with its rights, logons this period and when it was
+  last used, then "+ 4 systems where jlee exists but wasn't used" (from the
+  inventory) and a note that these are separate accounts shown as one
+  person. A spelling merged by people_aliases is marked on its row. Below:
+  the detections involving them and **Over time**.
+- **Sessions** come from logon and logoff events: a logon opens one, the
+  logoff with the same logon ID (or the next logoff) closes it, and a
+  session with no logoff in the period ends at the last thing done in it.
+  Activity outside any session (sudo with no logon in the period, a
+  scheduled job) is a short bar, events within 20 minutes joined.
+- **A shared or built-in account** (root, Administrator, a service account)
+  is labelled "Shared built-in account · a separate account on each of 15
+  Linux systems · not one person". **Who acted as root** splits what was
+  done as it: by the person who ran sudo, su or pkexec (Linux) or RunAs
+  (Windows), each with systems and count, since Blackbox lists those
+  actions under that person; **Jobs and services**, actions by the account
+  itself with no person behind them; and **Direct logon** (console, SSH or
+  Remote Desktop as the account itself). A box says plainly whether anyone
+  logged on as it directly ("No one logged on as root directly", or in red
+  "Administrator logged on directly once on WS-LAB-01 (1 console): the
+  person is not recorded"), and how many attempts to log on as it failed.
+  Then its six facts and the Where and when lanes.
+- **Export CSV** gives one row per person per system's account: person,
+  kind, account, rights, logons this period, last used, detections.
 
 ## Output files
 
@@ -1060,16 +1158,35 @@ every event a detection points to, is always listed. All of them are in
 the original logs. Tables draw only the rows on screen, so a page with
 hundreds of thousands of events still scrolls smoothly.
 
-The folder of reports has an `index.html`, **All reports**: detections per
-calendar week (manual reports not included, and nothing drawn until 2
-full weeks), and each report with its period, systems, events,
-detections and whether its audit trail is complete. A period of one whole
-day is one date ("5 Oct 2026"); one that starts or ends during a day shows
-the times ("5 Oct 00:00 – 06:44"). Numbers have thousands separators
-everywhere ("95,229 events lost"). The
-newest is marked **Latest**; click a row to open it. In a report, the
-**All reports** button at the top of every page (and in the menu) opens
-it. The date range next to it only shows the report's period.
+The folder of reports has an `index.html`, **All reports**. Its sidebar
+links into the latest report's pages and shows its card. At the top, four
+cards:
+
+- **Latest report**: its day, its High and Medium detections, **Open →**.
+- **Next report**: when the next scheduled report is due, and what each
+  covers ("daily · each covers the day before").
+- **Reports checked**: what the report ledger found, "1 changed" in red or
+  "All 40 OK" in green, then "39 OK · 1 accepted as deleted · checked
+  daily".
+- **In this folder**: how many reports ("40 daily, 1 manual") and the size
+  of the folder.
+
+Then one table of every report, newest first, grouped by month. **Report**
+is its day ("Wed 7 Oct"; a manual report shows its times, "Wed 7 Oct
+00:00 – 14:40"), with a **Latest** or **Manual** chip. **Notes** say what
+is wrong ("1 log cleared · 2 silent · 261 events lost", "logs-WS-04.zip
+missing") and, for a manual report, why it was made when that was given.
+Then **Systems** (reporting of all, "28/30"), **Events**, **High**,
+**Medium**, **Original logs** (the size of its log zips) and **Check**,
+from the ledger: **✓ OK**, **Changed** (hover for what changed) or
+**Accepted** (accepted with `blackbox reports accept`). A scheduled report
+that is gone keeps its row ("Missing: deleted or moved"). Filters show
+**All**, **Scheduled**, **Manual**, **With high** or **Problems** (an
+incomplete audit trail, or changed or missing); under All, the newest 20
+show and "22 older reports · Show older" opens the rest. **Export list
+CSV** saves the table. Click a row to open its report. In a report, **All
+reports →** on the sidebar's report card opens it. Detections by week are
+on Trends.
 
 **Trends.** Each scheduled report keeps its counts day by day in
 `summary.json` (`days`), and later reports add them up by **calendar
@@ -1091,17 +1208,53 @@ split between them.
 - Charts are labelled with the weeks' dates, and say how many weeks they
   show (up to 13).
 
-The Overview's **What changed** panel lists the biggest moves: a
-network-wide count (failed logons, privileged actions, …) up or down by
-25% or more on the average week, a system with more detections than
-usual, and a person with more privileged actions than usual or with
-privileged actions for the first time. The Trends page charts the
-network's counts and has detections per system and privileged actions per
-person, by week. On the People page, each person's **Over time** panel
-compares this week's privileged actions, after-hours actions, logons,
-failed logons and detections with their own average week. The list of
-reports has **Detections per week** by the same calendar weeks, without
-manual reports, from 2 complete weeks on.
+The **Trends** page shows **4, 8 or 12 weeks** (8 at first), this week
+included; the switch is at the top, with **Export CSV** (every measure,
+one row per week of the range shown) and **Monthly summary (PDF)**, the
+page at 4 weeks, printed (save it as PDF).
+
+- **Six small charts**, one bar per week: detections, failed logons,
+  privileged actions by people, systems matching the STIG, events lost to
+  rollover and after-hours admin actions. Each shows this week's number
+  and **usual N**, the median of the complete earlier weeks. This week's
+  bar is **red** when it is worse than usual, **green** when better and
+  **blue** otherwise; "this week · 3 of 7 days" under it, and a week not
+  yet over is compared with the usual week by the same point (a change
+  under 25%, or of fewer than 3, is no change). Systems matching the STIG
+  is the state at the week's last report.
+- **Biggest changes this week**: up to six lines, the largest moves
+  against each one's usual week, with a short why: the network's totals
+  (these six and high-severity events, USB events, account changes,
+  systems reporting), each system's detections ("Security log cleared")
+  and failed logons ("SSH guessing from 203.0.113.50 on 7 Oct"), each
+  person's privileged and after-hours actions and the systems they used
+  ("first time on SRV-DC01"). Red is much worse, orange worse, green
+  better.
+- **Detections by system, by week**: darker red for more. Only systems
+  with a detection in the range are listed; "23 others had none · All 30"
+  shows the rest.
+- **New this week**, never seen in the earlier weeks of the range: a new
+  **administrator** (account and system), a new **account**, a new
+  **logon path** (person → system, and how: Remote Desktop, SSH,
+  Console), a new **source address** (and what it did: "412 SSH failures
+  on ubu-web01"), a new **service** and a new **USB device**. Each
+  scheduled report keeps the sets these are compared with in
+  `summary.json` (`seen`: administrators and accounts of each system
+  from its inventory and the events, who used which system and how, the
+  addresses events came from, services installed, USB devices), and the
+  next reports read them back like the day counts. Reports made before
+  these were kept have none, so the list starts the week after.
+
+The same sets let an event say whether its person was on its system
+before: the event panel's **Seen before**, "never on SRV-DC02 in 84
+reports". People are keyed as on the People page (with
+`people_aliases`), in this report and the earlier ones.
+
+The Overview's old **What changed** panel is gone: Trends' **Biggest
+changes this week** lists those moves now. On the People page, each person's
+**Over time** panel compares this week's privileged actions, after-hours
+actions, logons, failed logons and detections with their own average
+week.
 
 Reports made before 0.16 did not keep counts by day. A report from then
 whose whole period lies in one calendar week (a daily report) still

@@ -42,7 +42,7 @@ func TestIndexMissingReports(t *testing.T) {
 	if !strings.Contains(h, "Missing: deleted or moved") || strings.Contains(h, "2026-10-07_CI/report.html") {
 		t.Error("the missing scheduled report is not shown as missing")
 	}
-	if !strings.Contains(h, `href="2026-09-30_CI/report.html">Open the latest report`) {
+	if !strings.Contains(h, `href="2026-09-30_CI/report.html">Open →`) {
 		t.Error("the latest report should be the newest one still there")
 	}
 }

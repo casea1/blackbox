@@ -46,7 +46,7 @@ func TestAntivirusTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-	for _, want := range []string{`id="h-av"`, "Definitions dated", "<b>2 Oct 2026 12:00</b>", "Antivirus definitions", "Defender definitions dated 2 Oct 2026 12:00 (3 days old)"} {
+	for _, want := range []string{`id="h-av"`, "Definitions dated", "<b>2 Oct 2026 12:00</b>", "Antivirus definitions", "Defender, definitions 2 Oct"} {
 		if !strings.Contains(string(html), want) {
 			t.Errorf("report lacks %q", want)
 		}
@@ -74,7 +74,7 @@ func TestClickableCardsAndHeatmap(t *testing.T) {
 		`<div class="sq" data-sq="failed">`, // Failed logons is Search with its kind preset
 		`data-kindclear`,
 		`href="../index.html" title="Every report in this folder, newest first"`,
-		`href="#search?user=admin_jd&amp;when=%40slot%3A0-9"`, // a heatmap hour opens Search
+		`href="#search?host=WS-07&amp;user=admin_jd"`, // a person's lane on People opens Search
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("report lacks %s", want)

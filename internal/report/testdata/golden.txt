@@ -446,7 +446,11 @@
           "key": "uid 1001",
           "name": "uid 1001"
         }
-      ]
+      ],
+      "failed_by_system": {
+        "WS-07": 13,
+        "ubu-audit": 13
+      }
     },
     {
       "date": "2026-10-02",
@@ -462,5 +466,64 @@
       ]
     }
   ],
-  "first": true
+  "first": true,
+  "seen": {
+    "admins": {
+      "WS-07": [
+        "tempuser"
+      ],
+      "ubu-audit": [
+        "tempuser"
+      ]
+    },
+    "accounts": {
+      "WS-07": [
+        "tempuser"
+      ],
+      "ubu-audit": [
+        "tempuser"
+      ]
+    },
+    "logon_paths": [
+      "admin_jd|WS-07|Remote Desktop",
+      "admin_jd|ubu-audit|SSH",
+      "austin|claude-code|SSH",
+      "austin|ubu-audit|SSH",
+      "jsmith|WS-07|Console",
+      "jsmith|ubu-audit|Console",
+      "mjones|WS-07|Console",
+      "mjones|ubu-audit|Console"
+    ],
+    "active": [
+      "admin_jd|WS-07",
+      "admin_jd|ubu-audit",
+      "administrator|WS-07",
+      "austin|claude-code",
+      "austin|ubu-audit",
+      "bob|WS-07",
+      "guest|WS-07",
+      "jsmith|WS-07",
+      "jsmith|ubu-audit",
+      "mjones|WS-07",
+      "mjones|ubu-audit",
+      "root|ubu-audit",
+      "uid 1001|ubu-ws12"
+    ],
+    "source_ips": [
+      "10.1.1.20",
+      "10.1.1.99",
+      "192.168.1.20"
+    ],
+    "services": {
+      "WS-07": [
+        "updatersvc"
+      ]
+    },
+    "usb": [
+      "WS-07|4c530001231109115405",
+      "WS-07|e0d55ea573dcf450e97c0a7f",
+      "ubu-ws12|4c530001231109115405",
+      "ubu-ws12|e0d55ea573dcf450e97c0a7f"
+    ]
+  }
 }

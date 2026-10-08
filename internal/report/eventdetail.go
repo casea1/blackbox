@@ -25,6 +25,7 @@ type rawExtra struct {
 	Rec    uint64 `json:"rec,omitempty"`    // record number (Windows) or audit serial
 	By     string `json:"by,omitempty"`     // "cmd.exe (from a Remote Desktop session from WS-ADM-01)"
 	Attack string `json:"attack,omitempty"` // "T1070.001 Clear Windows Event Logs"
+	Seen   string `json:"seen,omitempty"`   // "never on SRV-DC02 in 84 reports" (SeenBefore.Text)
 }
 
 // detailer works out the event panel's facts for a report's events.
@@ -34,6 +35,7 @@ type detailer struct {
 	off    int
 	logons map[string]*event.Event // host|logon ID → the logon that began it
 	pieces map[string][]piece      // host → what its original-log zip holds
+	seen   map[string]string       // kind|key → SeenBefore.Text, worked out once
 }
 
 // piece is one log file in a system's original-log zip, and the part of
@@ -45,7 +47,7 @@ type piece struct {
 }
 
 func (r *Report) detailer() *detailer {
-	d := &detailer{r: r, logons: map[string]*event.Event{}, pieces: map[string][]piece{}}
+	d := &detailer{r: r, logons: map[string]*event.Event{}, pieces: map[string][]piece{}, seen: map[string]string{}}
 	if !r.Generated.IsZero() {
 		d.zone = zoneName(r.Generated, r.Location)
 		_, d.off = r.Generated.In(r.Location).Zone()
@@ -68,7 +70,30 @@ func (r *Report) detailer() *detailer {
 }
 
 func (d *detailer) extra(e *event.Event) rawExtra {
-	return rawExtra{When: d.when(e.Time), Piece: d.piece(e), Rec: e.RecordID, By: d.startedBy(e), Attack: attackOf(e)}
+	return rawExtra{When: d.when(e.Time), Piece: d.piece(e), Rec: e.RecordID, By: d.startedBy(e), Attack: attackOf(e), Seen: d.seenBefore(e)}
+}
+
+// seenBefore is the panel's "Seen before": whether earlier scheduled
+// reports saw the event's person on its system (or its address, device or
+// service), as SeenBefore.Text; "" when none kept what it saw.
+func (d *detailer) seenBefore(e *event.Event) string {
+	keys := d.r.seenKeys(e)
+	k := ""
+	for _, kind := range []string{SeenActive, SeenUSB, SeenService, SeenSource} {
+		if keys[kind] != "" {
+			k = kind + "|" + keys[kind]
+			break
+		}
+	}
+	if k == "" {
+		return ""
+	}
+	if t, ok := d.seen[k]; ok {
+		return t
+	}
+	t := d.r.seenBefore(e).Text()
+	d.seen[k] = t
+	return t
 }
 
 // when is a time to the millisecond, local and UTC: "Wed 7 Oct 2026

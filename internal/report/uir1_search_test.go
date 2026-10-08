@@ -78,30 +78,7 @@ func TestEventDetailUIR1(t *testing.T) {
 	}
 	extra := func(page, find string) rawExtra {
 		t.Helper()
-		data, _ := os.ReadFile(filepath.Join(dir, "data", page+"-20261007.js"))
-		raw, _ := os.ReadFile(filepath.Join(dir, "data", page+"-20261007-raw.js"))
-		var c struct{ Rows [][]any }
-		var rs [][]json.RawMessage
-		if err := json.Unmarshal([]byte(unpackData(t, data)), &c); err != nil {
-			t.Fatal(err)
-		}
-		if err := json.Unmarshal([]byte(unpackData(t, raw)), &rs); err != nil {
-			t.Fatal(err)
-		}
-		for i, row := range c.Rows {
-			if s, _ := row[8].(string); strings.Contains(s, find) {
-				var x rawExtra
-				if len(rs[i]) < 5 {
-					t.Fatalf("%s: raw entry has no extra", find)
-				}
-				if err := json.Unmarshal(rs[i][4], &x); err != nil {
-					t.Fatal(err)
-				}
-				return x
-			}
-		}
-		t.Fatalf("no %q on %s", find, page)
-		return rawExtra{}
+		return extraOn(t, dir, page, "", find)
 	}
 	x := extra("privileged", `wevtutil.exe`)
 	if x.When != "Wed 7 Oct 2026 14:22:05.118 EDT (18:22:05.118 UTC)" {
@@ -116,6 +93,28 @@ func TestEventDetailUIR1(t *testing.T) {
 	if x.Attack != "" {
 		t.Errorf("a program run has no clear technique, got %q", x.Attack)
 	}
+	// Seen before: adm-jlee works on SRV-DC02 every day; jlee was never
+	// on it in the 84 earlier reports (demo30History).
+	if x.Seen != "on SRV-DC02 in all 84 earlier reports" {
+		t.Errorf("seen before (adm-jlee) %q", x.Seen)
+	}
+	var jlee rawExtra
+	for _, pg := range []string{"logons", "privileged"} {
+		if jlee = extraOn(t, dir, pg, "SRV-DC02", " jlee "); jlee.When != "" {
+			break
+		}
+	}
+	if x = jlee; x.Seen != "never on SRV-DC02 in 84 reports" {
+		t.Errorf("seen before (jlee) %q", x.Seen)
+	}
+	if x = extra("privileged", "sudo -i"); x.Seen != "on ubu-db01 in all 84 earlier reports" {
+		t.Errorf("seen before (routine) %q", x.Seen)
+	}
+	// The panel shows the Go text, not the old proposed meta.seen pairs.
+	js, _ := os.ReadFile(filepath.Join(dir, "report.html"))
+	if !strings.Contains(string(js), `put('seen', ex.seen ? esc(ex.seen) : '');`) || strings.Contains(string(js), "meta.seen") || strings.Contains(string(js), "s.pairs") {
+		t.Error("app.js: Seen before is not the panel's seen fact")
+	}
 	x = extra("integrity", "Security log was cleared")
 	if x.Attack != "T1070.001 Clear Windows Event Logs" || x.Piece != "logs-SRV-DC02.zip › Security.evtx" {
 		t.Errorf("log cleared: %+v", x)
@@ -128,6 +127,48 @@ func TestEventDetailUIR1(t *testing.T) {
 	if x.Piece != "logs-ubu-db01.zip › audit.log" {
 		t.Errorf("Linux event's file %q", x.Piece)
 	}
+}
+
+// extraOn is the event panel's extra facts of the first event on a page's
+// 7 Oct data whose summary has find (and on host, unless ""); a find
+// starting with a space matches at the start of a word. Empty when the
+// host has none but host is given.
+func extraOn(t *testing.T, dir, page, host, find string) rawExtra {
+	t.Helper()
+	data, _ := os.ReadFile(filepath.Join(dir, "data", page+"-20261007.js"))
+	raw, _ := os.ReadFile(filepath.Join(dir, "data", page+"-20261007-raw.js"))
+	var c struct {
+		Dict []string
+		Rows [][]any
+	}
+	var rs [][]json.RawMessage
+	if err := json.Unmarshal([]byte(unpackData(t, data)), &c); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(unpackData(t, raw)), &rs); err != nil {
+		t.Fatal(err)
+	}
+	for i, row := range c.Rows {
+		s, _ := row[8].(string)
+		h, _ := row[2].(string)
+		if n, ok := row[2].(float64); ok && int(n) < len(c.Dict) { // repeated values are in the dictionary
+			h = c.Dict[int(n)]
+		}
+		if strings.Contains(" "+s, find) && (host == "" || h == host) {
+			var x rawExtra
+			if len(rs[i]) < 5 {
+				t.Fatalf("%s: raw entry has no extra", find)
+			}
+			if err := json.Unmarshal(rs[i][4], &x); err != nil {
+				t.Fatal(err)
+			}
+			return x
+		}
+	}
+	if host == "" {
+		t.Fatalf("no %q on %s", find, page)
+	}
+	return rawExtra{}
 }
 
 func TestEventDetailParts(t *testing.T) {
