@@ -134,7 +134,16 @@ shown as a separate change.
 **Repeats are one row.** The console host Windows starts for every
 console program run with administrator rights (`conhost.exe 0xffffffff
 -ForceV1`) is not a row of its own: the program that started it says
-"Also started: N console windows" in its details. Identical records (the
+"Also started: N console windows" in its details. One started by a
+program that is not a row (sshd, for each command in an SSH session) is
+counted with that person's logon on that computer, or left out. Windows
+records each SSH sign-in as two logons (4624) at the same second, not
+always linked to each other: they are one row, with the second logon ID
+in its details ("Also logon ID"), so Logon activity counts sign-ins. One
+log clear is one row too: the command that cleared it (`wevtutil cl`,
+`Clear-EventLog`) is folded into the log's own record of the clear when
+they match (same computer and person, the command names that log, within
+a minute), its command line under "Cleared with". Identical records (the
 same system, person, action and text within a minute) are one row marked
 **×N**, with the time of each in its details ("Recorded: 7 times: …").
 Failed logons are never folded: each is an attempt. Every count in the
