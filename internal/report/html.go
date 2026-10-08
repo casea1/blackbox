@@ -170,7 +170,6 @@ func funcs(loc *time.Location) template.FuncMap {
 		"icon":     icon,
 		"lower":    strings.ToLower,
 		"minus":    func(a, b int) int { return a - b },
-		"gridCols": gridCols,
 		"css2":     func(s string) template.CSS { return template.CSS(s) },
 		// avOK counts the antivirus rows that are current, folded under a
 		// button when others need attention.
@@ -198,8 +197,8 @@ func funcs(loc *time.Location) template.FuncMap {
 		"searchCrumb": func(p pageData) string {
 			return fmt.Sprintf("%s events from %s · searched in your browser, nothing leaves this report", commas(len(p.Events)), plural(len(p.Hosts), "system"))
 		},
-		"searchCols": func() template.CSS { return gridCols(searchCols) },
 		"periodDays": func(p pageData) []string { return p.periodDays() },
+		"finder":     func(p pageData, kind string) finderData { return p.finder(kind) },
 		"periodWord": func(p pageData) string {
 			if p.periodNoun() == "week" {
 				return "Week"
@@ -243,21 +242,9 @@ func funcs(loc *time.Location) template.FuncMap {
 			return n
 		},
 		"detDayBefore": func(ds []DetectionView, i int) string { return ds[i-1].Day },
+		// eventsCrumb is what an event page (Events by kind) holds.
 		"eventsCrumb": func(p pageData, e *EventPage) string {
-			unit := "events"
-			if spec, ok := pageSpecs[e.ID]; ok {
-				unit = spec.unit
-			}
-			if e.Total == 1 {
-				unit = strings.TrimSuffix(unit, "s")
-			}
-			s := fmt.Sprintf("Events · %s %s", commas(e.Total), unit)
-			if n := len(e.Hosts); n > 1 {
-				s += fmt.Sprintf(" on %d systems", n)
-			} else if n == 1 {
-				s += " on " + e.Hosts[0]
-			}
-			return s
+			return pageSpecs[e.ID].desc
 		},
 		// head builds a page heading: "Daily report · 7 Oct 00:00 – 8 Oct
 		// 00:00 EDT", then what the page holds (extra), the one place the
@@ -463,10 +450,24 @@ func (r *Report) WriteHTML(w io.Writer, pages []*EventPage) error {
 		kinds[sr.Name] = systemKind(sr)
 	}
 	meta["hostKind"] = kinds
+	// The event panel's Person: each account's rights on its system.
+	meta["rights"] = r.eventRights()
 	if w := r.WorkingHours; w.Set() {
 		meta["hours"] = map[string]any{"days": w.Days, "start": w.Start, "end": w.End}
 	}
 	people := r.peoplePage()
+	// Search's Person filter: People's groups, each [title, [[key, name]…]].
+	var peopleOpts [][]any
+	if people != nil {
+		for _, g := range people.Groups {
+			var l [][2]string
+			for _, p := range g.People {
+				l = append(l, [2]string{p.Key, p.Name})
+			}
+			peopleOpts = append(peopleOpts, []any{g.Title, l})
+		}
+	}
+	meta["people"] = peopleOpts
 	if pp := people; pp != nil && len(pp.Groups) > 0 && len(pp.Groups[0].People) > 0 {
 		meta["firstPerson"] = pp.Groups[0].People[0].Key
 	}
