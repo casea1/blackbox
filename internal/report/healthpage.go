@@ -579,10 +579,19 @@ func (r *Report) healthPage() *HealthPage {
 	}
 	for _, a := range r.Archives {
 		var lost, changed []string
+		var missing []string
 		for _, g := range a.Gaps {
-			if g.Reason != "" {
+			switch {
+			case g.Records != "":
+				missing = append(missing, g.Source+": "+g.Records)
+			case g.Reason != "":
 				lost = append(lost, g.Reason)
 			}
+		}
+		if len(missing) > 0 {
+			hp.Gaps = append(hp.Gaps, GapCard{Title: "Original logs incomplete", Level: "bad", Systems: []string{a.Host},
+				Explain: "Records not in the log when it was exported, so not in " + a.Name + ": " + strings.Join(missing, "; ") + ". The logs are exported in record order, so this is not the clock: the log overwrote them first, or they were never written.",
+				Fix:     "make the log larger (blackbox check gives the size); for audit serials, check auditd's lost count (auditctl -s)."})
 		}
 		for _, f := range a.Changed {
 			changed = append(changed, f.Name)
