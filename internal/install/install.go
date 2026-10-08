@@ -147,6 +147,14 @@ func prepareFolder(dir, what, label string, logf func(string, ...any)) error {
 	case !fi.IsDir():
 		return fmt.Errorf("%s %s is a file, not a folder", what, dir)
 	default:
+		if CanGrantSystem && !config.IsShare(dir) && CheckWritable(dir) != nil {
+			// Open only to some people: the scheduled runs write as SYSTEM.
+			if err := GrantSystem(dir); err != nil {
+				return fmt.Errorf("give SYSTEM access to %s %s: %w", what, dir, err)
+			}
+			logf("%s %s (existing folder; SYSTEM given Modify, as you can't write to it; no one else's access changed)", label, dir)
+			return nil
+		}
 		logf("%s %s (existing folder; its permissions were not changed)", label, dir)
 	}
 	if err := CheckWritable(dir); err != nil {

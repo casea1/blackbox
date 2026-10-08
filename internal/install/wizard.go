@@ -347,7 +347,7 @@ func (w *wizard) askReports(a *Answers, defaultReports string) error {
 			w.note(err.Error())
 			continue
 		}
-		ok, err := w.checkFolder(s, "Create it (administrators only)?")
+		ok, err := w.checkFolder(s, "Create it (administrators only)?", true)
 		if err != nil {
 			return err
 		}
@@ -425,7 +425,7 @@ func (w *wizard) askArchiveDir(a *Answers) error {
 			w.note(err.Error())
 			continue
 		}
-		ok, err := w.checkFolder(s, "Create it (administrators only)?")
+		ok, err := w.checkFolder(s, "Create it (administrators only)?", true)
 		if err != nil {
 			return err
 		}
@@ -452,7 +452,7 @@ func (w *wizard) askInbox(a *Answers) error {
 			w.note(err.Error())
 			continue
 		}
-		ok, err := w.checkFolder(s, "Create it?")
+		ok, err := w.checkFolder(s, "Create it?", false)
 		if err != nil {
 			return err
 		}
@@ -596,11 +596,19 @@ func (w *wizard) askInterval(a *Answers) error {
 }
 
 // checkFolder reports whether a folder is usable, offering to create it if
-// it does not exist.
-func (w *wizard) checkFolder(dir, create string) (bool, error) {
+// it does not exist, and, for a report folder (grant), to give SYSTEM
+// access to one the person running setup can't write to.
+func (w *wizard) checkFolder(dir, create string, grant bool) (bool, error) {
 	switch c, err := CheckFolder(dir, w.dirExists, w.dirWritable); c {
 	case FolderOK:
 		return true, nil
+	case FolderNoAccess:
+		if grant {
+			w.note(GrantSystemQuestion(dir))
+			return w.yes("Give SYSTEM access?", true)
+		}
+		w.note(fmt.Sprintf("Blackbox cannot write to that folder (%v).", err))
+		return false, nil
 	case FolderBad:
 		w.note(err.Error() + ".")
 		return false, nil

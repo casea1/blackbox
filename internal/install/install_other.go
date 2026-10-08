@@ -25,6 +25,12 @@ func afterReportDirChange(func(string, ...any)) error { return nil }
 
 func restrictDir(dir string) error { return os.Chmod(dir, 0o700) }
 
+// CanGrantSystem is false: root can write to any local folder.
+const CanGrantSystem = false
+
+// GrantSystem is not needed here.
+func GrantSystem(string) error { return errors.New("not supported on this system") }
+
 // RequireAdmin is not needed where Blackbox cannot be installed.
 func RequireAdmin() error { return errLinux }
 
