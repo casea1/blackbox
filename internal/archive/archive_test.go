@@ -41,7 +41,7 @@ func TestDue(t *testing.T) {
 	}
 }
 
-func TestCreateVerifyFileAndPrune(t *testing.T) {
+func TestCreateVerifyAndFile(t *testing.T) {
 	dir := t.TempDir()
 	logs := filepath.Join(dir, "log")
 	os.MkdirAll(logs, 0o755)
@@ -100,14 +100,6 @@ func TestCreateVerifyFileAndPrune(t *testing.T) {
 	list, _ := List(reports)
 	if len(list) != 1 || list[0].Host != "ubu" || !list[0].To.Equal(to) {
 		t.Fatalf("list: %+v", list)
-	}
-	Prune(reports, 30, to.AddDate(0, 0, 10))
-	if list, _ := List(reports); len(list) != 1 {
-		t.Error("pruned too soon")
-	}
-	Prune(reports, 30, to.AddDate(0, 0, 31))
-	if list, _ := List(reports); len(list) != 0 {
-		t.Error("not pruned")
 	}
 }
 

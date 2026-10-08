@@ -577,6 +577,11 @@ func (r *Report) healthPage() *HealthPage {
 			Explain: l.Text(r.stamp),
 			Fix:     "check the file set aside (blackbox status names it): a damaged disk or someone changing Blackbox's folder. Keep it with the report if it is sound."})
 	}
+	for _, o := range r.Overdue {
+		hp.Gaps = append(hp.Gaps, GapCard{Title: "Original logs never put in a report", Level: "bad", Systems: []string{o.Host},
+			Explain: o.Text(r.stamp),
+			Fix:     "find why no scheduled report took them (blackbox status, blackbox.log), and keep them with your records until your records schedule lets them go; Blackbox never deletes them."})
+	}
 	for _, a := range r.Archives {
 		var lost, changed []string
 		var missing []string

@@ -361,8 +361,12 @@ blackbox uninstall            # remove the task/timer; reports are kept
 - **Integrity.** A SHA-256 manifest for every run (AU-9). Signing reports with
   a site key is an optional later addition.
 - **Retention.** A configurable retention period that defaults to **keep
-  everything**. It never deletes anything automatically unless configured to
-  (AU-11).
+  everything**. It never deletes anything automatically unless configured to.
+  The period is the site's records schedule (NARA GRS or the DoD component's
+  records schedule, set with the ISSM), not AU-11, and a legal hold overrides
+  it. Reports are aged by their period end, not their folder's date, and
+  original logs not yet in a report are never deleted: past the period they
+  are pointed out instead (RET1).
 - **Supply chain.**
   - Dependencies kept to a minimum and vendored into the repository, so the
     code builds fully offline.

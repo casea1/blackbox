@@ -1326,7 +1326,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		Archives:     logs, ArchivesKept: advance, Waiting: waiting, OwnRuns: ownRuns, PackFailing: packFailing(st), LeftOut: leftLogs,
 		Systems: systemsFor(st, prevEnd, a.Cfg.Inbox != ""), Collector: a.Cfg.Inbox != "",
 		LANWarnings:   append(lanWarnings(st, prevGen, generated, a.loc()), a.inboxWarnings()...),
-		RetentionDays: a.Cfg.RetentionDays,
+		RetentionDays: a.Cfg.RetentionDays, Overdue: a.overdueLogs(generated, notOverdue(usedLogs, leftLogs)),
 	})
 	if advance {
 		r.Removed = st.State.RemovedReports
@@ -1379,7 +1379,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		if err := st.Prune(a.Cfg.RetentionDays, generated); err != nil {
 			a.logf("pruning old data: %v", err)
 		}
-		removed, err := pruneReports(a.ReportsDir(), a.Cfg.RetentionDays, generated)
+		removed, err := pruneReports(a.ReportsDir(), a.Cfg.RetentionDays, generated, st.State.Reports)
 		if err != nil {
 			a.logf("pruning old reports: %v", err)
 		}
@@ -1389,11 +1389,8 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		if err := st.Save(); err != nil {
 			a.logf("noting removed reports: %v", err)
 		}
-		for _, d := range a.waitingLogsDirs() {
-			if err := archive.Prune(d, a.Cfg.RetentionDays, generated); err != nil {
-				a.logf("pruning old log archives: %v", err)
-			}
-		}
+		// Archives still waiting in archive_dir are never pruned: they are
+		// in no report yet, and may be the only copy (RET1).
 	}
 	a.refreshIndex(st)
 	return dir, nil
@@ -1587,35 +1584,6 @@ func DueWindowEnd(every string, at config.ReportAt, lastEnd, now time.Time, loc 
 		return b, true
 	}
 	return time.Time{}, false
-}
-
-func pruneReports(dir string, days int, now time.Time) ([]string, error) {
-	if days <= 0 {
-		return nil, nil
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	var removed []string
-	cut := now.AddDate(0, 0, -days)
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil || info.ModTime().After(cut) {
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(dir, e.Name(), "manifest.sha256")); err != nil {
-			continue // only remove folders Blackbox created
-		}
-		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
-			return removed, err
-		}
-		removed = append(removed, e.Name())
-	}
-	return removed, nil
 }
 
 // Inputs are exported log files for a one-off report.
