@@ -66,7 +66,8 @@ Usage:
   blackbox uninstall             Remove the scheduled task (keeps reports and data)
   blackbox version               Show the version
 
-Run "blackbox <command> -h" for a command's options.
+Run "blackbox <command> -h" for a command's options. Options may go anywhere after
+the command (blackbox gaps accept PC 1-5 "why" --config FILE); "--" ends them.
 `
 
 func main() {
@@ -654,7 +655,8 @@ func cmdSystems(args []string) error {
 	fs := flag.NewFlagSet("systems", flag.ContinueOnError)
 	var c common
 	c.register(fs)
-	if err := fs.Parse(args); err != nil {
+	rest, err := parseAnywhere(fs, args)
+	if err != nil {
 		return err
 	}
 	cfg, err := c.load()
@@ -662,8 +664,7 @@ func cmdSystems(args []string) error {
 		return err
 	}
 	a := newApp(cfg, nil)
-	rest := fs.Args()
-	switch {
+		switch {
 	case len(rest) == 0:
 		return a.Systems(os.Stdout)
 	case len(rest) == 2 && (rest[0] == "remove" || rest[0] == "forget"):
@@ -702,7 +703,8 @@ func cmdInbox(args []string) error {
 	var c common
 	c.register(fs)
 	host := fs.String("host", "", "the computer that delivers there (default: the first one that does)")
-	if err := fs.Parse(args); err != nil {
+	rest, err := parseAnywhere(fs, args)
+	if err != nil {
 		return err
 	}
 	cfg, err := c.load()
@@ -710,8 +712,7 @@ func cmdInbox(args []string) error {
 		return err
 	}
 	a := newApp(cfg, nil)
-	rest := fs.Args()
-	switch {
+		switch {
 	case len(rest) == 0:
 		return a.InboxFolders(os.Stdout)
 	case len(rest) == 3 && rest[0] == "add":
@@ -733,7 +734,8 @@ func cmdGaps(args []string) error {
 	fs := flag.NewFlagSet("gaps", flag.ContinueOnError)
 	var c common
 	c.register(fs)
-	if err := fs.Parse(args); err != nil {
+	rest, err := parseAnywhere(fs, args)
+	if err != nil {
 		return err
 	}
 	cfg, err := c.load()
@@ -741,8 +743,7 @@ func cmdGaps(args []string) error {
 		return err
 	}
 	a := newApp(cfg, nil)
-	rest := fs.Args()
-	switch {
+		switch {
 	case len(rest) == 0:
 		return a.Gaps(os.Stdout)
 	case len(rest) >= 4 && rest[0] == "accept":
@@ -769,7 +770,8 @@ func cmdReports(args []string) error {
 	fs := flag.NewFlagSet("reports", flag.ContinueOnError)
 	var c common
 	c.register(fs)
-	if err := fs.Parse(args); err != nil {
+	rest, err := parseAnywhere(fs, args)
+	if err != nil {
 		return err
 	}
 	cfg, err := c.load()
@@ -777,8 +779,7 @@ func cmdReports(args []string) error {
 		return err
 	}
 	a := newApp(cfg, nil)
-	rest := fs.Args()
-	switch {
+		switch {
 	case len(rest) == 0:
 		err := a.Reports(os.Stdout)
 		var na *app.NeedsAttention
@@ -992,14 +993,15 @@ func printChecks(rs []check.Result, all bool) {
 
 func cmdVerify(args []string) error {
 	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
-	if err := fs.Parse(args); err != nil {
+	dirs, err := parseAnywhere(fs, args)
+	if err != nil {
 		return err
 	}
-	if fs.NArg() == 0 {
+	if len(dirs) == 0 {
 		return errors.New("usage: blackbox verify <report folder> [more folders…]")
 	}
 	bad := false
-	for _, dir := range fs.Args() {
+	for _, dir := range dirs {
 		problems, err := report.Verify(dir)
 		switch {
 		case err != nil:

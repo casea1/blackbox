@@ -2,8 +2,11 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"io/fs"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -142,5 +145,91 @@ func TestKeepSentZero(t *testing.T) {
 	}
 	if s := savedText("keep_sent_days", "14"); strings.Contains(s, "cannot be sent again") {
 		t.Errorf("%s", s)
+	}
+}
+
+// cliFlags is a flag set like the commands': --config, a string flag and a
+// bool flag.
+func cliFlags() (*flag.FlagSet, *common, *string, *bool) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var c common
+	c.register(fs)
+	c.configPath = ""
+	host := fs.String("host", "", "")
+	yes := fs.Bool("yes", false, "")
+	return fs, &c, host, yes
+}
+
+// CLI2: flags are read wherever they are after the command: before,
+// between and after the subcommand's arguments.
+func TestParseAnywhere(t *testing.T) {
+	cases := []struct {
+		args []string
+		pos  []string
+		cfg  string
+		host string
+		yes  bool
+	}{
+		{[]string{"--config", "f", "accept", "PC", "1-5", "why"}, []string{"accept", "PC", "1-5", "why"}, "f", "", false},
+		{[]string{"accept", "PC", "--config", "f", "1-5", "why"}, []string{"accept", "PC", "1-5", "why"}, "f", "", false},
+		{[]string{"accept", "PC", "1-5", "why", "--config=f", "--yes"}, []string{"accept", "PC", "1-5", "why"}, "f", "", true},
+		{[]string{"add", "NAME", "ACCOUNT", "--host", "COMPUTER"}, []string{"add", "NAME", "ACCOUNT"}, "", "COMPUTER", false},
+		{[]string{"-yes", "add", "-host=PC", "NAME"}, []string{"add", "NAME"}, "", "PC", true},
+		{[]string{"rename", "OLD", "--yes", "NEW"}, []string{"rename", "OLD", "NEW"}, "", "", true},
+		// A quoted reason is one argument and keeps its spaces.
+		{[]string{"accept", "PC", "1-5", "network was down for the move", "--config", "f"}, []string{"accept", "PC", "1-5", "network was down for the move"}, "f", "", false},
+		// "--" ends the flags, so a reason may start with a dash.
+		{[]string{"accept", "r1", "--config", "f", "--", "--yes", "-see ticket 4"}, []string{"accept", "r1", "--yes", "-see ticket 4"}, "f", "", false},
+		// "--" as a flag's value is not the end of flags.
+		{[]string{"add", "--host", "--", "N", "--yes"}, []string{"add", "N"}, "", "--", true},
+		{nil, nil, "", "", false},
+	}
+	for _, tc := range cases {
+		fs, c, host, yes := cliFlags()
+		pos, err := parseAnywhere(fs, tc.args)
+		if err != nil {
+			t.Errorf("%q: %v", tc.args, err)
+			continue
+		}
+		if !reflect.DeepEqual(pos, tc.pos) || c.configPath != tc.cfg || *host != tc.host || *yes != tc.yes {
+			t.Errorf("%q: positional %q config %q host %q yes %v", tc.args, pos, c.configPath, *host, *yes)
+		}
+	}
+}
+
+// CLI2: an unknown flag anywhere is an error, and -h asks for help.
+func TestParseAnywhereErrors(t *testing.T) {
+	for _, args := range [][]string{{"accept", "PC", "--nope"}, {"--nope", "accept"}, {"accept", "1-5", "-x", "why"}} {
+		fs, _, _, _ := cliFlags()
+		if _, err := parseAnywhere(fs, args); err == nil || !strings.Contains(err.Error(), "not defined") {
+			t.Errorf("%q: %v", args, err)
+		}
+	}
+	fs, _, _, _ := cliFlags()
+	if _, err := parseAnywhere(fs, []string{"accept", "-h"}); !errors.Is(err, flag.ErrHelp) {
+		t.Errorf("-h: %v", err)
+	}
+	fs, _, _, _ = cliFlags()
+	if _, err := parseAnywhere(fs, []string{"accept", "--config"}); err == nil {
+		t.Error("--config without a value accepted")
+	}
+}
+
+// CLI2: the commands themselves read flags after the subcommand: the
+// settings file named after the arguments is the one used, and an unknown
+// flag there is refused.
+func TestCommandsFlagsAfterSubcommand(t *testing.T) {
+	missing := t.TempDir() + "/no-such.conf"
+	for name, run := range map[string]func([]string) error{
+		"systems": cmdSystems, "gaps": cmdGaps, "reports": cmdReports, "inbox": cmdInbox,
+	} {
+		err := run([]string{"accept", "PC", "--config", missing, "1-5", "why"})
+		if err == nil || !strings.Contains(err.Error(), "no-such.conf") {
+			t.Errorf("%s: --config after the subcommand not used: %v", name, err)
+		}
+		if err := run([]string{"accept", "PC", "--nope"}); err == nil || !strings.Contains(err.Error(), "not defined") {
+			t.Errorf("%s: unknown flag: %v", name, err)
+		}
 	}
 }
