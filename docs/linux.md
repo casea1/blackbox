@@ -152,6 +152,20 @@ Installing, upgrading and removing Blackbox are recorded the same way. A
 "no", failed, or the value was already set) is shown as "tried to change
 … (not applied)".
 
+**A refused delete is not a removal** (DET1). A command that deletes
+Blackbox's files (`rm` of something under `/etc/blackbox`,
+`/var/lib/blackbox` or `/usr/local/bin/blackbox`) is High, "deleted
+Blackbox's files", when it ran. When the audit records of that program
+(or of the one sudo started for it) show the kernel refusing the delete
+(`success=no` with a non-zero `exit=`, such as `-13`, permission denied)
+and none shows a file deleted, the row says "tried to delete Blackbox's
+files (refused)", Medium, with each refused file under "Refused" in its
+details; the refused-access rows of the same delete are folded into it.
+It is not counted as a removal: no "Blackbox's files removed" detection,
+and not a step of "Possible covering of tracks". Any failed change to a
+file under Blackbox's folders is recorded for this, whatever the error;
+elsewhere only a refusal (EACCES or EPERM) is a row.
+
 **Changes with no one logged on.** Configuration management (Ansible or
 Salt run through `systemd-run`) has no login session, so its changes name
 no one. Changes to PAM, `/etc/security`, the SSH server settings,

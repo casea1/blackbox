@@ -346,6 +346,7 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	events = mergeAdminLogons(events)
 	events = sshLogonPairs(events)
 	events = sshSources(events)
+	events = refusedDeletes(events)
 	events = r.dedupe(events)
 	events = foldClearCommands(events)
 	events = foldPolicyCommands(events)
@@ -729,6 +730,7 @@ var actionLabels = map[string][2]string{
 	"malware_action":          {"anti-malware action", "anti-malware actions"},
 	"eventlog_error":          {"event log error", "event log errors"},
 	"sudo_denied":             {"refused sudo command", "refused sudo commands"},
+	refusedRemove:             {"refused attempt to delete Blackbox's files", "refused attempts to delete Blackbox's files"},
 	"removable_mounted":       {"removable disk opened (mounted)", "removable disks opened (mounted)"},
 	"module_loaded":           {"kernel module loaded", "kernel modules loaded"},
 	"module_unloaded":         {"kernel module unloaded", "kernel modules unloaded"},

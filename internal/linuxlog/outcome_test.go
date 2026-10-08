@@ -48,3 +48,36 @@ func TestAuditOutcome(t *testing.T) {
 		t.Errorf("sudoers change: action %q, outcome %q", action, outcome)
 	}
 }
+
+// DET1: a failed change to Blackbox's own files is a row whatever the
+// error (here ENOENT), so the report can tell a delete that did nothing;
+// elsewhere only a refusal (EACCES, EPERM) is.
+func TestFailedChangeToBlackboxFiles(t *testing.T) {
+	tr := NewTranslator("ub", Users{1000: "claude"})
+	run := func(file, exit string) *string {
+		lines := []string{
+			`type=SYSCALL msg=audit(1790730000.005:15): arch=c000003e syscall=263 success=no exit=` + exit + ` a0=ffffff9c a1=55d1c3a4b4f0 a2=0 a3=0 items=2 ppid=5100 pid=5101 auid=1000 uid=0 gid=0 euid=0 tty=pts0 ses=3 comm="rm" exe="/usr/bin/rm" key="blackbox"`,
+			`type=PATH msg=audit(1790730000.005:15): item=0 name="` + file + `" inode=12 dev=08:01 mode=0100644 ouid=0 ogid=0 rdev=00:00 nametype=UNKNOWN`,
+			`type=EOE msg=audit(1790730000.005:15):`,
+		}
+		var got *string
+		ParseAuditStream(strings.NewReader(strings.Join(lines, "\n")+"\n"), func(ev *Event) error {
+			if e := tr.Audit(ev); e != nil {
+				s := e.Action + " " + string(e.Severity) + " " + e.Outcome + ": " + e.Summary
+				got = &s
+			}
+			return nil
+		})
+		return got
+	}
+	if got := run("/var/lib/blackbox/spool/a.json", "-2"); got == nil ||
+		*got != "file_change_failed low failure: claude tried to change /var/lib/blackbox/spool/a.json, and it failed (-2) (using rm)." {
+		t.Errorf("Blackbox file, ENOENT: %v", got)
+	}
+	if got := run("/home/claude/x", "-2"); got != nil {
+		t.Errorf("another file, ENOENT: %s", *got)
+	}
+	if got := run("/home/claude/x", "-13"); got == nil || !strings.HasPrefix(*got, "file_access_denied medium failure: claude was refused access to /home/claude/x") {
+		t.Errorf("another file, EACCES: %v", got)
+	}
+}

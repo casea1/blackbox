@@ -92,22 +92,31 @@ func usingProg(prog string) string {
 }
 
 // refusedAccess is a failed system call. Only a file a person was refused
-// (EACCES or EPERM, the STIG's perm_access rules) is reported.
+// (EACCES or EPERM, the STIG's perm_access rules) is reported, and any
+// failed change to Blackbox's own files (its rules record every one): the
+// report shows a delete of them that failed as an attempt, not a removal
+// (DET1).
 func (t *Translator) refusedAccess(r *Record, actor, sc string, paths []string, exe, cmd string) *event.Event {
 	if actor == "" || r.Get("key") == "" {
 		return nil
 	}
-	switch strings.ToUpper(firstNonEmpty(r.Fields["EXIT"], r.Get("exit"))) {
-	case "-13", "-1", "EACCES", "EPERM", "EACCES(PERMISSION DENIED)", "EPERM(OPERATION NOT PERMITTED)":
-	default:
-		return nil
-	}
+	exit := firstNonEmpty(r.Fields["EXIT"], r.Get("exit"))
 	target := firstNonEmpty(strings.Join(paths, ", "), "a file")
 	e := &event.Event{Category: event.CatOther, Severity: event.SevMedium, Action: "file_access_denied", User: actor, Target: target,
 		Process: exe, Command: cmd, Outcome: "failure", DedupeKey: "denied|" + actor + "|" + target,
 		Summary: fmt.Sprintf("%s was refused access to %s%s.", actor, target, usingProg(base(exe)))}
+	switch strings.ToUpper(exit) {
+	case "-13", "-1", "EACCES", "EPERM", "EACCES(PERMISSION DENIED)", "EPERM(OPERATION NOT PERMITTED)":
+	default:
+		if exit == "" || exit == "0" || !event.BlackboxPath(target) {
+			return nil
+		}
+		e.Action, e.Severity, e.DedupeKey = "file_change_failed", event.SevLow, "failed|"+actor+"|"+target
+		e.Summary = fmt.Sprintf("%s tried to change %s, and it failed (%s)%s.", actor, target, exit, usingProg(base(exe)))
+	}
 	e.AddDetail("File", target)
 	e.AddDetail("System call", sc)
+	e.AddDetail("Result", exit)
 	e.AddDetail("Audit rule", r.Get("key"))
 	return e
 }
