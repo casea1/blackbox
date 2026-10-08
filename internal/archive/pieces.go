@@ -161,7 +161,7 @@ func SavePiece(dir string, info Info, export ExportFunc, skip func(string) bool)
 		return Piece{}, fmt.Errorf("no logs could be exported: %s", strings.Join(notes, "; "))
 	}
 	info.Kind = kind
-	info.From, info.To, info.Created = info.From.UTC(), info.To.UTC(), info.Created.UTC()
+	info.inUTC() // TZ1b: piece.json in UTC throughout, like archive.json
 	info.Notes = append(info.Notes, notes...)
 	info.Files = nil
 	for _, s := range sources {

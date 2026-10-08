@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -284,6 +285,56 @@ func TestLocaleMetaKeptWithEvtx(t *testing.T) {
 	} {
 		if got[name] != body {
 			t.Errorf("%s = %q (have %v)", name, got[name], got)
+		}
+	}
+}
+
+// TZ1b: every time in piece.json is UTC ("Z"), the gaps (given and from
+// the export) and each log's coverage included, and the archive packed
+// from the pieces says "Z" too.
+func TestPieceJSONTimesUTC(t *testing.T) {
+	pdir := filepath.Join(t.TempDir(), "pieces")
+	la := time.FixedZone("PDT", -7*3600)
+	from := time.Date(2026, 10, 7, 20, 51, 49, 0, la)
+	to := from.Add(time.Hour)
+	exp := func(dir string, f, t time.Time, skip func(string) bool) ([]Source, []string, []Gap) {
+		src, notes, _ := fakeExport(false)(dir, f, t, skip)
+		return src, notes, []Gap{{Source: "System", From: f, To: f.Add(time.Minute)}}
+	}
+	info := Info{Host: "ubu-ws-01", From: from, To: to, Created: to,
+		Gaps: []Gap{{Source: "Security", From: from, To: from.Add(time.Minute)}},
+		Logs: []LogCover{{Source: "Security", From: from, To: to}}}
+	p, err := SavePiece(pdir, info, exp, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Gaps[0].From.Location() != la {
+		t.Error("SavePiece changed the caller's gaps")
+	}
+	b, err := os.ReadFile(filepath.Join(p.Dir, PieceInfo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stamps := regexp.MustCompile(`"\d{4}-\d\d-\d\dT[^"]*"`).FindAllString(string(b), -1)
+	if len(stamps) != 9 {
+		t.Errorf("%d times in:\n%s", len(stamps), b)
+	}
+	for _, s := range stamps {
+		if !strings.HasSuffix(s, `Z"`) {
+			t.Errorf("%s is not UTC:\n%s", s, b)
+		}
+	}
+	pieces, err := Pieces(pdir)
+	if err != nil || len(pieces) != 1 {
+		t.Fatalf("pieces: %v %v", pieces, err)
+	}
+	packed, err := Pack(filepath.Join(t.TempDir(), "a.zip"), "ubu-ws-01", "linux", pieces, to.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range packed.Gaps {
+		if g.From.Location() != time.UTC || g.To.Location() != time.UTC {
+			t.Errorf("archive gap not in UTC: %+v", g)
 		}
 	}
 }
