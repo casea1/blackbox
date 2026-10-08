@@ -115,7 +115,16 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 	}
 	for _, e := range entries {
 		n := e.Name()
-		if e.IsDir() || strings.HasPrefix(n, ".") {
+		if e.IsDir() {
+			continue
+		}
+		if !isDelivery(n) {
+			// Not something a sender delivers (SEC1f): set aside once it
+			// has not changed for settle, so nothing fills the inbox unseen.
+			// One already gone was set aside with the file it signs.
+			if fi, err := os.Lstat(filepath.Join(inbox, n)); err == nil && !writing(fi, now) {
+				rej(n, "it is not a Blackbox delivery (a batch, log archive, SCAP result or signature), and senders put nothing else in the inbox")
+			}
 			continue
 		}
 		switch {
@@ -200,6 +209,18 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 				trusted = false // not shown to be its sender's: no gap is noted
 			}
 		}
+		// An unsigned copy of a batch already imported (signed) is the
+		// same batch delivered again, such as a copy from the sender's
+		// outbox\sent: nothing new in it (SEC1f). One that is not an
+		// exact copy goes on to be judged, and refused if its sender signs.
+		if err == nil && trusted && pub == nil && importedAlready(st, b) {
+			logf("inbox: %s is an unsigned copy of batch %d from %s, already imported; removed", it.name, b.Seq, b.Sender)
+			if err := os.Remove(path); err != nil {
+				logf("inbox: could not remove %s: %v (it will be skipped as a duplicate)", it.name, err)
+			}
+			res.Already++
+			continue
+		}
 		if err == nil {
 			v, jerr := judge(st, delivery{host: b.Sender, id: b.SenderID, pub: pub, former: b.Former}, dirs, now)
 			var h *heldError
@@ -257,6 +278,36 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 		st.Save()
 	}
 	return res, nil
+}
+
+// importedAlready reports whether b is exactly a batch already imported
+// from its sender ID: the same number, not missing, with the same content
+// hash (which Decode checked against the content).
+func importedAlready(st *store.Store, b *Batch) bool {
+	snd := st.State.Senders[b.SenderID]
+	if snd == nil || b.Sum == "" || b.Seq > snd.LastSeq || inGap(snd.Missing, b.Seq) {
+		return false
+	}
+	return snd.Sums[b.Seq] == b.Sum
+}
+
+// isDelivery reports whether a file in the inbox is something a sender
+// delivers, or the inbox's marker: a batch, log archive, SCAP result or
+// the signature of one. A 0.24 sender writes each under its final name
+// (DESIGN1), so a hidden or temporary name is not one either. Anything
+// else is set aside (SEC1f).
+func isDelivery(n string) bool {
+	switch {
+	case n == MarkerFile:
+		return true
+	case strings.HasSuffix(n, sigExt):
+		return isDelivery(strings.TrimSuffix(n, sigExt))
+	case strings.HasPrefix(n, "."):
+		return false
+	}
+	return strings.HasSuffix(n, batchExt) ||
+		strings.HasPrefix(n, archivePrefix) && strings.HasSuffix(n, archiveExt) ||
+		strings.HasPrefix(n, scapPrefix) && strings.HasSuffix(n, scapExt)
 }
 
 // noteSigned records whether a sender ID's latest batch was signed, and
@@ -530,8 +581,15 @@ func Rejected(inbox string) []string {
 	var out []string
 	for _, e := range entries {
 		n := e.Name()
-		if e.IsDir() || strings.HasSuffix(n, whyExt) || strings.HasSuffix(n, sigExt) || strings.HasPrefix(n, ".") {
+		if e.IsDir() || strings.HasSuffix(n, whyExt) {
 			continue
+		}
+		// A signature set aside with its file is listed with it; one set
+		// aside alone (SEC1f) is listed itself.
+		if f, ok := strings.CutSuffix(n, sigExt); ok {
+			if _, err := os.Lstat(filepath.Join(inbox, rejectedDir, f)); err == nil {
+				continue
+			}
 		}
 		why := ""
 		if b, err := os.ReadFile(filepath.Join(inbox, rejectedDir, n+whyExt)); err == nil {

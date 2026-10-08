@@ -735,6 +735,13 @@ func (a *App) openWait(wait time.Duration) (*store.Store, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	// Read again under the lock (SEC1e): the run waited for (setup's own
+	// collection, started by the upgrade) may have imported and saved
+	// since, and saving the copy read above would undo it.
+	if err := st.Reload(); err != nil {
+		unlock()
+		return nil, nil, err
+	}
 	return st, unlock, nil
 }
 

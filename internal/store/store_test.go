@@ -101,3 +101,28 @@ func TestCheckRecordInventory(t *testing.T) {
 		t.Errorf("latest checks: %+v", got)
 	}
 }
+
+// SEC1e: Reload reads what another run saved since the store was opened,
+// so a caller that waited for the lock does not save an older copy.
+func TestReloadReadsLaterSave(t *testing.T) {
+	dir := t.TempDir()
+	waiter, _ := Open(dir)
+	run, _ := Open(dir)
+	run.State.Senders["id"] = &SenderState{Host: "ubuntu-server", LastSeq: 472}
+	if err := run.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if waiter.State.Senders["id"] != nil {
+		t.Fatal("the waiter's copy changed by itself")
+	}
+	if err := waiter.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if s := waiter.State.Senders["id"]; s == nil || s.LastSeq != 472 || waiter.State.Bookmarks == nil {
+		t.Errorf("after reload: %+v", waiter.State)
+	}
+	os.WriteFile(filepath.Join(dir, "state.json"), []byte("{"), 0o640)
+	if err := waiter.Reload(); err == nil {
+		t.Error("a damaged state.json was read")
+	}
+}
