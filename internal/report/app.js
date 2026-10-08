@@ -344,15 +344,43 @@
       tidyHeads(list, '.grp2');
     });
   });
-  document.querySelectorAll('[data-detsev] span').forEach(function (chip) {
-    chip.addEventListener('click', function () {
-      var sev = chip.getAttribute('data-sev');
-      chip.parentNode.querySelectorAll('span').forEach(function (c) { c.classList.toggle('on', c === chip); });
-      var list = chip.closest('.dlist');
-      list.querySelectorAll('[data-pick]').forEach(function (a) { a.hidden = !!sev && !a.classList.contains(sev); });
-      tidyHeads(list, '.dayh');
+  // ---- Detections (UI-R1): severity, system, person and servers /
+  // workstations filter the list; a group heading counts what is left. If
+  // the detection shown is filtered out, the first one left is shown. ----
+  var detSev = '';
+  function detFilter() {
+    var view = document.querySelector('.view[data-view="detections"]'), list = view && view.querySelector('.dlist2');
+    if (!list) return;
+    var f = {};
+    view.querySelectorAll('[data-detf]').forEach(function (s) { f[s.getAttribute('data-detf')] = s.value; });
+    var n = 0, sel = null, first = null;
+    list.querySelectorAll('[data-pick]').forEach(function (a) {
+      var ok = (!detSev || a.getAttribute('data-sev') === detSev) && (!f.host || a.getAttribute('data-host') === f.host) &&
+        (!f.user || a.getAttribute('data-user') === f.user) && (!f.kind || a.getAttribute('data-kind') === f.kind);
+      a.hidden = !ok;
+      if (ok) { n++; if (!first) first = a; if (a.classList.contains('sel')) sel = a; }
+    });
+    list.querySelectorAll('[data-dethead]').forEach(function (h) {
+      var k = 0, el = h.nextElementSibling;
+      while (el && el.hasAttribute('data-pick')) { if (!el.hidden) k++; el = el.nextElementSibling; }
+      h.hidden = !k;
+      h.textContent = h.getAttribute('data-dethead') + ' · ' + k;
+    });
+    list.querySelector('[data-detnone]').hidden = n > 0;
+    if (!sel && first) {
+      var key = first.getAttribute('data-pick');
+      try { history.replaceState(null, '', '#detections/' + key); } catch (e) {}
+      showPick(view, key);
+    }
+  }
+  document.querySelectorAll('[data-detsev] button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      detSev = b.getAttribute('data-sev');
+      b.parentNode.querySelectorAll('button').forEach(function (c) { c.classList.toggle('on', c === b); c.setAttribute('aria-pressed', c === b ? 'true' : 'false'); });
+      detFilter();
     });
   });
+  document.querySelectorAll('[data-detf]').forEach(function (s) { s.addEventListener('change', detFilter); });
 
   // ---- Event tables ----
   // Rows are kept as compact arrays: [index, time, host, sev, action, user,
@@ -887,13 +915,15 @@
     var f = meta.pagecsv && meta.pagecsv[id];
     return f ? { label: f.label, file: f.file, rows: f.rows } : null;
   }
-  // Detections: the ones the severity filter shows.
+  // Detections: the ones the filters show (data-pos is the row in the
+  // detections file).
   BB.exportPage('detections', function () {
     var f = meta.pagecsv && meta.pagecsv.detections;
     if (!f) return null;
-    var on = document.querySelector('[data-detsev] .on'), sev = on ? on.getAttribute('data-sev') : '';
-    var rows = f.rows.filter(function (r, i) { return i === 0 || !sev || r[0] === sev; });
-    return { label: f.label, file: f.file + (sev ? '-' + sev : ''), rows: rows };
+    var keep = {}, all = true;
+    document.querySelectorAll('.dlist2 [data-pick]').forEach(function (a) { if (a.hidden) all = false; else keep[a.getAttribute('data-pos')] = 1; });
+    var rows = f.rows.filter(function (r, i) { return i === 0 || all || keep[i]; });
+    return { label: 'Detections shown', file: f.file + (all ? '' : '-filtered'), rows: rows };
   });
   function exportPage() {
     var x = pageExport();
