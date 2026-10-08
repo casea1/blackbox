@@ -39,15 +39,15 @@ func EvaluateAuditdActions(conf map[string]string) []Result {
 		}
 	}
 	// What the STIGs accept (ALMA-09-054140/054030, RHEL-09-653025/653020).
-	notStop := in("syslog", "single", "halt")
+	stigAction := in("syslog", "single", "halt")
 	const conf_ = "/etc/audit/auditd.conf"
 	act("space_left_action", "email, exec or syslog (someone is told)", in("email", "exec", "syslog", "single", "halt"),
 		"Audit & System Integrity: nobody is warned before the audit disk fills", "set space_left_action = email in "+conf_+", then restart auditd")
 	act("admin_space_left_action", "single or halt", in("single", "halt"),
 		"Audit & System Integrity: events stop being recorded when the disk is nearly full", "set admin_space_left_action = single in "+conf_+", then restart auditd")
-	act("disk_full_action", "halt, single or syslog (not SUSPEND or IGNORE)", notStop,
+	act("disk_full_action", "halt, single or syslog (not SUSPEND or IGNORE)", stigAction,
 		"Audit & System Integrity: auditing silently stops when the disk is full", "set disk_full_action = halt (or single) in "+conf_+", then restart auditd")
-	act("disk_error_action", "halt, single or syslog (not SUSPEND or IGNORE)", notStop,
+	act("disk_error_action", "halt, single or syslog (not SUSPEND or IGNORE)", stigAction,
 		"Audit & System Integrity: auditing silently stops on a disk error", "set disk_error_action = halt (or syslog) in "+conf_+", then restart auditd")
 	mail := Result{Area: "auditd settings", Item: "action_mail_acct", Have: orNotSet(conf["action_mail_acct"]), Want: "root, or an administrator's mailbox"}
 	if conf["action_mail_acct"] != "" || conf["space_left_action"] == "" {
