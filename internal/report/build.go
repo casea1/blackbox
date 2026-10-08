@@ -82,6 +82,10 @@ type Options struct {
 	// PackFailing is set while this computer's exported original logs
 	// cannot be packed into an archive (AR5).
 	PackFailing *PackFailing
+	// LeftOut are daily archives of original logs that failed their
+	// check and were set aside instead of going into a scheduled report
+	// (AR7): this one's, or, on a manual report, recent ones.
+	LeftOut []LeftOutLogs
 
 	// CheckSets are the latest audit settings check of each computer.
 	CheckSets []CheckSet
@@ -394,11 +398,48 @@ func (f *PackFailing) Text(stamp func(time.Time) string) string {
 		f.Host, stamp(f.Since), strings.TrimRight(f.Reason, ". "))
 }
 
+// LeftOutLogs is a daily archive of Host's original logs set aside
+// because it failed its check, so its logs are not in Report (empty: this
+// report) (AR7).
+type LeftOutLogs struct {
+	Report   string
+	Host     string
+	From, To time.Time
+	Reason   string
+	SetAside string
+}
+
+// Text is the archive left out in one sentence.
+func (l LeftOutLogs) Text(stamp func(time.Time) string) string {
+	in := "this report"
+	if l.Report != "" {
+		in = "the scheduled report " + l.Report
+	}
+	return fmt.Sprintf("%s: the original logs for %s to %s are not in %s: their archive failed its check (%s). It was set aside in %s. The events are in the report; the original copy of them is only in that file.",
+		l.Host, stamp(l.From), stamp(l.To), in, strings.TrimRight(l.Reason, ". "), l.SetAside)
+}
+
+// leftOutHosts are the computers with original logs left out (AR7).
+func (r *Report) leftOutHosts() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, l := range r.LeftOut {
+		if k := strings.ToLower(l.Host); !seen[k] {
+			seen[k] = true
+			out = append(out, l.Host)
+		}
+	}
+	return out
+}
+
 // checkArchives notes the computers in this report with no archive of
 // their original logs for the period.
 func (r *Report) checkArchives() {
 	if f := r.PackFailing; f != nil {
 		r.Health.Warnings = append(r.Health.Warnings, "ORIGINAL LOGS NOT ARCHIVED: "+f.Text(r.stamp))
+	}
+	for _, l := range r.LeftOut {
+		r.Health.Warnings = append(r.Health.Warnings, "ORIGINAL LOGS NOT IN REPORT: "+l.Text(r.stamp))
 	}
 	if !r.ArchivesKept {
 		return
@@ -406,6 +447,9 @@ func (r *Report) checkArchives() {
 	have := map[string]bool{}
 	for _, a := range r.Archives {
 		have[strings.ToLower(a.Host)] = true
+	}
+	for _, h := range r.leftOutHosts() {
+		have[strings.ToLower(archiveName(h))] = true // said above
 	}
 	for _, h := range r.Hosts {
 		if !have[strings.ToLower(archiveName(h))] {

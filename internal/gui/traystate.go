@@ -149,6 +149,9 @@ func classify(h app.Health, err error, now time.Time) trayView {
 	if f := h.PackFailing; f != nil {
 		v.Items = append(v.Items, "Original logs not archived since "+when(f.Since, now))
 	}
+	for _, l := range h.LeftOut {
+		v.Items = append(v.Items, "Original logs of "+l.Host+" not in report "+l.Report)
+	}
 	if h.LowSpace != "" {
 		v.Items = append(v.Items, "Low disk space: "+h.LowSpace)
 	}
@@ -188,16 +191,17 @@ func plural(n int, word string) string {
 // trayMemory is what has already been notified, kept per person so each
 // notification is shown once.
 type trayMemory struct {
-	Seen    bool              `json:"seen"`    // the first look has been taken
-	Report  string            `json:"report"`  // latest scheduled report notified
-	Stopped string            `json:"stopped"` // outage notified (its last run)
-	Quiet   map[string]string `json:"quiet"`   // host → last run notified
-	Gaps    map[string]bool   `json:"gaps"`    // hosts whose settings didn't match
-	Version string            `json:"version"` // version last running
-	Lost    string            `json:"lost"`    // report period whose lost events were notified
-	Off     map[string]string `json:"off"`     // host → auditing-off reason notified
-	Missing string            `json:"missing"` // missing or changed scheduled reports notified
-	Packing string            `json:"packing"` // packing failure notified (its start)
+	Seen    bool              `json:"seen"`     // the first look has been taken
+	Report  string            `json:"report"`   // latest scheduled report notified
+	Stopped string            `json:"stopped"`  // outage notified (its last run)
+	Quiet   map[string]string `json:"quiet"`    // host → last run notified
+	Gaps    map[string]bool   `json:"gaps"`     // hosts whose settings didn't match
+	Version string            `json:"version"`  // version last running
+	Lost    string            `json:"lost"`     // report period whose lost events were notified
+	Off     map[string]string `json:"off"`      // host → auditing-off reason notified
+	Missing string            `json:"missing"`  // missing or changed scheduled reports notified
+	Packing string            `json:"packing"`  // packing failure notified (its start)
+	LeftOut string            `json:"left_out"` // archives left out of a report notified
 }
 
 // notice is one notification.
@@ -211,7 +215,7 @@ type notice struct {
 // look nothing is notified: only what changes after it.
 func notices(m trayMemory, h app.Health, v trayView, version string, now time.Time) ([]notice, trayMemory) {
 	var out []notice
-	next := trayMemory{Seen: true, Report: m.Report, Stopped: m.Stopped, Quiet: map[string]string{}, Gaps: map[string]bool{}, Version: version, Lost: m.Lost, Missing: m.Missing, Packing: m.Packing,
+	next := trayMemory{Seen: true, Report: m.Report, Stopped: m.Stopped, Quiet: map[string]string{}, Gaps: map[string]bool{}, Version: version, Lost: m.Lost, Missing: m.Missing, Packing: m.Packing, LeftOut: m.LeftOut,
 		Off: map[string]string{}}
 	first := !m.Seen
 
@@ -282,6 +286,18 @@ func notices(m trayMemory, h app.Health, v trayView, version string, now time.Ti
 			out = append(out, notice{Title: "Blackbox", Warn: true, Text: fmt.Sprintf("The original logs have not been archived since %s: %s. Run blackbox status for details.", when(f.Since, now), strings.TrimRight(f.Reason, ". "))})
 		}
 		next.Packing = key
+	}
+
+	// Original logs left out of a scheduled report: once per set (AR7).
+	var left []string
+	for _, l := range h.LeftOut {
+		left = append(left, l.Host+" in "+l.Report)
+	}
+	if key := strings.Join(left, ", "); key != m.LeftOut {
+		if key != "" && !first {
+			out = append(out, notice{Title: "Blackbox", Warn: true, Text: "Original logs left out of a report, their archive failed its check: " + key + ". Run blackbox status for details."})
+		}
+		next.LeftOut = key
 	}
 
 	// Scheduled reports deleted, moved or changed: once per set.

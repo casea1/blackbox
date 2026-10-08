@@ -83,6 +83,10 @@ type State struct {
 	// PackFailing is set while packing the exports fails: status says so
 	// and exits 4, and reports show the reason (AR5).
 	PackFailing *PackFailure `json:"pack_failing,omitempty"`
+	// LeftOut are daily archives of original logs that failed their check
+	// at a scheduled report and were set aside, not put in it (AR7):
+	// status says so, and exits 4, for logGapsKept.
+	LeftOut []LeftOutLogs `json:"left_out,omitempty"`
 
 	// LAN: sending to a collector, receiving from other systems, and the
 	// systems seen (see lan.go).
@@ -554,6 +558,18 @@ type LogGap struct {
 	// Reason is set when the export was lost or unreadable before it
 	// was packed, rather than overwritten in the log (AR5).
 	Reason string `json:"reason,omitempty"`
+}
+
+// LeftOutLogs is a daily archive of original logs left out of a
+// scheduled report because it failed its check (AR7).
+type LeftOutLogs struct {
+	Report   string    `json:"report"` // the report's folder name
+	Host     string    `json:"host"`
+	From     time.Time `json:"from"`
+	To       time.Time `json:"to"`
+	Reason   string    `json:"reason"`
+	SetAside string    `json:"set_aside"` // where the archive was moved
+	Noted    time.Time `json:"noted"`
 }
 
 // PackFailure is set while the exported original logs cannot be packed

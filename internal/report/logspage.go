@@ -41,7 +41,7 @@ type LogsPage struct {
 	Waiting string
 	// Failing says the original logs on this computer could not be
 	// archived, and why (AR5).
-	Failing string
+	Failing []string
 }
 
 // WaitingLogs is what of the original logs waits in archive_dir for the
@@ -82,7 +82,10 @@ type LogGroup struct {
 func (r *Report) logsPage() *LogsPage {
 	lp := &LogsPage{Kept: r.ArchivesKept || len(r.Archives) > 0}
 	if f := r.PackFailing; f != nil {
-		lp.Failing = f.Text(r.stamp)
+		lp.Failing = append(lp.Failing, f.Text(r.stamp))
+	}
+	for _, l := range r.LeftOut {
+		lp.Failing = append(lp.Failing, l.Text(r.stamp))
 	}
 	if r.Interim && len(r.Archives) == 0 {
 		lp.Manual, lp.Waiting = true, r.waitingText()
@@ -333,6 +336,12 @@ func (r *Report) logsPage() *LogsPage {
 		{Icon: "file-text", Label: "Total size", Value: humanBytes(total), Note: "compressed"},
 		{Icon: "fingerprint", Label: "Hashes verified", Value: fmt.Sprintf("%d / %d", verified, n), Note: "SHA-256 match", Level: lvl(verified < n, "bad")},
 		{Icon: "clock-alert", Label: "Missing", Value: commas(len(r.NoArchive)), Note: strings.Join(missingWho, ", "), Level: lvl(len(r.NoArchive) > 0, "bad")},
+	}
+	// Archives set aside count as missing (AR7).
+	if left := r.leftOutHosts(); len(left) > 0 && !r.Interim {
+		missing := len(r.NoArchive) + len(r.LeftOut)
+		lp.Stats[3] = EventCard{Icon: "clock-alert", Label: "Missing", Value: commas(missing),
+			Note: strings.Join(append(missingWho, plural(len(r.LeftOut), "day")+" set aside: "+strings.Join(left, ", ")), ", "), Level: "bad"}
 	}
 
 	// Grouped for the O3 list.
