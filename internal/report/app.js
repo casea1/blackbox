@@ -67,6 +67,24 @@
     var d = new Date(Date.UTC(+day.slice(0, 4), +day.slice(4, 6) - 1, +day.slice(6, 8)));
     return DAYS[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()];
   }
+  // CSV: a field starting with = + - @ (or a tab or return) is a formula to
+  // a spreadsheet, so a user name like =HYPERLINK(…) must stay text
+  // (csvSafe, as exports.go does); toCSV quotes and joins the rows.
+  function csvSafe(v) {
+    var s = String(v == null ? '' : v);
+    return /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
+  }
+  function toCSV(rows) {
+    return rows.map(function (r) {
+      return r.map(function (v) { var s = String(v == null ? '' : v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(',');
+    }).join('\r\n') + '\r\n';
+  }
+  function save(name, text) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + text], { type: 'text/csv' }));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  }
+  var stamp = (document.title.match(/\d{1,2} \w{3} \d{4}$/) || [''])[0].replace(/ /g, '-');
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
   }
@@ -134,17 +152,29 @@
     if (t) { t.flag = ''; a.parentNode.hidden = true; t.filter(); }
   });
 
-  // ---- Sidebar groups (UX9) ----
-  function fold(name, open) {
-    var t = document.querySelector('[data-tog="' + name + '"]'), f = document.querySelector('[data-fold="' + name + '"]');
-    if (!t || !f) return;
-    t.classList.toggle('open', open);
-    f.classList.toggle('shut', !open);
+  // ---- Sidebar (UI-R1): its groups are always open. On a narrow window
+  // it is a bar with a Menu button that opens the pages and the report
+  // card; choosing a page closes it again. ----
+  var aside = document.querySelector('aside'), menuBtn = document.querySelector('[data-menu]');
+  function menu(open) {
+    if (!aside || !menuBtn) return;
+    aside.classList.toggle('open', open);
+    menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
-  document.querySelectorAll('[data-tog]').forEach(function (t) {
-    var go = function () { var n = t.getAttribute('data-tog'); fold(n, !t.classList.contains('open')); };
-    t.addEventListener('click', go);
-    t.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  if (menuBtn) menuBtn.addEventListener('click', function () { menu(!aside.classList.contains('open')); });
+  if (aside) aside.addEventListener('click', function (e) { if (e.target.closest('nav a, .allrep')) menu(false); });
+
+  // ---- Folded quiet items (UI-R1 foldrow): Show opens data-folded="ID" ----
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-foldbtn]');
+    if (!b) return;
+    e.preventDefault();
+    var id = b.getAttribute('data-foldbtn'), box = document.querySelector('[data-folded="' + id.replace(/["\\]/g, '\\$&') + '"]');
+    if (!box) return;
+    if (!b.hasAttribute('data-show')) b.setAttribute('data-show', b.textContent);
+    box.hidden = !box.hidden;
+    b.textContent = b.getAttribute(box.hidden ? 'data-show' : 'data-hide') || b.textContent;
+    b.setAttribute('aria-expanded', box.hidden ? 'false' : 'true');
   });
 
   // ---- Pages ----
@@ -156,8 +186,7 @@
     document.querySelectorAll('[data-nav]').forEach(function (a) {
       var on = a.getAttribute('data-nav') === id;
       a.classList.toggle('on', on);
-      var f = on && a.closest('[data-fold]');
-      if (f) fold(f.getAttribute('data-fold'), true); // the page shown is never hidden in a closed group
+      if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
     var t = tables[id];
     if (t) t.open();
@@ -547,24 +576,19 @@
     this.box.style.setProperty('--cols', keep.map(function (c) { return WIDTH[c.f] || 'minmax(0,1fr)'; }).join(' '));
   };
 
+  // csvRows is the rows shown, header first, every time with its zone
+  // (ASSESS1): the table's Export CSV and the Export menu's "This page".
+  Table.prototype.csvRows = function () {
+    var kind = (this.page.KindLabel || 'kind').toLowerCase();
+    var rows = [['time', 'system', 'person', 'target', 'source', 'what happened', kind, 'severity', 'event id', 'log', 'process', 'command', 'outcome']];
+    this.shown.forEach(function (r) {
+      rows.push([when(r[1], r[16]) + ' ' + zoneOf(r[16]), r[2], r[5], r[6], r[7], r[8], r[17], r[3], r[9], r[10], r[11], r[12], r[13]].map(csvSafe));
+    });
+    return rows;
+  };
   Table.prototype.csv = function () {
     if (!this.shown.length) return;
-    // A field starting with = + - @ (or a tab or return) is a formula to a
-    // spreadsheet: a user name like =HYPERLINK(…) must stay text.
-    var q = function (s) {
-      s = String(s == null ? '' : s);
-      if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
-      return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-    };
-    var kind = (this.page.KindLabel || 'kind').toLowerCase();
-    var lines = ['time,system,person,target,source,what happened,' + kind + ',severity,event id,log,process,command,outcome'];
-    this.shown.forEach(function (r) {
-      lines.push([when(r[1], r[16]) + ' ' + zoneOf(r[16]), r[2], r[5], r[6], r[7], r[8], r[17], r[3], r[9], r[10], r[11], r[12], r[13]].map(q).join(','));
-    });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv' }));
-    a.download = this.page.ID + '-events.csv';
-    a.click();
+    save(this.page.ID + '-events' + (stamp ? '-' + stamp : '') + '.csv', toCSV(this.csvRows()));
   };
 
   // ---- Event panel ----
@@ -805,6 +829,7 @@
       });
     });
     return {
+      table: st,
       // From a link: #search/<text>
       // From a link: #search?page=…&user=…&host=…&when=…&text=…
       query: function (qs) {
@@ -842,50 +867,112 @@
     document.querySelectorAll('[data-folder]').forEach(function (el) { el.textContent = p; });
   })();
 
-  // ---- Export menu and Verified popover ----
-  var openPop = null;
-  function closePop() { if (openPop) { openPop.hidden = true; openPop = null; } }
+  // ---- Export menu and Verified pop-up (UI-R1) ----
+  // The Export menu's "This page" is what the page shown holds, as CSV.
+  // A page gives it with BB.exportPage(view, fn), fn returning
+  // { label, file, rows } (rows: header first, fields made safe with
+  // csvSafe) or null. Without one: an event page or Search exports its
+  // table's rows, any other page the file made for it (meta.pagecsv).
+  var exporters = {};
+  BB.exportPage = function (view, fn) { exporters[view] = fn; };
+  function shownView() {
+    var v = document.querySelector('.view:not([hidden])');
+    return v ? v.getAttribute('data-view') : '';
+  }
+  function pageExport() {
+    var id = shownView();
+    if (exporters[id]) return exporters[id]();
+    if (tables[id]) return tables[id].shown.length ? { label: tables[id].page.Title + ' shown', file: id + '-events', rows: tables[id].csvRows() } : null;
+    if (id === 'search') return search && search.table.shown.length ? { label: 'Search results', file: 'search', rows: search.table.csvRows() } : null;
+    var f = meta.pagecsv && meta.pagecsv[id];
+    return f ? { label: f.label, file: f.file, rows: f.rows } : null;
+  }
+  // Detections: the ones the severity filter shows.
+  BB.exportPage('detections', function () {
+    var f = meta.pagecsv && meta.pagecsv.detections;
+    if (!f) return null;
+    var on = document.querySelector('[data-detsev] .on'), sev = on ? on.getAttribute('data-sev') : '';
+    var rows = f.rows.filter(function (r, i) { return i === 0 || !sev || r[0] === sev; });
+    return { label: f.label, file: f.file + (sev ? '-' + sev : ''), rows: rows };
+  });
+  function exportPage() {
+    var x = pageExport();
+    if (x) save(x.file + (stamp ? '-' + stamp : '') + '.csv', toCSV(x.rows));
+  }
+
+  var openPop = null, openBtn = null;
+  function closePop() {
+    if (!openPop) return;
+    openPop.hidden = true;
+    if (openBtn) openBtn.setAttribute('aria-expanded', 'false');
+    openPop = openBtn = null;
+  }
+  function placePop(pop, b) {
+    var r = b.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight, W = window.innerWidth, H = window.innerHeight;
+    var left = Math.max(8, Math.min(r.right, W - 8) - w), top = r.bottom + 6;
+    var side = b.closest('aside') && b.closest('aside').getBoundingClientRect();
+    if (side && side.right + 12 + w <= W - 8 && side.height > H / 2) {
+      // From the sidebar's report card: beside the sidebar, level with
+      // the card's bottom.
+      left = side.right + 12; top = r.bottom - h + 8;
+    } else if (top + h > H - 8 && r.top - h - 6 >= 8) {
+      top = r.top - h - 6; // no room below: above the button
+    }
+    pop.style.left = left + 'px';
+    pop.style.top = Math.max(8, Math.min(top, H - h - 8)) + 'px';
+  }
   document.querySelectorAll('[data-open]').forEach(function (b) {
+    b.setAttribute('aria-expanded', 'false');
     b.addEventListener('click', function (e) {
       e.stopPropagation();
       var pop = document.querySelector('[data-pop="' + b.getAttribute('data-open') + '"]');
       var was = openPop === pop;
       closePop();
       if (was || !pop) return;
-      var r = b.getBoundingClientRect();
+      if (pop.getAttribute('data-pop') === 'export') {
+        var x = pageExport(), box = pop.querySelector('[data-xpage]');
+        box.hidden = !x;
+        if (x) pop.querySelector('[data-xlabel]').textContent = x.label + ' (' + (x.rows.length - 1).toLocaleString('en-US') + ')';
+      }
       pop.hidden = false;
-      pop.style.top = (r.bottom + 6) + 'px';
-      pop.style.left = Math.max(8, Math.min(r.right, window.innerWidth - 8) - pop.offsetWidth) + 'px';
-      openPop = pop;
+      placePop(pop, b);
+      b.setAttribute('aria-expanded', 'true');
+      openPop = pop; openBtn = b;
+      var first = pop.querySelector('a:not([hidden]), button');
+      if (first && e.detail === 0) first.focus(); // opened from the keyboard
     });
   });
   document.addEventListener('click', function (e) { if (openPop && !openPop.contains(e.target)) closePop(); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePop(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && openPop) { var b = openBtn; closePop(); if (b) b.focus(); }
+  });
   window.addEventListener('scroll', closePop);
-  function save(name, text) {
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob(['\ufeff' + text], { type: 'text/csv' }));
-    a.download = name; document.body.appendChild(a); a.click(); a.remove();
-  }
-  var stamp = (document.title.match(/\d{1,2} \w{3} \d{4}$/) || [''])[0].replace(/ /g, '-');
+  window.addEventListener('resize', closePop);
   document.querySelectorAll('[data-act]').forEach(function (a) {
     a.addEventListener('click', function (e) {
       e.preventDefault(); closePop();
-      var act = a.getAttribute('data-act');
+      var act = a.getAttribute('data-act'), f = meta.reportcsv && meta.reportcsv[act];
       if (act === 'print') window.print();
-      if (act === 'detcsv') save('detections' + (stamp ? '-' + stamp : '') + '.csv', meta.detcsv || '');
-      if (act === 'invcsv') save('inventory' + (stamp ? '-' + stamp : '') + '.csv', meta.invcsv || '');
-      if (act === 'healthcsv') save('audit-health' + (stamp ? '-' + stamp : '') + '.csv', meta.healthcsv || '');
+      else if (act === 'pagecsv') exportPage();
+      else if (f) save(f.file + (stamp ? '-' + stamp : '') + '.csv', toCSV(f.rows));
     });
   });
   // A data file whose contents differ from the hash recorded in this page
-  // turns Verified red.
+  // turns Verified red: the report card's line, and the pop-up's title and
+  // first check, with the file's name.
   function tampered(file) {
-    document.querySelectorAll('.btn.verified').forEach(function (b) { b.classList.add('bad'); b.querySelector('span').textContent = 'Changed'; });
+    document.querySelectorAll('[data-vline]').forEach(function (b) {
+      b.className = 'vline bad';
+      b.innerHTML = '<i aria-hidden="true">✕</i> <span>Not verified · a file was changed</span>';
+    });
     var h = document.querySelector('[data-vhead]');
-    if (h) { h.className = 'vh bad'; h.querySelector('b').textContent = 'Something does not match'; }
+    if (h) { h.className = 'vh bad'; h.querySelector('i').textContent = '✕'; h.querySelector('b').textContent = 'This report has been changed'; }
     var l = document.querySelector('[data-vlist]');
-    if (l) l.insertAdjacentHTML('afterbegin', '<li class="bad"><span>✕</span><span>data/' + esc(file) + ' was changed after the report was written</span></li>');
+    if (l) {
+      var first = l.querySelector('li');
+      if (first && /manifest/.test(first.textContent) && first.className === 'ok') first.remove();
+      l.insertAdjacentHTML('afterbegin', '<li class="bad"><i aria-hidden="true">✕</i><span>Report files do not match the manifest<small>data/' + esc(file) + ' was changed after the report was written</small></span></li>');
+    }
   }
 
   // ---- Links that open one event's panel (data-ev="page:index"), and

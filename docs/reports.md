@@ -775,13 +775,51 @@ the service.
 
 ## Reading a report
 
-The sidebar has the pages most used: **Overview**, **Detections**,
-**Search**, **Systems**, **People**, **Audit health**, **Original logs**
-and **All reports**. The pages for each kind of event (Privileged
-activity, USB & removable, …) are under **Events by kind**, closed until
-one is opened; a kind with no events is left out. **Inventory** and
-**Trends** are under **More**. Search has the same kinds as chips, with
-their counts, and a timeline with times of day for a short period.
+The sidebar (UI-R1) lists every page in five groups, always open:
+**Review** (Overview, Detections, Search), **Who and what** (Systems,
+People), **Evidence** (Audit health, Original logs), **Events by kind**
+(Privileged activity, Audit integrity, Logon activity, …, each with its
+count; a kind with no events is left out) and **More** (Inventory,
+Trends). Above them, "Blackbox" with the network's name (or the
+computer's, for a standalone report). At the bottom, the **report card**
+says which report this is (Daily report), its period with the time
+zone, its systems and when it was made, then **✓ Verified · files match
+manifest**, which opens the Verified pop-up (red, "✕ Not verified", when a
+check failed), and **All reports →** when the report sits in the reports
+folder. In a narrow window (a phone, or under about 1050 pixels) the
+sidebar is a bar with a **Menu** button that opens the same list.
+
+Every page has **one header**: a breadcrumb line (the report, its period
+and the time zone the page's times are in, then what the page holds,
+e.g. "Daily report · 7 Oct 00:00 – 8 Oct 00:00 EDT · 12 detections · 7
+high, 5 medium"), the title, and only the page's own buttons on the right:
+**Export**, and **Export CSV** on Detections. Search has the same kinds as
+chips, with their counts, and a timeline with times of day for a short
+period.
+
+**Export** opens a menu in two parts. **This page** is what the page shown
+holds, as CSV: "Detections shown (12)" (only the severity chosen), the
+rows an event page or Search shows, Systems, every audit setting on Audit
+health, Inventory's systems, drives and accounts, the original-log zips. A
+page with nothing to list (the Overview, People, Trends) has no This page
+part. **Whole report** has the printable **Summary** (print it or save it
+as PDF), **All events (n)** (`events.zip`), **Systems and drives** (each
+system with its make, model and serial number, one row per drive with the
+drive's serial number), **Audit settings to fix** (every setting that does
+not match the STIG, on every system, with how to fix it), **Open SCAP
+findings** (when there are scans) and **Open the report folder**. Every
+time in these files has its offset from UTC (`2026-10-07 14:31:00 -04:00`),
+and a field that starts with `=`, `+`, `-` or `@` gets a `'` in front.
+
+**Verified** (from the report card) says "This report has not been
+changed" and lists three checks: the report's files match the manifest;
+*n* original-log zips checked (each against the SHA-256 recorded when it
+was made); no gap since the previous report (or: the first scheduled report,
+or a manual report, which is not part of the chain). When a check fails
+the title says so in red ("This report's original logs do not match",
+"Reports are missing or have a gap", "This report has been changed"), the
+failing check comes first with the file to blame, and the report card's
+line turns red. Then: "Check it yourself: `blackbox verify`".
 
 - **Overview.** Four headline numbers for this report (systems
   reporting, detections, events, and systems whose audit settings match
@@ -830,7 +868,8 @@ Every report is a folder containing:
 To check a report for damage or changes, run
 `blackbox verify <report folder>`, or `sha256sum -c manifest.sha256`.
 The report also checks each data file as it loads it: if one was changed,
-**Verified** at the top of every page turns red.
+**Verified** in the sidebar's report card turns red and the Verified
+pop-up names the file.
 
 `blackbox verify` also fails if a file the manifest lists is missing or
 can't be read (it is not counted as verified), if a file was added

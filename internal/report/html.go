@@ -40,17 +40,58 @@ type pageData struct {
 	LogsPage    *LogsPage
 	Inventory   *InventoryPage
 	Verify      Verification
+	Card        ReportCard
 	Print       PrintOut
 	Meta        template.JS // settings for app.js, as JSON
 }
 
-// headData is a page's heading.
+// headData is a page's heading (UI-R1): the breadcrumb line (the report,
+// its period with the time zone, and what the page holds), the title, and
+// the page's own buttons on the right. The period, Verified and All
+// reports are in the sidebar's report card.
 type headData struct {
-	Crumb, Title, Range string
-	Index               bool // the date range links to the list of all reports
+	Crumb, Title string
 	// Manual is the chip by the title of a page after the Overview in a
 	// manual report ("Manual", "Chosen period").
 	Manual string
+	// CSV adds an "Export CSV" button: the Export menu's "This page" file
+	// in one click.
+	CSV bool
+}
+
+// ReportCard is the card at the bottom of the sidebar: which report this
+// is, its period, its systems and when it was made. Verified and All
+// reports are under it.
+type ReportCard struct {
+	Kind, Period, Systems, Generated string
+	Index                            bool // in the reports folder: All reports links to its list
+}
+
+func (r *Report) reportCard() ReportCard {
+	return ReportCard{Kind: r.Kind(), Period: r.periodText() + " " + zoneName(r.Generated, r.Location), Systems: r.systemsText(),
+		Generated: "generated " + r.Generated.In(r.Location).Format("2 Jan 2006 15:04"), Index: r.InReportsDir}
+}
+
+// periodText is the report's period with both ends' times: "7 Oct 00:00 –
+// 8 Oct 00:00" (the year too when the ends are in different years; one
+// day's part as "5 Oct 00:00 – 06:44").
+func (r *Report) periodText() string {
+	a, z := r.PeriodStart(), r.WindowEnd
+	if z.IsZero() {
+		z = r.LastEvent
+	}
+	a, z = a.In(r.Location), z.In(r.Location)
+	layout := "2 Jan 15:04"
+	if a.Year() != z.Year() {
+		layout = "2 Jan 2006 15:04"
+	}
+	if a.IsZero() {
+		return "—"
+	}
+	if a.YearDay() == z.YearDay() && a.Year() == z.Year() {
+		return a.Format(layout) + " – " + z.Format("15:04") // a manual report's "5 Oct 00:00 – 06:44"
+	}
+	return a.Format(layout) + " – " + z.Format(layout)
 }
 
 // periodNoun is "week" for a report that covers about a week on a weekly
@@ -152,10 +193,10 @@ func funcs(loc *time.Location) template.FuncMap {
 		"overviewTitle": overviewTitleOf,
 		"dayBefore":     func(ds []DetectionCard, i int) string { return ds[i-1].Day },
 		"healthCrumb": func(p pageData) string {
-			return p.Kind() + " · audit settings compared with the STIG for each system's OS · Blackbox only reports, it never changes settings"
+			return "audit settings compared with the STIG for each system's OS · Blackbox only reports, it never changes settings"
 		},
 		"searchCrumb": func(p pageData) string {
-			return fmt.Sprintf("%s · %s events from %s · searched in your browser, nothing leaves this report", p.Kind(), commas(len(p.Events)), plural(len(p.Hosts), "system"))
+			return fmt.Sprintf("%s events from %s · searched in your browser, nothing leaves this report", commas(len(p.Events)), plural(len(p.Hosts), "system"))
 		},
 		"searchCols": func() template.CSS { return gridCols(searchCols) },
 		"periodDays": func(p pageData) []string { return p.periodDays() },
@@ -174,7 +215,7 @@ func funcs(loc *time.Location) template.FuncMap {
 			if p.PeoplePage != nil {
 				n = p.PeoplePage.Count
 			}
-			return fmt.Sprintf("%s · %s active on %s", p.Kind(), plural(n, "account"), plural(len(p.Hosts), "system"))
+			return fmt.Sprintf("%s active on %s", plural(n, "account"), plural(len(p.Hosts), "system"))
 		},
 		"detectionsCrumb": func(p pageData) string {
 			high, med := 0, 0
@@ -186,9 +227,7 @@ func funcs(loc *time.Location) template.FuncMap {
 				}
 			}
 			n := len(p.Detections)
-			c := p.Crumb()
-			c = c[:strings.LastIndex(c, " · generated")]
-			s := fmt.Sprintf("%s · %s %s", c, commas(n), map[bool]string{true: "detection", false: "detections"}[n == 1])
+			s := fmt.Sprintf("%s %s", commas(n), map[bool]string{true: "detection", false: "detections"}[n == 1])
 			if n > 0 {
 				s += fmt.Sprintf(" · %d high, %d medium", high, med)
 			}
@@ -212,7 +251,7 @@ func funcs(loc *time.Location) template.FuncMap {
 			if e.Total == 1 {
 				unit = strings.TrimSuffix(unit, "s")
 			}
-			s := fmt.Sprintf("%s · Events · %s %s", p.Kind(), commas(e.Total), unit)
+			s := fmt.Sprintf("Events · %s %s", commas(e.Total), unit)
 			if n := len(e.Hosts); n > 1 {
 				s += fmt.Sprintf(" on %d systems", n)
 			} else if n == 1 {
@@ -220,17 +259,19 @@ func funcs(loc *time.Location) template.FuncMap {
 			}
 			return s
 		},
-		// head builds a page heading: the report period and, unless crumb
-		// is given, a line describing the report.
-		"head": func(p pageData, title, crumb string) headData {
-			if crumb == "" {
-				crumb = p.Crumb()
+		// head builds a page heading: "Daily report · 7 Oct 00:00 – 8 Oct
+		// 00:00 EDT", then what the page holds (extra), the one place the
+		// page names its time zone. tools are the page's own buttons:
+		// "csv" for Export CSV.
+		"head": func(p pageData, title, extra string, tools ...string) headData {
+			crumb := p.Kind() + " · " + p.periodText() + " " + zoneName(p.Generated, loc)
+			if extra != "" {
+				crumb += " · " + extra
 			}
-			rng := p.PeriodStart().In(loc).Format("2 Jan") + " – " + p.WindowEnd.In(loc).Format("2 Jan 2006")
-			if l := periodLabel(p.PeriodStart(), p.WindowEnd, loc); strings.Contains(l, ":") {
-				rng = l // a period that starts or ends during a day: "7 Oct 00:00 – 12:30" (UI6)
+			h := headData{Crumb: crumb, Title: title}
+			for _, t := range tools {
+				h.CSV = h.CSV || t == "csv"
 			}
-			h := headData{Crumb: crumb, Title: title, Range: rng, Index: p.InReportsDir}
 			// After the Overview, a manual report says so in a chip by the
 			// title, not the banner again (UX9).
 			if title != overviewTitleOf(p) {
@@ -330,7 +371,13 @@ func plural(n int, unit string) string {
 // Crumb is the line above each page title, e.g. "Weekly report · 24
 // systems · generated 29 Sep 2026 00:05".
 func (r *Report) Crumb() string {
-	parts := []string{r.Kind()}
+	return r.Kind() + " · " + r.systemsText() + " · generated " + r.Generated.In(r.Location).Format("2 Jan 2006 15:04")
+}
+
+// systemsText is "24 systems", "24 systems + 1 retired", or "standalone ·
+// 1 system + 1 VM".
+func (r *Report) systemsText() string {
+	var parts []string
 	if r.IsLAN() {
 		// A retired system is not one of the report's systems (ROLE1b).
 		n, retired := 0, 0
@@ -362,7 +409,6 @@ func (r *Report) Crumb() string {
 		}
 		parts = append(parts, desc)
 	}
-	parts = append(parts, "generated "+r.Generated.In(r.Location).Format("2 Jan 2006 15:04"))
 	return strings.Join(parts, " · ")
 }
 
@@ -414,14 +460,7 @@ func (r *Report) WriteHTML(w io.Writer, pages []*EventPage) error {
 	meta["icons"] = icons
 	kinds := map[string]string{}
 	for _, sr := range r.SystemRows {
-		switch {
-		case sr.VM:
-			kinds[sr.Name] = "vm"
-		case isServer(sr):
-			kinds[sr.Name] = "server"
-		default:
-			kinds[sr.Name] = "workstation"
-		}
+		kinds[sr.Name] = systemKind(sr)
 	}
 	meta["hostKind"] = kinds
 	if w := r.WorkingHours; w.Set() {
@@ -433,15 +472,18 @@ func (r *Report) WriteHTML(w io.Writer, pages []*EventPage) error {
 	}
 	health, overview := r.healthPage(), r.overview(pages)
 	inv := r.inventoryPage()
-	meta["detcsv"], meta["healthcsv"], meta["sums"] = r.detectionsCSV(), r.healthCSV(health), r.dataSums
-	meta["invcsv"] = r.inventoryCSV(inv)
+	meta["sums"] = r.dataSums
+	// The Export menu's CSV files: "This page" for each page that has one
+	// made here (the event pages and Search add their tables' rows in
+	// app.js), and the whole report's.
+	meta["pagecsv"], meta["reportcsv"] = r.pageCSVs(health, inv), r.reportCSVs(health)
 	b, err := json.Marshal(meta)
 	if err != nil {
 		return err
 	}
 	return t.ExecuteTemplate(w, "layout", pageData{Report: r, Pages: pages, Overview: overview,
 		Detections: r.detectionViews(), SystemsPage: r.systemsPage(), PeoplePage: people, HealthPage: health, TrendsPage: r.trendsPage(),
-		LogsPage: r.logsPage(), Inventory: inv, Verify: r.verification(), Print: r.printOut(overview, health), Meta: template.JS(b)})
+		LogsPage: r.logsPage(), Inventory: inv, Verify: r.verification(), Card: r.reportCard(), Print: r.printOut(overview, health), Meta: template.JS(b)})
 }
 
 func zoneName(t time.Time, loc *time.Location) string {

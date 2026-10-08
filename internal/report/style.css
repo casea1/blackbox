@@ -4,7 +4,7 @@ body{font:14px/1.5 'Public Sans',sans-serif;-webkit-font-smoothing:antialiased;d
 .mono{font-family:'Source Code Pro';font-size:12.5px;white-space:nowrap}
 aside{padding:18px 0;position:relative;z-index:1}
 .brand{display:flex;gap:11px;align-items:center;padding:0 18px 16px}.brand img{width:32px;height:32px;background:#fff;border-radius:50%;padding:2px}
-.brand b{display:block;font-size:17px;font-weight:650;line-height:1.15}.brand span{font-size:12px;opacity:.6}
+.brand b{display:block;font-size:17px;font-weight:650;line-height:1.15}.brand div span{font-size:12px}
 .site{margin:0 14px 10px;padding:8px 10px;display:flex;justify-content:space-between;font-size:12.5px}
 .grp{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;padding:18px 18px 6px}
 nav a{display:flex;align-items:center;gap:11px;padding:7px 18px;font-size:13.5px;position:relative}
@@ -36,12 +36,12 @@ td{padding:11px 10px;vertical-align:top}td b{font-weight:600;display:block}td sp
 
 body{color:#0B1630;background:#E8EEF8;background-image:radial-gradient(900px 520px at 85% -5%,rgba(11,95,255,.22),transparent 60%),radial-gradient(800px 600px at 15% 110%,rgba(0,30,98,.16),transparent 60%),linear-gradient(135deg,#EEF3FB,#E3EAF6)}
 aside{background:linear-gradient(180deg,rgba(0,24,80,.94),rgba(0,18,60,.96));backdrop-filter:blur(18px);color:#fff;border-right:1px solid rgba(255,255,255,.08)}
-.brand span{color:rgba(255,255,255,.6)}
+.brand div span{color:rgba(255,255,255,.6)}
 .site{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:#fff}.site span{color:rgba(255,255,255,.55)}
 .grp{color:rgba(255,255,255,.4)}
 nav a{color:rgba(255,255,255,.78)}nav a svg{color:rgba(255,255,255,.6)}nav a small{color:rgba(255,255,255,.45)}
 nav a.on{background:rgba(255,255,255,.1);color:#fff}nav a.on:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#5AA9FF}nav a.on svg{color:#fff}
-nav a em{background:#FF6B6B;color:#fff}
+nav a em{background:#D12C2C;color:#fff}
 .crumb,.pm,.kl,.ks,td span,.ti span,.tr span,th,.lg{color:#5A6785}
 .btn{background:rgba(255,255,255,.7);border:1px solid rgba(0,30,98,.14);color:#0B1630;backdrop-filter:blur(10px)}.btn svg{color:#5A6785}
 .btn.primary{background:#0A2A7A;border-color:#0A2A7A;color:#fff}
@@ -459,12 +459,7 @@ button.btn{font:inherit;font-size:13px;font-weight:550;cursor:pointer}
   .facts4>*:nth-child(n+4){border-top:1px solid rgba(0,30,98,.08)}
 }
 @media (max-width:1050px){
-  body{grid-template-columns:64px 1fr}
-  aside .brand div,aside .site,aside .grp,nav a small,nav.jump a span{display:none}
-  /* The icon rail's names stay for screen readers (UI19). */
-  aside nav a span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-  aside .brand{padding:0 0 16px;justify-content:center}nav a{justify-content:center;padding:9px 0}
-  nav a em{position:absolute;top:2px;right:8px}
+  nav.jump a span{display:none}
   .md2{grid-template-columns:1fr!important}
   .md2>.panel:first-child{max-height:320px;overflow:auto}
   .ev6{grid-template-columns:repeat(2,1fr)!important}
@@ -473,12 +468,6 @@ button.btn{font:inherit;font-size:13px;font-weight:550;cursor:pointer}
   .facts4>*:nth-child(n+3){border-top:1px solid rgba(0,30,98,.08)}
   .drawer{width:min(560px,100vw)}
 }
-/* Collapsible sidebar groups (UX9); on the narrow icon rail they stay open. */
-aside .tog{cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;padding-right:18px}
-aside .tog i{font-style:normal;transition:transform .15s}
-aside .tog.open i{transform:rotate(90deg)}
-aside .fold.shut{display:none}
-@media (max-width:1050px){aside .fold.shut{display:block}}
 .chip-manual{display:inline-block;vertical-align:middle;font-size:11px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:#8F4F00;background:#FDF3E1;border:1px solid #F0D6A8;border-radius:999px;padding:2px 9px;margin-left:8px}
 /* Phone width (UI18): the page never scrolls sideways; wide tables
    scroll inside their panels, and the header tools wrap. */
@@ -588,3 +577,70 @@ tr.invdetail>td{background:rgba(0,30,98,.025);padding:14px 16px 16px}
 .invname{display:inline-flex;align-items:center;gap:4px;color:#0B1630;font-size:13.5px}.invname b{display:inline}
 [data-inv] .search{padding:7px 10px;border:1px solid rgba(0,30,98,.12);background:rgba(255,255,255,.7);font-size:12.5px;color:#8A96B3;display:flex;gap:8px;align-items:center;min-width:280px}
 [data-inv] .search input{border:0;background:none;outline:0;font:inherit;color:#0B1630;width:100%}
+
+/* ---- UI-R1: the sidebar, the page header, the shared components
+   (components.go) and the Export and Verified pop-ups ---- */
+aside{display:flex;flex-direction:column;padding-bottom:12px}
+.side{display:flex;flex-direction:column;flex:1 0 auto}
+aside .brand{padding:0 18px 6px}
+aside .brand div span{display:block;font-size:12px;letter-spacing:.04em;color:rgba(255,255,255,.55)}
+aside .grp{padding:16px 18px 5px}
+.menubtn{display:none}
+.rcard{margin:auto 12px 0;padding:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);font-size:12px;line-height:1.55;color:rgba(255,255,255,.78)}
+.side>nav:last-of-type{margin-bottom:18px}
+.rcard b{display:block;font-size:13px;font-weight:650;color:#fff}.rcard>span{display:block}
+/* The card stays in view at the bottom of a sidebar taller than the window. */
+aside nav a{padding-top:6px;padding-bottom:6px}
+.vline{display:block;margin:8px 0 0;padding:0;background:none;border:0;font:600 12px 'Public Sans',sans-serif;color:#6EE7A0;cursor:pointer;text-align:left}
+.vline i{font-style:normal}.vline.bad{color:#FF9B9B}.vline:hover span{text-decoration:underline}
+.allrep{display:inline-block;margin-top:6px;color:#fff;font-size:12px}
+.vline:focus-visible,.allrep:focus-visible,.menubtn:focus-visible,aside nav a:focus-visible{outline:2px solid #5AA9FF;outline-offset:2px}
+/* The page header: the breadcrumb with the period and zone, the title,
+   the page's own buttons. */
+.head .tools .btn{text-decoration:none}
+/* A narrow window: the sidebar is a bar with a Menu button. */
+@media (max-width:1050px){
+  body{grid-template-columns:1fr}
+  aside{position:sticky;top:0;height:auto;max-height:100vh;z-index:7;padding:10px 0}
+  aside .brand{padding:0 12px 0 16px}
+  .menubtn{display:inline-flex;align-items:center;gap:7px;margin-left:auto;padding:7px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#fff;font:600 13px 'Public Sans',sans-serif;cursor:pointer}
+  .menubtn svg{color:#fff}
+  .side{display:none}
+  aside.open .side{display:flex;padding-top:6px}
+  .rcard{margin:6px 12px 4px}
+}
+/* Shared components. sr: text for screen readers only. */
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.cell{display:inline-block;width:12px;height:12px;vertical-align:middle;background:#1A9A50}
+.cell.warn{background:#E08A00}.cell.bad{background:#D12C2C}.cell.na{background:#CBD3E3}
+a.cell:hover{outline:2px solid rgba(11,95,255,.4)}
+.cellkey{display:inline-flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:#5A6785}.cellkey span{display:inline-flex;align-items:center;gap:5px}.cellkey .cell{width:10px;height:10px}
+.grph{padding:14px 0 6px;font-size:11px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:#5A6785;border-bottom:1px solid rgba(0,30,98,.14)}
+.foldrow{padding:10px 0 2px;font-size:12.5px;color:#5A6785}
+.foldrow button{font:600 12.5px 'Public Sans',sans-serif;color:#0B5FFF;background:none;border:0;padding:0;cursor:pointer}
+.li1{display:grid;grid-template-columns:8px minmax(0,1fr) auto 64px;gap:2px 14px;align-items:baseline;padding:10px 4px;border-bottom:1px solid rgba(0,30,98,.07);color:inherit;text-decoration:none}
+.li1>i{width:8px;height:8px;border-radius:50%;background:#9AA5BF;align-self:start;margin-top:6px}
+.li1.bad>i{background:#D12C2C}.li1.warn>i{background:#E08A00}
+.li1 b{display:block;font-weight:600;font-size:13.5px}
+.li1 small{display:block;font-size:12.5px;color:#5A6785;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.li1 .s,.li1 .w{font:12px 'Source Code Pro',monospace;color:#5A6785;white-space:nowrap}.li1 .w{text-align:right}
+.li1:hover{background:rgba(11,95,255,.04)}
+@media (max-width:640px){.li1{grid-template-columns:8px minmax(0,1fr) auto}.li1 .s{grid-column:2}.li1 .w{grid-column:3;grid-row:2}}
+/* The Export menu (design 15). */
+.xpop{width:360px;padding:6px 0}
+.xpop .xh{padding:10px 18px 4px;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#5A6785}
+.xpop a,.xpop>a{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 18px;border:0;color:#0B1630;text-decoration:none;font-size:13.5px}
+.xpop a b{font-weight:600}.xpop a small{font:11px 'Source Code Pro',monospace;color:#5A6785;text-transform:uppercase}
+.xpop a:hover,.xpop a:focus{background:rgba(11,95,255,.06);outline:0}
+/* The Verified pop-up (design 14). */
+.vpop{width:380px}
+.vpop .vh{font-size:15.5px;font-weight:650;margin-bottom:6px}.vpop .vh i{font-style:normal}
+.vpop li{grid-template-columns:20px 1fr;padding:10px 0;font-size:13px}
+.vpop li i{font-style:normal;font-weight:700}
+.vpop li.ok i{color:#1A9A50}.vpop li.bad i{color:#D12C2C}.vpop li.na i{color:#9AA5BF}.vpop li.na{color:#5A6785}
+.vpop li small{display:block;margin-top:2px;font-size:11.5px;color:#5A6785;overflow-wrap:anywhere}.vpop li.bad small{color:#B01C1C}
+.vpop p.vcheck{margin:10px 0 0;font-size:12.5px;color:#5A6785}.vpop code{background:#EEF2F9;padding:1px 6px}
+.vpop p.vfoot{margin:6px 0 0;font-size:11px;color:#5A6785}
+@media (max-width:640px){.pop{width:calc(100vw - 16px)!important}}
+/* A stat card's note never widens the page: cut short, whole on hover. */
+.ec{grid-template-columns:auto minmax(0,1fr)}.ec .d{min-width:0;overflow:hidden;text-overflow:ellipsis}

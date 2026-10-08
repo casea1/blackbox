@@ -44,10 +44,10 @@ func TestInventoryPage(t *testing.T) {
 	}
 	csv := r.inventoryCSV(ip)
 	for _, want := range []string{
-		"WS-07,system,Dell Inc. OptiPlex 7090,7XK2PQ3,16.0 GB,Microsoft Windows 11 Enterprise 10.0.26100; Intel i7-11700; corp.example.mil,5 Oct 2026 09:00",
+		"WS-07,system,Dell Inc. OptiPlex 7090,7XK2PQ3,16.0 GB,Microsoft Windows 11 Enterprise 10.0.26100; Intel i7-11700; corp.example.mil,2026-10-05 09:00:00 +00:00",
 		"WS-07,drive,Samsung SSD 980 PRO 1TB,S5GXNX0T123456A,1.0 TB,SCSI SSD,",
 		"WS-07,account,localadmin,…1001,,Local; Enabled; administrator,",
-		`WS-07,account,CORP\jsmith,…3105,,Domain (profile); Enabled; last logon 5 Oct 2026 10:00,`,
+		`WS-07,account,CORP\jsmith,…3105,,Domain (profile); Enabled; last logon 2026-10-05 10:00:00 +00:00,2026-10-05 09:00:00 +00:00`,
 	} {
 		if !strings.Contains(csv, want) {
 			t.Errorf("csv lacks %q:\n%s", want, csv)
@@ -58,7 +58,7 @@ func TestInventoryPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-	for _, want := range []string{`data-view="inventory"`, `href="#inventory"`, "Samsung SSD 980 PRO 1TB", "S5GXNX0T123456A", "Accounts on WS-07", "<b>ubu-01</b>: it has sent no settings check yet", `data-act="invcsv"`, `href="#search?user=jsmith"`} {
+	for _, want := range []string{`data-view="inventory"`, `href="#inventory"`, "Samsung SSD 980 PRO 1TB", "S5GXNX0T123456A", "Accounts on WS-07", "<b>ubu-01</b>: it has sent no settings check yet", `"pagecsv":{`, `"inventory":{"label":"Systems, drives and accounts"`, `href="#search?user=jsmith"`} {
 		if !strings.Contains(string(html), want) {
 			t.Errorf("report lacks %q", want)
 		}

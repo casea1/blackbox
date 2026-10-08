@@ -1,11 +1,10 @@
 package report
 
 import (
-	"bytes"
-	"encoding/csv"
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
 
 // The Inventory page (ISSO request): each system's make, model and serial
@@ -34,6 +33,7 @@ type InvRow struct {
 	Accounts                                                   []InvAccount
 	Admins                                                     int
 	Notes                                                      []string
+	checked                                                    time.Time
 }
 
 // InvDrive is one drive on the Inventory page.
@@ -46,6 +46,7 @@ type InvAccount struct {
 	Name, ID, Kind, Status, LastLogon string
 	Key                               string // personKey, for Search
 	Admin, Disabled                   bool
+	lastLogon                         time.Time
 }
 
 func (r *Report) inventoryPage() *InventoryPage {
@@ -59,7 +60,7 @@ func (r *Report) inventoryPage() *InventoryPage {
 		}
 		have[strings.ToLower(cs.Host)] = true
 		row := &InvRow{Host: cs.Host, OS: inv.OS, Make: strings.TrimSpace(inv.Manufacturer + " " + inv.Model), Serial: inv.Serial,
-			CPU: inv.CPU, BIOS: inv.BIOS, Domain: inv.Domain, Checked: cs.Time.In(r.Location).Format("2 Jan 2006 15:04"), Notes: inv.Notes}
+			CPU: inv.CPU, BIOS: inv.BIOS, Domain: inv.Domain, Checked: cs.Time.In(r.Location).Format("2 Jan 2006 15:04"), Notes: inv.Notes, checked: cs.Time}
 		if inv.Memory > 0 {
 			row.Memory = humanBytes(inv.Memory)
 		}
@@ -67,7 +68,7 @@ func (r *Report) inventoryPage() *InventoryPage {
 			row.Drives = append(row.Drives, InvDrive{Model: d.Model, Serial: d.Serial, Size: driveSize(d.Size), Interface: d.Interface, Media: d.Media})
 		}
 		for _, a := range inv.Accounts {
-			ia := InvAccount{Name: a.Name, Key: personKey(a.Name), ID: a.ID, Kind: a.Kind, Admin: a.Admin, Disabled: !a.Enabled, Status: "Enabled"}
+			ia := InvAccount{Name: a.Name, Key: personKey(a.Name), ID: a.ID, Kind: a.Kind, Admin: a.Admin, Disabled: !a.Enabled, Status: "Enabled", lastLogon: a.LastLogon}
 			if !a.Enabled {
 				ia.Status = "Disabled"
 			}
@@ -121,28 +122,30 @@ func (r *Report) inventoryPage() *InventoryPage {
 
 // inventoryCSV is the Export menu's inventory: one line per system, drive
 // and account.
-func (r *Report) inventoryCSV(ip *InventoryPage) string {
-	var b bytes.Buffer
-	w := csv.NewWriter(&b)
-	w.Write([]string{"system", "item", "name", "serial_or_id", "size", "details", "inventoried"})
+func (r *Report) inventoryCSV(ip *InventoryPage) string { return csvText(r.inventoryRows(ip)) }
+
+// inventoryRows are the Inventory page's CSV: each system, its drives and
+// its accounts; times with their zone (ASSESS1).
+func (r *Report) inventoryRows(ip *InventoryPage) [][]string {
+	rows := [][]string{{"system", "item", "name", "serial_or_id", "size", "details", "inventoried"}}
 	for _, row := range ip.Rows {
-		w.Write(csvSafe([]string{row.Host, "system", row.Make, row.Serial, row.Memory, strings.Join(nonEmpty(row.OS, row.CPU, row.BIOS, row.Domain), "; "), row.Checked}))
+		at := r.csvTime(row.checked)
+		rows = append(rows, []string{row.Host, "system", row.Make, row.Serial, row.Memory, strings.Join(nonEmpty(row.OS, row.CPU, row.BIOS, row.Domain), "; "), at})
 		for _, d := range row.Drives {
-			w.Write(csvSafe([]string{row.Host, "drive", d.Model, d.Serial, d.Size, strings.Join(nonEmpty(d.Interface, d.Media), " "), row.Checked}))
+			rows = append(rows, []string{row.Host, "drive", d.Model, d.Serial, d.Size, strings.Join(nonEmpty(d.Interface, d.Media), " "), at})
 		}
 		for _, a := range row.Accounts {
 			det := []string{a.Kind, a.Status}
 			if a.Admin {
 				det = append(det, "administrator")
 			}
-			if a.LastLogon != "" {
-				det = append(det, "last logon "+a.LastLogon)
+			if !a.lastLogon.IsZero() {
+				det = append(det, "last logon "+r.csvTime(a.lastLogon))
 			}
-			w.Write(csvSafe([]string{row.Host, "account", a.Name, a.ID, "", strings.Join(nonEmpty(det...), "; "), row.Checked}))
+			rows = append(rows, []string{row.Host, "account", a.Name, a.ID, "", strings.Join(nonEmpty(det...), "; "), at})
 		}
 	}
-	w.Flush()
-	return b.String()
+	return rows
 }
 
 func nonEmpty(s ...string) []string {
