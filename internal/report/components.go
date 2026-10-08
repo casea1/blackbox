@@ -205,3 +205,81 @@ type ListItem struct {
 	Href, Ev                    string
 	Level                       string
 }
+
+// systemLevel is a system's level on Overview's Systems at a glance and
+// on the Systems page, decided once for both (owner, UI-R1): a problem
+// ("bad") is a red check, a high detection or a red Delivery line (its
+// deliveries wait for approval or a rekey, or its key is on another
+// computer too); a warning ("warn") an amber check, a medium detection
+// or an unsigned sender; otherwise "ok". cells are its six checks
+// (sysChecks); high and med its detections; deliv its Delivery's Level.
+func systemLevel(cells []CheckCell, high, med int, deliv string) string {
+	level := "ok"
+	for _, c := range cells {
+		if levelRank(c.Level) < levelRank(level) {
+			level = c.Level
+		}
+	}
+	switch {
+	case high > 0 || deliv == "bad":
+		return "bad"
+	case (med > 0 || deliv == "warn") && level == "ok":
+		return "warn"
+	}
+	return level
+}
+
+// deliveryShort is a red or amber Delivery line in a few words, for a
+// system's chip and Systems at a glance.
+func deliveryShort(d *Delivery) string {
+	switch {
+	case d == nil:
+		return ""
+	case d.Held:
+		return "delivery waiting for approval"
+	case d.NewKeyFP != "":
+		return "delivery signed with a new key"
+	case d.SharedWith != "":
+		return "delivery key shared with " + d.SharedWith
+	case !d.Signed:
+		return "unsigned deliveries"
+	}
+	return ""
+}
+
+// sysDets is how many high and other detections each system has (by
+// lower-case name), and the newest high one's title, for systemLevel.
+type sysDets struct {
+	High, Med int
+	FirstHigh string
+}
+
+func (r *Report) detsBySystem() map[string]*sysDets {
+	out := map[string]*sysDets{}
+	for _, c := range r.detectionCards() { // newest first
+		h := strings.ToLower(c.Host)
+		d := out[h]
+		if d == nil {
+			d = &sysDets{}
+			out[h] = d
+		}
+		if c.Severity == "high" {
+			if d.High == 0 {
+				d.FirstHigh = c.Title
+			}
+			d.High++
+		} else {
+			d.Med++
+		}
+	}
+	return out
+}
+
+// checkCells are a system's checks' squares.
+func checkCells(checks []SysCheck) []CheckCell {
+	out := make([]CheckCell, 0, len(checks))
+	for _, c := range checks {
+		out = append(out, c.CheckCell)
+	}
+	return out
+}

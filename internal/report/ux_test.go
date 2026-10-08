@@ -83,10 +83,10 @@ func TestOverviewOnce(t *testing.T) {
 // UX4: a page with no events is one line.
 func TestEmptyAndShortPages(t *testing.T) {
 	_, h := uxReport(t)
-	if !strings.Contains(h, "Nothing on USB &amp; removable this period.") {
+	if !strings.Contains(h, "Nothing on Other security this period.") {
 		t.Error("an empty page is not one line")
 	}
-	if strings.Contains(h, `data-sq="usb"`) {
+	if strings.Contains(h, `data-sq="other"`) {
 		t.Error("an empty page still has its table")
 	}
 }

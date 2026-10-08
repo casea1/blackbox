@@ -45,10 +45,12 @@ type Overview struct {
 
 	Activity *ActivityChart
 
-	// Glance are the systems with a problem (a red check), grouped;
+	// Glance are the systems with a problem (a red check or a high
+	// detection, systemLevel), grouped;
 	// GlanceMore says how many others there are.
 	Glance     []Group[GlanceRow]
 	GlanceMore string
+	levels     map[string]string // each system's level (systemLevel), as Systems has it
 	SystemsN   int
 }
 
@@ -67,6 +69,7 @@ type AttnLine struct {
 // GlanceRow is one system in Systems at a glance.
 type GlanceRow struct {
 	Name, Href, Line, Events string
+	Reason                   string // why it is a problem when no check is red: its high detection
 	Cells                    []CheckCell
 	Level                    string
 }
@@ -108,7 +111,7 @@ func (o *Overview) GlanceChecks() []GlanceCol { return glanceChecks }
 
 // overview builds the Overview page.
 func (r *Report) overview(pages []*EventPage) *Overview {
-	o := &Overview{PeriodNoun: r.periodNoun(), Standalone: !r.IsLAN()}
+	o := &Overview{PeriodNoun: r.periodNoun(), Standalone: !r.IsLAN(), levels: map[string]string{}}
 	systems := r.SystemRows
 	if len(systems) == 0 {
 		for _, h := range r.Hosts {
@@ -140,21 +143,19 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	o.Attention, o.Fine = r.attention(o.Checks, systems, cells)
 	o.Activity = r.activityChart()
 
-	// Systems at a glance: only those with a red check.
+	// Systems at a glance: only those with a problem, a red check or a
+	// high detection (systemLevel, as the Systems page counts them).
 	var rows []GlanceRow
 	warn, ok := 0, 0
-	dets := map[string]int{}
-	for _, f := range r.Findings {
-		dets[strings.ToLower(f.Host)]++
-	}
+	dets := r.detsBySystem()
 	for _, s := range systems {
 		cs := cells[s.Name]
-		level := "ok"
-		for _, c := range cs {
-			if levelRank(c.Level) < levelRank(level) {
-				level = c.Level
-			}
+		d := dets[strings.ToLower(s.Name)]
+		if d == nil {
+			d = &sysDets{}
 		}
+		level := systemLevel(cs, d.High, d.Med, s.Delivery.Level())
+		o.levels[s.Name] = level
 		switch level {
 		case "bad":
 		case "warn":
@@ -164,15 +165,30 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 			ok++
 			continue
 		}
+		// A system that is a problem only for a high detection says so.
+		reason := ""
+		red := false
+		for _, c := range cs {
+			red = red || c.Level == "bad"
+		}
+		if !red && d.FirstHigh != "" {
+			reason = "High detection: " + strings.TrimSuffix(d.FirstHigh, " on "+s.Name)
+			if d.High > 1 {
+				reason += fmt.Sprintf(" +%d more", d.High-1)
+			}
+		}
+		if !red && s.Delivery.Level() == "bad" {
+			reason = strings.TrimPrefix(reason+" · ", " · ") + "Delivery: " + strings.TrimPrefix(deliveryShort(s.Delivery), "delivery ")
+		}
 		line := osLabel(s) + " · " + map[string]string{"server": "Server", "workstation": "Workstation", "vm": "Virtual machine"}[systemKind(s)]
-		if n := dets[strings.ToLower(s.Name)]; n > 0 {
+		if n := d.High + d.Med; n > 0 {
 			line += fmt.Sprintf(" · %d det.", n)
 		}
 		ev := commas(s.Events)
 		if s.Events == 0 && !s.reporting() {
 			ev = "—"
 		}
-		rows = append(rows, GlanceRow{Name: s.Name, Href: systemLink(s.Name), Line: line, Events: ev, Cells: cs, Level: level})
+		rows = append(rows, GlanceRow{Name: s.Name, Href: systemLink(s.Name), Line: line, Reason: reason, Events: ev, Cells: cs, Level: level})
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return naturalLess(rows[i].Name, rows[j].Name) })
 	o.Glance = groupByKind(rows, func(g GlanceRow) string { return r.hostKind(g.Name) })
@@ -313,9 +329,9 @@ func (r *Report) overviewStrip(systems []SystemRow, pages []*EventPage, high, me
 		sr.Note = fmt.Sprintf("%d silent", len(systems)-rep)
 	}
 	out = append(out, sr)
-	total := map[string]int{}
-	for _, p := range pages {
-		total[p.ID] = p.Total
+	total := map[string]int{} // as the sidebar's kinds of event count them
+	for _, k := range eventKinds(pages) {
+		total[k.ID] = k.Total
 	}
 	out = append(out, StripCell{Label: "Events", Value: commas(len(r.Events)), Href: "#search",
 		Note: fmt.Sprintf("%s privileged · %s logons", commas(total["privileged"]), commas(total["logons"]))})

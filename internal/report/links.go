@@ -61,3 +61,34 @@ func systemLink(h string) string {
 	}
 	return "#systems/" + h
 }
+
+// partLink is a link to Search showing one part of the events (an
+// EventPage ID, e.g. "failed"): its kind of event, narrowed to the part
+// with part= when the kind holds more than one (owner, UI-R1).
+func partLink(part string, kv ...string) string {
+	args := []string{"page", partKind(part)}
+	if sharedKind(part) {
+		args = append(args, "part", part)
+	}
+	return searchLink(append(args, kv...)...)
+}
+
+// partPage is the event page showing one part: "#integrity", or
+// "#logons?part=failed".
+func partPage(part string) string {
+	if sharedKind(part) {
+		return "#" + partKind(part) + "?part=" + part
+	}
+	return "#" + partKind(part)
+}
+
+// sharedKind says whether a part's kind holds other parts too.
+func sharedKind(part string) bool {
+	k, n := partKind(part), 0
+	for _, p := range eventPages() {
+		if p.Kind == k {
+			n++
+		}
+	}
+	return n > 1
+}

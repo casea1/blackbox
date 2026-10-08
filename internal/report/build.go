@@ -39,10 +39,6 @@ type Options struct {
 	// Range describes a report for a period chosen by hand (blackbox
 	// report --from): where its events came from. Set with Interim.
 	Range string
-	// Reason is why a manual report was made, when the person said
-	// ("jlee incident check"): shown on the list of reports.
-	Reason string
-
 	// History is the summaries of earlier scheduled reports, oldest first
 	// (up to eleven), for twelve-week trends.
 	History []Summary

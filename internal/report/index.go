@@ -36,10 +36,10 @@ type IndexRow struct {
 
 	// UI-R1: the row's label ("Wed 7 Oct"), its month ("October 2026"),
 	// the systems reporting of all ("28/30"), the original logs' size,
-	// the manual report's reason, notes, and the ledger's check.
-	Label, Month, SystemsText, Logs, Reason, Notes string
-	Check, CheckText, CheckTitle                   string // ok | bad | mute; "✓ OK", "Changed", "Accepted"; what the ledger found
-	Latest, Older                                  bool
+	// notes (what Blackbox works out itself) and the ledger's check.
+	Label, Month, SystemsText, Logs, Notes string
+	Check, CheckText, CheckTitle           string // ok | bad | mute; "✓ OK", "Changed", "Accepted"; what the ledger found
+	Latest, Older                          bool
 }
 
 // Problem says whether the row is for the Problems filter: its audit
@@ -215,7 +215,6 @@ func indexRow(e IndexEntry, loc *time.Location) IndexRow {
 
 	row.Label = dayLabel(start, e.WindowEnd, loc)
 	row.Month = e.WindowEnd.Add(-time.Second).In(loc).Format("January 2006")
-	row.Reason = e.Reason
 	if row.TrailClass != "ok" {
 		row.Notes = row.Trail
 	}
@@ -475,7 +474,7 @@ func WriteIndexWith(reportsDir string, o IndexOptions) error {
 	}
 
 	// Export list CSV.
-	csvRows := [][]string{{"report", "period_start", "period_end", "kind", "reason", "notes", "systems", "events", "high", "medium", "original_logs_bytes", "check", "folder"}}
+	csvRows := [][]string{{"report", "period_start", "period_end", "kind", "notes", "systems", "events", "high", "medium", "original_logs_bytes", "check", "folder"}}
 	for _, r := range rows {
 		e := byDir[r.Dir]
 		kind := "scheduled"
@@ -490,7 +489,7 @@ func WriteIndexWith(reportsDir string, o IndexOptions) error {
 		if r.Missing == "" {
 			ps, pe = e.WindowStart.In(loc).Format("2006-01-02 15:04 -07:00"), e.WindowEnd.In(loc).Format("2006-01-02 15:04 -07:00")
 		}
-		csvRows = append(csvRows, csvSafe([]string{r.Label, ps, pe, kind, r.Reason, r.Notes, r.SystemsText, strconv.Itoa(r.Events), strconv.Itoa(r.High),
+		csvRows = append(csvRows, csvSafe([]string{r.Label, ps, pe, kind, r.Notes, r.SystemsText, strconv.Itoa(r.Events), strconv.Itoa(r.High),
 			strconv.Itoa(r.Medium), strconv.FormatUint(logs, 10), strings.TrimPrefix(r.CheckText, "✓ "), r.Dir}))
 	}
 	p["CSV"] = csvRows
@@ -550,13 +549,18 @@ func indexSideNav(e IndexEntry, dir string) []indexNav {
 		{Group: "Evidence", Title: "Audit health", Icon: "shield-check", Href: h + "health"},
 		{Group: "Evidence", Title: "Original logs", Icon: "scroll-text", Href: h + "logs"},
 	}
+	// The five kinds of event, each its parts' counts summed (UI-R1).
+	n := map[string]int{}
 	for _, pg := range eventPages() {
 		key := string(pg.Category)
 		if pg.Category == "" {
 			key = pg.ID
 		}
-		if n := e.ByCategory[key]; n > 0 {
-			nav = append(nav, indexNav{Group: "Events by kind", Title: pg.Title, Icon: pg.Icon, Href: h + pg.ID, Count: n})
+		n[pg.Kind] += e.ByCategory[key]
+	}
+	for _, k := range eventKinds(nil) {
+		if n[k.ID] > 0 {
+			nav = append(nav, indexNav{Group: "Events by kind", Title: k.Title, Icon: k.Icon, Href: h + k.ID, Count: n[k.ID]})
 		}
 	}
 	return append(nav, indexNav{Group: "More", Title: "Inventory", Icon: "cpu", Href: h + "inventory"},

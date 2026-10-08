@@ -32,7 +32,7 @@
   </nav>
   <div class="grp" aria-hidden="true">Events by kind</div>
   <nav aria-label="Events by kind">
-    {{range .Pages}}{{if .Total}}<a href="#{{.ID}}" data-nav="{{.ID}}">{{icon .Icon 17}}<span>{{.Title}}</span><small>{{commas .Total}}</small></a>
+    {{range .Kinds}}{{if .Total}}<a href="#{{.ID}}" data-nav="{{.ID}}">{{icon .Icon 17}}<span>{{.Title}}</span><small>{{commas .Total}}</small></a>
     {{end}}{{end}}
   </nav>
   <div class="grp" aria-hidden="true">More</div>
@@ -54,7 +54,7 @@
 <section class="view" data-view="detections">{{template "head" (head . "Detections" (detectionsCrumb .) "csv")}}{{template "detections" .}}</section>
 <section class="view" data-view="search">{{template "head" (head . "Search" (searchCrumb .) "csv")}}{{template "finder" (finder . "")}}</section>
 <section class="view" data-view="people">{{template "head" (head . "People" (peopleCrumb .) "csv")}}{{with .PeoplePage}}{{template "people" .}}{{else}}<div class="panel"><p class="pm" style="margin:0">No one's account did anything in this report.</p></div>{{end}}</section>
-{{range .Pages}}
+{{range .Kinds}}
 <section class="view" data-view="{{.ID}}">
   {{template "head" (head $ .Title (eventsCrumb $ .) "csv")}}
   {{if .Total}}{{template "finder" (finder $ .ID)}}{{else}}<div class="panel"><p class="pm" style="margin:0">Nothing on {{.Title}} this {{lower (periodWord $)}}. <a class="link" href="#search">Search</a> covers every event in the report.</p></div>{{end}}
@@ -375,6 +375,6 @@ events per hour and the results, 50 at a time (app.js Finder). */}}
 <div class="ach-l" aria-hidden="true">{{range .Labels}}<span style="{{.Left}}">{{.Text}}</span>{{end}}</div>{{end}}</div>{{end}}
 {{if not .Standalone}}<div class="panel ovglance"><div class="ph"><h2>{{icon "server" 17}}Systems at a glance</h2>{{template "cellkey"}}</div>
 {{if .Glance}}<div class="ovgt"><table><thead><tr><th scope="col">System</th>{{range .GlanceChecks}}<th scope="col" class="c" abbr="{{.Name}}"><span class="full">{{.Name}}</span><span class="short" aria-hidden="true">{{.Short}}</span></th>{{end}}<th scope="col" class="n">Events</th></tr></thead>
-{{range .Glance}}<tbody><tr class="g"><th colspan="8" scope="colgroup">{{.Label}}</th></tr>{{range .Items}}<tr><td><a href="{{.Href}}">{{.Name}}</a><small>{{.Line}}</small></td>{{range .Cells}}<td class="c">{{template "cell" .}}</td>{{end}}<td class="n">{{.Events}}</td></tr>{{end}}</tbody>{{end}}</table></div>{{end}}
+{{range .Glance}}<tbody><tr class="g"><th colspan="8" scope="colgroup">{{.Label}}</th></tr>{{range .Items}}<tr><td><a href="{{.Href}}">{{.Name}}</a><small>{{.Line}}</small>{{with .Reason}}<small class="ovgr">{{.}}</small>{{end}}</td>{{range .Cells}}<td class="c">{{template "cell" .}}</td>{{end}}<td class="n">{{.Events}}</td></tr>{{end}}</tbody>{{end}}</table></div>{{end}}
 <div class="ovgfoot">{{if .GlanceMore}}<span>{{.GlanceMore}}</span>{{end}}<a class="link" href="#systems">All {{.SystemsN}} systems on the Systems page →</a></div></div>{{end}}
 {{end}}

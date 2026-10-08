@@ -727,9 +727,9 @@ func (r *Report) personView(p *personData, inv []invAccount, cards []DetectionCa
 	}
 	v.Facts = []PFact{
 		{Label: "Systems used", Value: commas(usedN), Note: sysNote},
-		{Label: "Logons", Value: commas(p.logons), Note: strings.Join(ways, " · "), Href: searchLink("page", "logons", "user", k)},
-		{Label: "Failed logons", Value: commas(p.failed), Note: hostsNote(p.failedHosts), Bad: p.failed > 0, Href: searchLink("page", "failed", "text", k)},
-		{Label: "Privileged actions", Value: commas(p.admin), Href: searchLink("page", "privileged", "user", k)},
+		{Label: "Logons", Value: commas(p.logons), Note: strings.Join(ways, " · "), Href: partLink("logons", "user", k)},
+		{Label: "Failed logons", Value: commas(p.failed), Note: hostsNote(p.failedHosts), Bad: p.failed > 0, Href: partLink("failed", "text", k)},
+		{Label: "Privileged actions", Value: commas(p.admin), Href: partLink("privileged", "user", k)},
 		after,
 		{Label: "Detections", Value: commas(v.Det), Bad: v.Det > 0, Href: detHref(v)},
 	}
@@ -862,7 +862,7 @@ func (r *Report) sharedView(v *PersonView, p *personData, systems int, osWord st
 	}
 	jobs := ActedRow{Person: "Jobs and services", How: "no person", Systems: r.hostsWord(p.jobHosts), N: p.jobs, Href: searchLink("user", p.key)}
 	direct := ActedRow{Person: "Direct logon as " + v.Name, How: map[string]string{"Linux": "console or SSH", "Windows": "console or Remote Desktop"}[osWord], Systems: r.hostsWord(p.directHosts), N: p.direct,
-		Href: searchLink("page", "logons", "user", p.key)}
+		Href: partLink("logons", "user", p.key)}
 	if p.jobs == 0 {
 		jobs.Systems, jobs.Quiet, jobs.Href = "none", true, ""
 	}
@@ -924,7 +924,7 @@ func (r *Report) sharedView(v *PersonView, p *personData, systems int, osWord st
 	}
 	v.Facts = []PFact{
 		{Label: "Systems", Value: commas(systems), Note: sysNote},
-		{Label: "Direct logons", Value: commas(p.direct), Bad: p.direct > 0, Href: map[bool]string{true: searchLink("page", "logons", "user", p.key)}[p.direct > 0]},
+		{Label: "Direct logons", Value: commas(p.direct), Bad: p.direct > 0, Href: map[bool]string{true: partLink("logons", "user", p.key)}[p.direct > 0]},
 		{Label: viaLabel, Value: commas(actedN)},
 		{Label: "Jobs and services", Value: commas(p.jobs), Href: map[bool]string{true: searchLink("user", p.key)}[p.jobs > 0]},
 		after,

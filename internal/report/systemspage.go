@@ -184,6 +184,7 @@ func (r *Report) systemsPage() *SystemsPage {
 		for _, p := range pages {
 			if p.on(row.Event) {
 				counts[h][p.ID]++
+				counts[h]["kind/"+p.Kind]++ // its kind of event: the parts summed
 			}
 		}
 		if row.Action == "log_cleared" {
@@ -195,16 +196,23 @@ func (r *Report) systemsPage() *SystemsPage {
 		byHost[h] = append(byHost[h], row)
 	}
 	median := map[string]int{}
+	var keys []string
 	for _, p := range pages {
+		keys = append(keys, p.ID)
+	}
+	for _, k := range eventKinds(nil) {
+		keys = append(keys, "kind/"+k.ID)
+	}
+	for _, key := range keys {
 		var vals []int
 		for _, s := range r.SystemRows {
 			if s.Status != "silent" {
-				vals = append(vals, counts[strings.ToLower(s.Name)][p.ID])
+				vals = append(vals, counts[strings.ToLower(s.Name)][key])
 			}
 		}
 		sort.Ints(vals)
 		if len(vals) > 0 {
-			median[p.ID] = vals[len(vals)/2]
+			median[key] = vals[len(vals)/2]
 		}
 	}
 	cards := r.detectionCards()
@@ -260,18 +268,9 @@ func (r *Report) systemsPage() *SystemsPage {
 		got, want := r.collectionStrip(v, s, iv, append(clears, s.resets...))
 		v.Cells = r.sysChecks(s, cx, got, want)
 
-		// The level: the worst check, or a detection.
-		v.Level = "ok"
-		for _, c := range v.Cells {
-			if levelRank(c.Level) < levelRank(v.Level) {
-				v.Level = c.Level
-			}
-		}
-		if high > 0 {
-			v.Level = "bad"
-		} else if med > 0 && v.Level == "ok" {
-			v.Level = "warn"
-		}
+		// The level: the worst check, or a detection (systemLevel, as
+		// Overview's Systems at a glance).
+		v.Level = systemLevel(checkCells(v.Cells), high, med, s.Delivery.Level())
 		v.Checks = append([]SysCheck(nil), v.Cells...)
 		sort.SliceStable(v.Checks, func(i, j int) bool { return levelRank(v.Checks[i].Level) < levelRank(v.Checks[j].Level) })
 		var shorts []string
@@ -286,10 +285,16 @@ func (r *Report) systemsPage() *SystemsPage {
 			if high > 0 && first != nil && len(shorts) == 0 {
 				shorts = append(shorts, first.Title)
 			}
+			if s.Delivery.Level() == "bad" {
+				shorts = append(shorts, deliveryShort(s.Delivery))
+			}
 		case "warn":
 			v.Status = "Warning"
 			if med > 0 && first != nil && len(shorts) == 0 {
 				shorts = append(shorts, first.Title)
+			}
+			if s.Delivery.Level() == "warn" {
+				shorts = append(shorts, deliveryShort(s.Delivery))
 			}
 		default:
 			v.Status = "OK"
@@ -345,17 +350,17 @@ func (r *Report) systemsPage() *SystemsPage {
 			n, m := counts[h][k.Page], median[k.Page]
 			top := max(n, 2*m, 1)
 			a := ActivityBar{Label: k.Label, N: n, Pct: n * 100 / top, Median: m * 100 / top, PageID: k.Page,
-				Href: searchLink("page", k.Page, "host", s.Name)}
+				Href: partLink(k.Page, "host", s.Name)}
 			a.Above = sp.LAN && float64(n) > float64(m)*1.5 && n >= m+5
 			v.Activity = append(v.Activity, a)
 		}
-		for _, p := range pages {
-			n := counts[h][p.ID]
+		for _, ek := range eventKinds(nil) {
+			n := counts[h]["kind/"+ek.ID]
 			if n == 0 {
 				continue
 			}
-			k := KindRow{Title: p.Title, N: n, Href: searchLink("page", p.ID, "host", s.Name)}
-			if m := median[p.ID]; sp.LAN && float64(n) > float64(m)*1.5 && n >= m+5 {
+			k := KindRow{Title: ek.Title, N: n, Href: searchLink("page", ek.ID, "host", s.Name)}
+			if m := median["kind/"+ek.ID]; sp.LAN && float64(n) > float64(m)*1.5 && n >= m+5 {
 				k.Note = "typical system " + commas(m)
 			}
 			v.Kinds = append(v.Kinds, k)

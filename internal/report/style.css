@@ -1108,3 +1108,6 @@ table.lt td.lnote{color:#22304F;min-width:200px}
 .pacc td.mono:first-child{white-space:normal}.pacc .an{white-space:nowrap}
 .dl .dc .b{min-width:0}.dl .dc .b span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 table.lt td.mute{color:#5A6785}
+
+/* UI-R1: owner answers (event kinds, problems) */
+.ovgt td small.ovgr{color:#B01C1C;font-weight:600}

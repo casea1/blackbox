@@ -33,37 +33,96 @@ import (
 // events a detection points to, are always listed.
 var MaxListed = 2_000_000
 
-// EventPage is one page of the report that lists events.
+// EventPage is one part of the events, with data files of its own. The
+// report shows five kinds of event (EventKind); three of them hold two
+// parts (owner, UI-R1): Logon activity holds failed logons, Other
+// security USB and removable media, Privileged activity accounts and
+// groups. A part's ID stays in its data files' names and in old links
+// (#failed, #usb, #accounts), which open its kind's page showing it.
 type EventPage struct {
-	ID    string // used in links and data file names
+	ID    string // used in data file names and the part= link filter
 	Title string
 	All   string // heading of the full list, e.g. "All failed logons"
 	Icon  string
+	Kind  string // the EventKind showing it
 	// Category is the events' category; PowerShell is selected by log.
 	Category event.Category
-	Total    int            // events on this page
+	Total    int            // events in this part
 	Omitted  int            // Info events counted but not listed (safeguard)
 	BySev    map[string]int // by severity
 	Days     []string       // YYYYMMDD of each data file
-	Hosts    []string       `json:"-"` // computers with events on this page
+	Hosts    []string       `json:"-"` // computers with events in this part
 
 	KindLabel string // what its kinds are called, e.g. "Reason"
 	XLabel    string // its extra value's name, e.g. "Device" (none: "")
 	Unit      string // what its events are, e.g. "failed logons"
 }
 
-// eventPages lists the event pages in sidebar order.
+// eventPages lists the parts of the events.
 func eventPages() []*EventPage {
 	return []*EventPage{
-		{ID: "privileged", Title: "Privileged activity", All: "All privileged actions", Icon: "key-round", Category: event.CatPrivileged},
-		{ID: "usb", Title: "USB & removable", All: "All USB events", Icon: "usb", Category: event.CatRemovable},
-		{ID: "failed", Title: "Failed logons", All: "All failed logons", Icon: "log-in", Category: event.CatFailedLogon},
-		{ID: "accounts", Title: "Accounts & groups", All: "All account and group changes", Icon: "users", Category: event.CatAccount},
-		{ID: "integrity", Title: "Audit integrity", All: "All audit integrity events", Icon: "file-warning", Category: event.CatIntegrity},
-		{ID: "powershell", Title: "PowerShell", All: "All PowerShell scripts", Icon: "terminal"},
-		{ID: "other", Title: "Other security", All: "All other security events", Icon: "shield", Category: event.CatOther},
-		{ID: "logons", Title: "Logon activity", All: "All logons", Icon: "activity", Category: event.CatLogon},
+		{ID: "privileged", Kind: "privileged", Title: "Privileged activity", All: "All privileged actions", Icon: "key-round", Category: event.CatPrivileged},
+		{ID: "usb", Kind: "other", Title: "USB & removable", All: "All USB events", Icon: "usb", Category: event.CatRemovable},
+		{ID: "failed", Kind: "logons", Title: "Failed logons", All: "All failed logons", Icon: "log-in", Category: event.CatFailedLogon},
+		{ID: "accounts", Kind: "privileged", Title: "Accounts & groups", All: "All account and group changes", Icon: "users", Category: event.CatAccount},
+		{ID: "integrity", Kind: "integrity", Title: "Audit integrity", All: "All audit integrity events", Icon: "file-warning", Category: event.CatIntegrity},
+		{ID: "powershell", Kind: "powershell", Title: "PowerShell", All: "All PowerShell scripts", Icon: "terminal"},
+		{ID: "other", Kind: "other", Title: "Other security", All: "All other security events", Icon: "shield", Category: event.CatOther},
+		{ID: "logons", Kind: "logons", Title: "Logon activity", All: "All logons", Icon: "activity", Category: event.CatLogon},
 	}
+}
+
+// EventKind is one page of Events by kind: the sidebar's entries and
+// Search's Kind (owner, UI-R1: these five). Its events are its parts'.
+type EventKind struct {
+	ID, Title, Icon string
+	Unit            string   // what its events are, e.g. "logon events"
+	KindLabel       string   // what its kinds (sub-kinds) are called
+	Parts           []string // its parts' IDs (EventPage)
+	Total, Omitted  int
+	desc            string // what the page holds, for its breadcrumb
+}
+
+// eventKinds are the five kinds in sidebar order, with their parts'
+// counts from pages (none: zero).
+func eventKinds(pages []*EventPage) []*EventKind {
+	kinds := []*EventKind{
+		{ID: "privileged", Title: "Privileged activity", Icon: "key-round", Unit: "privileged events", Parts: []string{"privileged", "accounts"},
+			desc: "admin rights, sudo and root commands, and accounts and groups changed"},
+		{ID: "integrity", Title: "Audit integrity", Icon: "file-warning", Unit: "audit integrity events", Parts: []string{"integrity"},
+			desc: "logs cleared, audit policy changes, logging stopped and the clock"},
+		{ID: "logons", Title: "Logon activity", Icon: "activity", Unit: "logon events", Parts: []string{"logons", "failed"},
+			desc: "logons and logoffs, at the keyboard and remote, and logons that failed"},
+		{ID: "other", Title: "Other security", Icon: "shield", Unit: "other security events", Parts: []string{"other", "usb"},
+			desc: "services, antivirus, USB drives and other security events"},
+		{ID: "powershell", Title: "PowerShell", Icon: "terminal", Unit: "PowerShell scripts", Parts: []string{"powershell"},
+			desc: "the PowerShell scripts that ran"},
+	}
+	byID := map[string]*EventPage{}
+	for _, p := range pages {
+		byID[p.ID] = p
+	}
+	for _, k := range kinds {
+		k.KindLabel = "Kind"
+		for _, id := range k.Parts {
+			if p := byID[id]; p != nil {
+				k.Total += p.Total
+				k.Omitted += p.Omitted
+			}
+		}
+	}
+	return kinds
+}
+
+// partKind is the kind of event a part (or a kind's own ID) is shown
+// under: "failed" → "logons".
+func partKind(id string) string {
+	for _, p := range eventPages() {
+		if p.ID == id {
+			return p.Kind
+		}
+	}
+	return id
 }
 
 const powerShellLog = "Microsoft-Windows-PowerShell/Operational"

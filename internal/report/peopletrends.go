@@ -127,10 +127,10 @@ var personMeasures = []struct {
 	Get   func(PersonSummary) int
 	Href  func(key string) string
 }{
-	{"Privileged actions", func(p PersonSummary) int { return p.Privileged }, func(k string) string { return searchLink("page", "privileged", "user", k) }},
+	{"Privileged actions", func(p PersonSummary) int { return p.Privileged }, func(k string) string { return partLink("privileged", "user", k) }},
 	{"After hours", func(p PersonSummary) int { return p.AfterHours }, func(k string) string { return searchLink("user", k, "when", "@after") }},
-	{"Logons", func(p PersonSummary) int { return p.Logons }, func(k string) string { return searchLink("page", "logons", "user", k) }},
-	{"Failed logons", func(p PersonSummary) int { return p.Failed }, func(k string) string { return searchLink("page", "failed", "text", k) }},
+	{"Logons", func(p PersonSummary) int { return p.Logons }, func(k string) string { return partLink("logons", "user", k) }},
+	{"Failed logons", func(p PersonSummary) int { return p.Failed }, func(k string) string { return partLink("failed", "text", k) }},
 	{"Detections", func(p PersonSummary) int { return p.Detections }, func(k string) string { return "#detections" }},
 }
 

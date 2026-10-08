@@ -10,9 +10,10 @@ import (
 )
 
 // The event pages (Events by kind, UI-R1 design 10) are Search with the
-// kind of event preset: app.js draws them from the page's data files.
-// Each page says how its events are split into kinds (the Kind counts
-// and filter) and what its extra value is (shown in the event panel).
+// kind of event preset: app.js draws them from the data files of the
+// kind's parts. Each part says how its events are split into kinds (the
+// Kind counts and filter; an absorbed part's say what it was: "Failed:
+// bad password") and what its extra value is (shown in the event panel).
 
 // pageSpec says how one event page's events are split up and shown.
 type pageSpec struct {
@@ -21,7 +22,6 @@ type pageSpec struct {
 	extra     func(e *event.Event) string // page-specific value
 	xLabel    string                      // its name, e.g. "Device"
 	unit      string                      // "failed logons", for "1,204 failed logons"
-	desc      string                      // what the page holds, for its breadcrumb
 }
 
 // TopItem is one line of a top list (People's systems used).
@@ -82,14 +82,13 @@ var pageSpecs = map[string]pageSpec{
 			r := strings.ToLower(detail(e, "Reason") + " " + e.Summary)
 			switch {
 			case e.Action == "account_locked" || strings.Contains(r, "locked"):
-				return "Locked out"
+				return "Failed: locked out"
 			case strings.Contains(r, "expired"):
-				return "Expired"
+				return "Failed: expired"
 			}
-			return "Bad password"
+			return "Failed: bad password"
 		},
 		kindLabel: "Reason", extra: logonHow, xLabel: "Logon type", unit: "failed logons",
-		desc: "logons that failed: bad passwords, expired and locked-out accounts",
 	},
 	"privileged": {
 		kindOf: func(e *event.Event) string {
@@ -101,34 +100,33 @@ var pageSpecs = map[string]pageSpec{
 			}
 			return "Security settings"
 		},
-		kindLabel: "Kind", unit: "privileged actions", desc: "admin rights, sudo and root commands",
+		kindLabel: "Kind", unit: "privileged actions",
 	},
 	"usb": {
 		kindOf: func(e *event.Event) string {
 			switch {
 			case strings.Contains(e.Action, "blocked") || e.Outcome == "failure":
-				return "Blocked"
+				return "USB blocked"
 			case detail(e, "File") != "" || strings.Contains(e.Action, "file"):
-				return "Files copied"
+				return "USB files copied"
 			}
-			return "Connected or removed"
+			return "USB connected or removed"
 		},
-		kindLabel: "What happened", extra: usbDevice, xLabel: "Device", unit: "USB events", desc: "USB drives and other removable media",
+		kindLabel: "What happened", extra: usbDevice, xLabel: "Device", unit: "USB events",
 	},
 	"accounts": {
 		kindOf: func(e *event.Event) string {
 			switch {
 			case strings.HasSuffix(e.Action, "_created"):
-				return "Created"
+				return "Account created"
 			case e.Action == "group_member_added":
-				return "Added to group"
+				return "Account added to group"
 			case has(e.Action, "account_disabled", "account_deleted", "group_deleted"):
-				return "Disabled"
+				return "Account disabled"
 			}
-			return "Changed"
+			return "Account changed"
 		},
 		kindLabel: "Kind", extra: func(e *event.Event) string { return e.Target }, xLabel: "Account", unit: "account changes",
-		desc: "accounts created, changed, disabled and added to groups",
 	},
 	"integrity": {
 		// Each kind its own label (UX2): "Logging stopped" is only the
@@ -153,7 +151,7 @@ var pageSpecs = map[string]pageSpec{
 			}
 			return "Other"
 		},
-		kindLabel: "Kind", unit: "audit integrity events", desc: "logs cleared, audit policy changes, logging stopped and the clock",
+		kindLabel: "Kind", unit: "audit integrity events",
 	},
 	"powershell": {
 		kindOf: func(e *event.Event) string {
@@ -165,7 +163,7 @@ var pageSpecs = map[string]pageSpec{
 			}
 			return "Routine"
 		},
-		kindLabel: "Kind", unit: "PowerShell scripts", desc: "the PowerShell scripts that ran",
+		kindLabel: "Kind", unit: "PowerShell scripts",
 	},
 	"other": {
 		kindOf: func(e *event.Event) string {
@@ -181,7 +179,7 @@ var pageSpecs = map[string]pageSpec{
 			}
 			return "System"
 		},
-		kindLabel: "Kind", unit: "other security events", desc: "services, antivirus and other security events",
+		kindLabel: "Kind", unit: "other security events",
 	},
 	"logons": {
 		kindOf: func(e *event.Event) string {
@@ -190,7 +188,7 @@ var pageSpecs = map[string]pageSpec{
 			}
 			return "Console"
 		},
-		kindLabel: "How", xLabel: "Session", unit: "logons", desc: "logons and logoffs, at the keyboard and remote",
+		kindLabel: "How", xLabel: "Session", unit: "logons",
 	},
 }
 
@@ -289,7 +287,7 @@ func (r *Report) outsideHours(e *event.Event) bool {
 type finderData struct {
 	Kind, KindTitle string // the page's kind of event, if any
 	Placeholder     string
-	Pages           []*EventPage // the kinds of event with events
+	Pages           []*EventKind // the kinds of event with events
 	VMs, After      bool         // a Virtual machines choice; working hours set
 	Omitted         int          // Info events counted but not listed
 	Cols            []string     // the table's column headings
@@ -300,17 +298,17 @@ type finderData struct {
 func (p pageData) finder(kind string) finderData {
 	f := finderData{Kind: kind, Placeholder: "Search…", After: p.WorkingHours.Set(),
 		Cols: []string{"Time", "System", "Person", "Event", "Details", "ID", "Severity"}}
-	for _, ep := range p.Pages {
-		if ep.Total > 0 {
-			f.Pages = append(f.Pages, ep)
+	for _, ek := range p.Kinds {
+		if ek.Total > 0 {
+			f.Pages = append(f.Pages, ek)
 		}
-		if ep.ID == kind {
-			f.KindTitle, f.Omitted = ep.Title, ep.Omitted
-			f.Placeholder = "Search within " + strings.ToLower(ep.Title) + "…"
+		if ek.ID == kind {
+			f.KindTitle, f.Omitted = ek.Title, ek.Omitted
+			f.Placeholder = "Search within " + strings.ToLower(ek.Title) + "…"
 			f.Cols = []string{"Time", "System", "Person", "Command or action", "Severity"}
 		}
 		if kind == "" {
-			f.Omitted += ep.Omitted
+			f.Omitted += ek.Omitted
 		}
 	}
 	for _, s := range p.SystemRows {

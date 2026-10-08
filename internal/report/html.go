@@ -30,7 +30,8 @@ var appJS string
 type pageData struct {
 	*Report
 	Section     *Section
-	Pages       []*EventPage
+	Pages       []*EventPage // the events' parts (data files)
+	Kinds       []*EventKind // the five kinds of event: the sidebar, the event pages
 	Overview    *Overview
 	Detections  []DetectionView
 	DetPage     *DetectionsPage
@@ -247,8 +248,8 @@ func funcs(loc *time.Location) template.FuncMap {
 		},
 		"detDayBefore": func(ds []DetectionView, i int) string { return ds[i-1].Day },
 		// eventsCrumb is what an event page (Events by kind) holds.
-		"eventsCrumb": func(p pageData, e *EventPage) string {
-			return pageSpecs[e.ID].desc
+		"eventsCrumb": func(p pageData, e *EventKind) string {
+			return e.desc
 		},
 		// head builds a page heading: "Daily report · 7 Oct 00:00 – 8 Oct
 		// 00:00 EDT", then what the page holds (extra), the one place the
@@ -422,7 +423,8 @@ func (r *Report) WriteHTML(w io.Writer, pages []*EventPage) error {
 		return err
 	}
 	_, zoneOff := r.Generated.In(r.Location).Zone()
-	meta := map[string]any{"pages": pages, "zone": zoneName(r.Generated, r.Location), "zoneOff": zoneOff}
+	evKinds := eventKinds(pages)
+	meta := map[string]any{"pages": pages, "kinds": evKinds, "zone": zoneName(r.Generated, r.Location), "zoneOff": zoneOff}
 	// For the event panel: which detection an event is part of, each
 	// system's original-log zip and what it runs.
 	rowDet, dets := map[int]int{}, []string{}
@@ -493,7 +495,7 @@ func (r *Report) WriteHTML(w io.Writer, pages []*EventPage) error {
 		return err
 	}
 	dp := r.detectionsPage()
-	return t.ExecuteTemplate(w, "layout", pageData{Report: r, Pages: pages, Overview: overview,
+	return t.ExecuteTemplate(w, "layout", pageData{Report: r, Pages: pages, Kinds: evKinds, Overview: overview,
 		Detections: dp.Views, DetPage: dp, SystemsPage: r.systemsPage(), PeoplePage: people, HealthPage: health, TrendsPage: r.trendsPage(),
 		LogsPage: r.logsPage(), Inventory: inv, Verify: r.verification(), Card: r.reportCard(), Print: r.printOut(overview, health), Meta: template.JS(b)})
 }

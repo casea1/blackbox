@@ -63,8 +63,6 @@ type Summary struct {
 	Seen *Seen `json:"seen,omitempty"`
 	// Matching are the systems whose audit settings match the STIG.
 	Matching []string `json:"stig_matching,omitempty"`
-	// Reason is why a manual report was made, when given.
-	Reason string `json:"reason,omitempty"`
 }
 
 // ArchiveJSON is one archive of original logs in summary.json.
@@ -107,7 +105,7 @@ func (r *Report) summary() Summary {
 	s := Summary{Site: r.Site, WindowStart: r.WindowStart, WindowEnd: r.WindowEnd,
 		Generated: r.Generated, Hosts: r.Hosts, Events: len(r.Events), ByCategory: map[string]int{}, Interim: r.Interim,
 		LogClears: r.Health.LogClears, Version: r.Version, Source: r.Source, Metrics: r.metrics(), People: r.peopleTotals(),
-		Days: r.days(), First: r.WindowStart.IsZero() && !r.Interim, Seen: seenOf(r.seenNow()), Matching: r.stigMatching(), Reason: r.Reason}
+		Days: r.days(), First: r.WindowStart.IsZero() && !r.Interim, Seen: seenOf(r.seenNow()), Matching: r.stigMatching()}
 	if s.People == nil {
 		s.People = []PersonSummary{} // kept, but nobody active: not "before people were kept"
 	}

@@ -30,7 +30,7 @@
 {{range .Months}}<tr class="mh" data-month="{{.Label}}"{{if .Older}} data-older hidden{{end}}><th colspan="8" scope="colgroup">{{.Label}}</th></tr>
 {{range .Rows}}<tr data-month="{{.Month}}" data-k="{{if .Interim}}manual{{else}}scheduled{{end}}{{if .High}} high{{end}}{{if .Problem}} problem{{end}}"{{if .Older}} data-older hidden{{end}}{{if not .Missing}} data-href="{{.Dir}}/report.html"{{end}}{{if .Missing}} class="gone"{{end}}>
 <td class="rl">{{if .Missing}}<b>{{.Label}}</b>{{else}}<a href="{{.Dir}}/report.html">{{.Label}}</a>{{end}}{{if .Latest}}<span class="latest">Latest</span>{{end}}{{if .Interim}}<span class="int">Manual</span>{{end}}</td>
-<td class="nt">{{if .Missing}}<span class="trail {{.TrailClass}}">{{.Trail}}</span>{{else}}{{with .Reason}}<span class="why">{{.}}</span>{{end}}{{if and .Reason .Notes}} · {{end}}{{.Notes}}{{end}}</td>
+<td class="nt">{{if .Missing}}<span class="trail {{.TrailClass}}">{{.Trail}}</span>{{else}}{{.Notes}}{{end}}</td>
 <td class="n">{{.SystemsText}}</td><td class="n">{{if .Missing}}—{{else}}{{commas .Events}}{{end}}</td><td class="n{{if .High}} hi{{end}}">{{if .Missing}}—{{else if .High}}{{.High}}{{else}}—{{end}}</td><td class="n">{{if .Missing}}—{{else if .Medium}}{{.Medium}}{{else}}—{{end}}</td><td class="n">{{.Logs}}</td>
 <td class="c">{{if .Check}}<span class="rxchk {{.Check}}"{{with .CheckTitle}} title="{{.}}"{{end}}>{{.CheckText}}</span>{{end}}</td></tr>
 {{end}}{{end}}</tbody></table></div>
