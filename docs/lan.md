@@ -528,8 +528,8 @@ collector**. It appears on the Systems page after its first collection.
 `blackbox systems remove NAME`. It stops being listed and reported as
 silent. Its events stay in earlier reports, and it is listed again if it
 ever sends again. Until then it is left out of every warning about
-senders in `status`, `blackbox inbox` and the report: missing batches,
-"no batch since", silence, delivering into the shared folder (SEC1d).
+senders in `status` and the report: missing batches, "no batch since"
+and silence (SEC1d).
 `blackbox gaps` still lists its missing batches. The report whose period it was retired in shows it
 under **Retired** on the Systems page, "retired 7 Oct by alice" (the
 account that ran the command), with its events up to then; it is not
