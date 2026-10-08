@@ -393,6 +393,9 @@ computer that has **never** delivered signed, marked "unsigned" in
 `blackbox status` ("upgrade these to 0.24"), in `blackbox senders` and on
 the system's page in the report. Once a computer has delivered signed, an
 unsigned file claiming to be from it is refused: there is no going back.
+The one exception is an exact copy of a batch already imported (the
+unsigned copy a sender keeps in `outbox\sent`, put back in the inbox):
+it is removed and counted as "already imported", as nothing in it is new.
 `require_signed = yes` refuses all unsigned deliveries; it becomes the
 default in the next release. A sender upgraded with batches still
 waiting signs them as it delivers them, and its import record (last
@@ -428,6 +431,14 @@ import record (its last number, its missing batches and the hashes behind
 "already imported") is kept by sender ID, not by folder, so nothing is
 missed or imported twice. `blackbox inbox add` is gone.
 
+Setup starts a collection as it finishes, and that run imports what was
+in the folders and pins each sender's key. Setup waits for it to finish
+before it records the audit settings check, and reads the state again
+then, so it keeps that import (SEC1e: in 0.24.0 it saved the state it had
+read before waiting, which undid the import: the next batch then showed
+the waiting batch as missing, `send --resend` imported it again, and the
+key was pinned only at the next delivery).
+
 Upgrade the senders first, then the collector:
 
 - a 0.24 sender's files are read by a 0.23 collector as well. While the
@@ -460,7 +471,12 @@ so, and the rest are still imported:
   is sent again with `blackbox send --resend`;
 - a batch file over 256 MB is refused before it is read, and an archive
   whose computer name is `.` or `..` is refused;
-- a SCAP result must match the hash in its file name.
+- a SCAP result must match the hash in its file name;
+- a file that is not a delivery at all (anything but a batch, log
+  archive, SCAP result, their `NAME.sig` and the inbox's marker, such as
+  `probe.txt` or a hidden file) is set aside once it has not changed for
+  10 minutes, so nothing fills the inbox unseen. It is moved, never
+  deleted. Folders in the inbox are left alone.
 
 The account that wrote each file is recorded (in the log, in the note of
 a file set aside, and in any High row about the inbox), as information:
