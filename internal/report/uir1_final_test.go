@@ -52,3 +52,12 @@ func TestPeopleDetectionReasonOneLine(t *testing.T) {
 		t.Error("the full reason is not on hover")
 	}
 }
+
+// UI-R1 final check: going to another page (Back, a bookmark) closes the
+// event panel; it stayed open over the new page. scripts/browsercheck.js
+// checks it in a browser.
+func TestEventPanelClosesOnNavigation(t *testing.T) {
+	if !strings.Contains(appJS, "window.addEventListener('hashchange', function () { closeEvent(); show(); });") {
+		t.Error("a page change leaves the event panel open")
+	}
+}
