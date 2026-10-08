@@ -974,7 +974,9 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
   lost, or original logs not archived; medium detections only when there
   is nothing else), with the most serious facts in a sentence or two: the
   two worst high detections (logs cleared or auditing changed first, then
-  new access) and the systems that sent nothing. When there is nothing, it
+  new access) and the systems that sent nothing. A key fingerprint in
+  that sentence is shortened ("SHA256:LuoiZpT8…"); the full one is in the
+  detection itself and in `blackbox senders`. When there is nothing, it
   says **Nothing needs review** in green. Under it, **one row of numbers**:
   Detections (high · medium), Systems reporting (n / N, how many silent),
   Events (privileged · logons) and Audit settings (systems matching the
@@ -1008,9 +1010,14 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
 - **Systems** (UI-R1). One table of every system, grouped **Servers** and
   **Workstations**, worst first, with a filter bar: **Find a system**,
   **All / Problems / Warnings / OK** with their counts, **OS** and
-  **Role**. Each row: a status dot and the name, the OS, six squares
-  (green ok, amber warning, red problem, grey no data) for **Reporting**
-  (collections received against those expected), **Logs intact** (none
+  **Role**. Each row: a status dot and the name, the OS (the name its
+  inventory reports, shortened: "Ubuntu 26.04", "Server 2025"; without an
+  inventory, the OS of the STIG it was compared with, or Windows/Linux),
+  six squares (green ok, amber warning, red problem, grey no data) for
+  **Reporting** (collections received against those expected; a sender
+  whose first delivery arrived this period is green, "first delivery
+  received 05:48", even before a collection run of its own is on
+  record), **Logs intact** (none
   cleared, nothing overwritten), **Settings** (audit settings to fix),
   **Antivirus**, **Orig. logs** (its zip in this report) and **SCAP**,
   then its events, detections and when it was last seen. A square links to
@@ -1019,7 +1026,11 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
 - **One system** (`#systems/NAME`): "Systems › Servers › NAME", **Search
   this system** and **Prev / Next** through the list. Its problem in one
   chip, then what it is (OS · role · make and model · the collector it
-  sends to, when known). Six facts: events, detections, last collection
+  sends to, when known). The OS is the inventory's full name ("Ubuntu
+  26.04.1 LTS", "Windows Server 2025 Standard"), never the settings
+  check's baseline: a Linux system with no STIG of its own is compared
+  with Blackbox's advice, which is not an OS. Overview, Inventory,
+  Original logs and the detections name the OS the same way. Six facts: events, detections, last collection
   and how often it collects (read from its collections), audit settings
   to fix of those checked, SCAP score and open CAT I, and the size of its
   original logs. The **collection strip** has one cell for each
@@ -1089,7 +1100,10 @@ whatever system or domain prefix the logs give them. A different spelling
   The footnote says how many other local accounts on the systems were not
   used this period, with a link to Inventory.
 - **A person** has a summary line ("Local account on 9 systems ·
-  administrator on all 9 · used on 5 this period") and a detection chip;
+  administrator on all 9 · used on 5 this period") and a detection chip.
+  An account written `HOST\name` whose HOST is one of the report's
+  computers (short name or full DNS name, any case) is a local account;
+  only one from another domain says "Domain account CORP\name". Then
   six facts (systems used, of those with the account; logons, with how many
   by Remote Desktop and SSH; failed logons; privileged actions; after
   hours; detections); **Where and when**, one lane per system they used
