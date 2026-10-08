@@ -195,17 +195,31 @@ func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(dir, "spool"), 0o750); err != nil {
 		return nil, err
 	}
-	s := &Store{Dir: dir, State: &State{}}
-	b, err := os.ReadFile(filepath.Join(dir, "state.json"))
+	s := &Store{Dir: dir}
+	if err := s.Reload(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// Reload reads state.json again, replacing what is in memory. A caller
+// that opened the store and then waited for the lock reloads once it has
+// the lock (SEC1e): the run it waited for may have saved since, and
+// saving the copy read before would undo that run's changes (an import,
+// a sender's pinned key).
+func (s *Store) Reload() error {
+	st := &State{}
+	b, err := os.ReadFile(filepath.Join(s.Dir, "state.json"))
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 	case err != nil:
-		return nil, err
+		return err
 	default:
-		if err := json.Unmarshal(b, s.State); err != nil {
-			return nil, fmt.Errorf("state.json is damaged (%v); move it aside to start fresh", err)
+		if err := json.Unmarshal(b, st); err != nil {
+			return fmt.Errorf("state.json is damaged (%v); move it aside to start fresh", err)
 		}
 	}
+	s.State = st
 	if s.State.Bookmarks == nil {
 		s.State.Bookmarks = map[string]Bookmark{}
 	}
@@ -227,7 +241,7 @@ func Open(dir string) (*Store, error) {
 	if s.State.SenderKeys == nil {
 		s.State.SenderKeys = map[string]*SenderKey{}
 	}
-	return s, nil
+	return nil
 }
 
 // Save writes state.json atomically.

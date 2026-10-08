@@ -270,3 +270,110 @@ func TestSignedDeliveriesThrough023Folder(t *testing.T) {
 		t.Errorf("rejected: %v", got)
 	}
 }
+
+// import023 imports what waits in a 0.23 sender folder as a 0.23
+// collector did: the record is the sender ID's, and the signature (which
+// 0.23 does not know) is not looked at.
+func import023(t *testing.T, col *store.Store, folder string, now time.Time) {
+	t.Helper()
+	got, _ := filepath.Glob(filepath.Join(folder, "*.bbx"))
+	for _, g := range got {
+		f, err := os.Open(g)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := Decode(f)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := importBatch(col, b, "", now); err != nil {
+			t.Fatal(err)
+		}
+		os.Remove(g)
+	}
+}
+
+// SEC1e: batches waiting in a 0.23 sender folder when the collector is
+// upgraded are imported once. The next batch shows no gap, and sending
+// them again ("blackbox send --resend") says "already imported", whether
+// the folder held one batch or several, and whether the sender's record
+// already existed (it delivered through the folder to 0.23 before) or
+// not. The key is pinned at that first import (SEC1f).
+func TestUpgradeWaitingBatchesNoFalseGap(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		before  int // batches the 0.23 collector imported from the folder
+		waiting int // batches waiting in the folder at the upgrade
+	}{
+		{"one waiting, record existed", 2, 1},
+		{"several waiting, record existed", 1, 3},
+		{"several waiting, no record yet", 0, 3},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			in := inbox(t)
+			col, _ := store.Open(t.TempDir())
+			folder := legacyFolder(t, col, in, "UBUNTU-SERVER", "ubuntu-server")
+			ubu := system(t, "ubuntu-server", "linux", 1, t0)
+			ubu.State.Send = &store.SendState{ID: store.NewID(), NextSeq: 1, Folder: "UBUNTU-SERVER"}
+			at := t0
+			deliver := func() {
+				t.Helper()
+				at = at.Add(time.Hour)
+				collect(t, ubu, "ubuntu-server", "linux", 1, at)
+				Export(ubu, "ubuntu-server", "test", at)
+				if n, err := Deliver(ubu, in, "ubuntu-server", true); err != nil || n != 1 {
+					t.Fatalf("deliver: %d %v", n, err)
+				}
+			}
+			// The sender, upgraded first, delivers into its 0.23 folder;
+			// the 0.23 collector imports some, and the rest wait.
+			for i := 0; i < c.before; i++ {
+				deliver()
+				import023(t, col, folder, at)
+			}
+			for i := 0; i < c.waiting; i++ {
+				deliver()
+			}
+			last := uint64(c.before + c.waiting)
+
+			// The collector's upgrade: setup empties the folders, then its
+			// first run imports what was in them.
+			if n := MigrateSenderFolders(nil, in, t.Logf); n != c.waiting {
+				t.Fatalf("moved %d, want %d", n, c.waiting)
+			}
+			res, err := Import(col, in, Dirs{}, at.Add(time.Minute), t.Logf)
+			if err != nil || res.Batches != c.waiting || len(res.Rejected) != 0 || len(res.Held) != 0 {
+				t.Fatalf("import at the upgrade: %+v %v", res, err)
+			}
+			id := ubu.State.Send.ID
+			snd := col.State.Senders[id]
+			if snd == nil || snd.LastSeq != last || len(snd.Missing) != 0 || snd.KeyFP == "" {
+				t.Fatalf("after the upgrade: %+v", snd)
+			}
+			if k := col.State.SenderKeys["UBUNTU-SERVER"]; k == nil || k.FP != snd.KeyFP {
+				t.Errorf("key not pinned at the upgrade: %+v", k)
+			}
+
+			// The next batch, into the inbox itself: no gap.
+			deliver()
+			res, _ = Import(col, in, Dirs{}, at.Add(time.Minute), t.Logf)
+			if res.Batches != 1 || len(res.Rejected) != 0 {
+				t.Fatalf("next batch: %+v", res)
+			}
+			if snd := col.State.Senders[id]; snd.LastSeq != last+1 || len(snd.Missing) != 0 {
+				t.Fatalf("false gap after the next batch: %+v", snd.Missing)
+			}
+
+			// Sent again: already imported, not imported a second time.
+			from := uint64(c.before + 1)
+			if sent, _, err := Resend(ubu, in, "ubuntu-server", from, last); err != nil || len(sent) != c.waiting {
+				t.Fatalf("resend: %v %v", sent, err)
+			}
+			res, _ = Import(col, in, Dirs{}, at.Add(2*time.Minute), t.Logf)
+			if res.Batches != 0 || res.Already != c.waiting || len(res.Rejected) != 0 {
+				t.Errorf("resend imported again: %+v", res)
+			}
+		})
+	}
+}
