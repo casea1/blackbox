@@ -85,17 +85,17 @@ type dataFile struct {
 
 // chunk is the JSON in one data file. Strings that repeat (computers,
 // accounts, actions, logs) are stored once in Dict and referred to by
-// index; times are seconds after Base.
+// index; times are local clock seconds after Base (see buildData).
 type chunk struct {
 	Base int64    `json:"base"`
-	Off  int      `json:"off"` // the report's UTC offset on that day, in seconds
+	Off  int      `json:"off"` // the report's UTC offset at the day's start, in seconds
 	Dict []string `json:"dict"`
 	Cols []string `json:"cols"`
 	Rows [][]any  `json:"rows"`
 	dict map[string]int
 }
 
-var chunkCols = []string{"i", "t", "host", "sev", "act", "user", "target", "src", "sum", "eid", "log", "proc", "cmd", "out", "flags", "kind", "x"}
+var chunkCols = []string{"i", "t", "host", "sev", "act", "user", "target", "src", "sum", "eid", "log", "proc", "cmd", "out", "flags", "kind", "x", "dz"}
 
 func (c *chunk) ref(s string) int {
 	if i, ok := c.dict[s]; ok {
@@ -152,13 +152,20 @@ func (r *Report) buildData() ([]*EventPage, []dataFile, error) {
 				days[day] = d
 			}
 			c := d.c
+			// DST1: each row has its own offset. t is the local clock
+			// time in seconds from the day's start (so base+t+off reads as
+			// the local time), and dz is how far the row's offset is from
+			// the day's: the instant is base+t-dz. On a day the clocks
+			// change, rows either side of the change keep their own offset.
+			_, rowOff := local.Zone()
+			dz := rowOff - c.Off
 			eid := ""
 			if e.EventID != 0 {
 				eid = fmt.Sprint(e.EventID)
 			}
-			c.Rows = append(c.Rows, []any{i, e.Time.Unix() - c.Base, c.ref(e.Host), c.ref(string(e.Severity)), c.ref(e.Action),
+			c.Rows = append(c.Rows, []any{i, e.Time.Unix() + int64(dz) - c.Base, c.ref(e.Host), c.ref(string(e.Severity)), c.ref(e.Action),
 				c.ref(e.User), e.Target, c.ref(e.SourceIP), e.Summary, eid, c.ref(e.Source), c.ref(e.Process), e.Command,
-				c.ref(e.Outcome), strings.Join(flags[i], ","), c.ref(spec.kindOf(e)), c.ref(extra(spec, e, sessions[i]))})
+				c.ref(e.Outcome), strings.Join(flags[i], ","), c.ref(spec.kindOf(e)), c.ref(extra(spec, e, sessions[i])), dz})
 			d.raw = append(d.raw, []any{e.Details, e.Fields, recordedAs(e), preciseTime(local)})
 		}
 		sort.Strings(p.Hosts)
