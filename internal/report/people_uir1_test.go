@@ -197,6 +197,21 @@ func TestPeopleAliasesDemo30(t *testing.T) {
 	if det == 0 {
 		t.Error("no detection for j.lee's log_cleared")
 	}
+	// Trends and "Seen before" key people the same way: this report's
+	// person-on-system pairs, an earlier report's (kept before the alias
+	// was set) and the weekly counts by person.
+	seen := r.seenNow()
+	if !seen[SeenActive]["jlee|SRV-APP01"] || seen[SeenActive]["j.lee|SRV-APP01"] || seen[SeenActive]["jlee2|ubu-db01"] {
+		t.Errorf("seen pairs not keyed by people_aliases: %v", seen[SeenActive])
+	}
+	old := (&Seen{Active: []string{"j.lee|SRV-APP01"}, Paths: []string{"jlee2|ubu-db01|SSH"}}).setKeyed(r.pkey)
+	if !old[SeenActive]["jlee|SRV-APP01"] || !old[SeenPath]["jlee|ubu-db01|SSH"] {
+		t.Errorf("earlier report's seen pairs not keyed by people_aliases: %v", old)
+	}
+	ws := r.weeks()
+	if cur := ws[len(ws)-1]; cur.People["j.lee"].Key != "" || cur.People["jlee2"].Key != "" || cur.People["jlee"].Key != "jlee" {
+		t.Errorf("weekly counts by person not keyed by people_aliases: %v", cur.People)
+	}
 	// The page says so, Search and links resolve the spellings.
 	dir := filepath.Join(t.TempDir(), "rep")
 	if err := r.Write(dir); err != nil {

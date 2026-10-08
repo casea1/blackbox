@@ -417,13 +417,36 @@ func (a *App) AcceptReport(name, reason string) error {
 	return nil
 }
 
+// ledgerChecks is the ledger's state of each scheduled report, by folder
+// name, for the index's Check column and "Reports checked" (UI-R1).
+// Reports removed under retention_days are left out.
+func ledgerChecks(st *store.Store) map[string]report.ReportCheck {
+	out := map[string]report.ReportCheck{}
+	for _, r := range st.State.Reports {
+		if !r.Removed.IsZero() {
+			continue
+		}
+		c := report.ReportCheck{State: "ok"}
+		if r.Accepted != nil {
+			c.State = "accepted"
+		} else if p, what := reportProblem(r); p != "" {
+			c = report.ReportCheck{State: "changed", What: what}
+		}
+		out[filepath.Base(r.Dir)] = c
+	}
+	return out
+}
+
 // refreshIndex rebuilds the reports index, so reports deleted since the
 // last report drop off it and missing scheduled ones are shown.
 func (a *App) refreshIndex(st *store.Store) {
 	if !a.Cfg.MakesReports() {
 		return
 	}
-	if err := report.WriteIndex(a.ReportsDir(), a.Cfg.SiteName, a.Cfg.ReportAt.Describe(a.Cfg.ReportEvery), a.loc(), indexReports(st, a.loc())); err != nil {
+	next, _ := nextReport(a.Cfg.ReportEvery, a.Cfg.ReportAt, st.State.LastWindowEnd, a.now(), a.loc())
+	o := report.IndexOptions{Site: a.Cfg.SiteName, Schedule: a.Cfg.ReportAt.Describe(a.Cfg.ReportEvery), Every: a.Cfg.ReportEvery,
+		Loc: a.loc(), Missing: indexReports(st, a.loc()), Checks: ledgerChecks(st), Next: next}
+	if err := report.WriteIndexWith(a.ReportsDir(), o); err != nil {
 		a.logf("updating report index: %v", err)
 	}
 }

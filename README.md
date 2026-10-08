@@ -113,15 +113,15 @@ local folder or a file share). Its pages:
 
 | Page | Shows |
 |---|---|
-| **Overview** | Stat cards with twelve-week trends, important events, every system's health (antivirus definitions included), the latest detections, and **What changed**: the biggest moves against earlier reports, across the network, each system and each person |
-| **Systems** | Every computer (servers, workstations, VMs), problems first: its collection this period, health, activity against a typical system, its detections |
-| **Detections** | Each detection explained: why it was flagged, what happened in order, who was involved, and the exact events |
-| **Search** | "Show [events] by [person] on [systems] during [days] containing [text]", plus eight common searches |
-| **People** | Every account that did something, grouped Needs a look / Administrators / Service accounts / Users, with when they were active (click an hour for its events or detections) and their activity over time |
-| **Event pages** | Privileged activity, USB & removable, Failed logons, Accounts & groups, Audit integrity, PowerShell, Other security and Logon activity: stat cards, events per day, top six, what was flagged, and every event of that kind, filterable, with the full original event one click away |
+| **Overview** | One line on what needs review, four numbers (detections, systems reporting, events, audit settings), up to eight detections, what needs attention, activity by hour, and only the systems with a problem |
+| **Systems** | Every computer grouped servers and workstations, problems first, with six check squares; one system shows its collections, checks, detections, activity and who was active |
+| **Detections** | Each detection explained: why it was flagged, who and where, the original record, and what happened ±10 minutes around it |
+| **Search** | One search box with filters (kind, person, system, severity, time), counts to click on, an events-per-hour chart and a shareable link; clicking an event shows it in plain words with its original record |
+| **People** | Every account that did something, the same name on several systems as one person (and `people_aliases` for other spellings), where and when they were active, and who acted as root or Administrator |
+| **Events by kind** | One page per kind of event (privileged activity, audit integrity, logons and so on): Search with that kind already chosen |
 | **Audit health** | Every system against every STIG audit check, the antivirus on each (Defender or ClamAV) with its definitions date, the gaps and where to fix them in Group Policy, and each system's settings (Blackbox only reports these; it never changes them) |
-| **Inventory** | Each system's make, model and serial number, its drives with their serial numbers, and its user accounts (last four digits of the SID), as a page and a CSV |
-| **Trends** | This week against the last twelve, detections per system by week, and privileged actions per person by week |
+| **Inventory** | Each system's make, model and serial number, its drives with their serial numbers (removable ones too), and its user accounts, as a page and a CSV |
+| **Trends** | Six measures by week over 4, 8 or 12 weeks against what is usual, the biggest changes this week, and what is new this week |
 | **Original logs** | The raw logs the report was made from, one zip per system, with hashes |
 
 Export prints a one-page summary (or saves it as PDF), or saves the

@@ -948,7 +948,7 @@
         (det !== undefined ? '<span>part of the detection <a class="link" href="#detections/' + det + '">' + esc(meta.dets[det]) + ' →</a></span>' : '') + '</div>' : '') +
       '<dl class="evf">' + facts + '</dl>' +
       '<div class="sub2">Around it on ' + esc(host) + '</div><div class="near">Loading…</div>' +
-      '<div class="sub2">Context</div><dl class="evf ctx">' + seenBefore(r) +
+      '<div class="sub2">Context</div><dl class="evf ctx"><dt hidden>Seen before</dt><dd data-f="seen" hidden></dd>' +
       '<dt>ATT&amp;CK</dt><dd data-f="attack">—</dd>' + (r[12] ? '<dt>Same command</dt><dd data-f="same">counting…</dd>' : '') + '</dl>' +
       '<div class="dbtns">' + btns + '</div><div class="raw" id="ev-raw">Loading the original event data…</div>';
     lastFocus = document.activeElement;
@@ -987,6 +987,7 @@
       ticket.as = ex.rec ? '' : x[2] || '';
       put('rec', '<code>' + esc(ex.piece || ticket.rec.split(', record')[0]) + '</code>' + (ex.rec ? ', record ' + commas(ex.rec) : '') + (x[2] && !ex.rec ? '<small>' + esc(x[2]) + '</small>' : ''));
       put('attack', ex.attack ? esc(ex.attack) : '');
+      put('seen', ex.seen ? esc(ex.seen) : '');
       var out = '';
       (x[0] || []).forEach(function (d) { out += '<span class="t">' + esc(d.label) + ':</span> <span class="v">' + esc(d.value) + '</span>\n'; });
       var f = x[1] || {};
@@ -1011,16 +1012,6 @@
     };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, old);
     else old();
-  }
-
-  // Seen before: from earlier reports' summaries, when this report has
-  // them (meta.seen: { reports: N, pairs: { "HOST|person": reports
-  // seen in } }); left out otherwise.
-  function seenBefore(r) {
-    var s = meta.seen, pk = key(r[5]);
-    if (!s || !s.reports || !pk) return '';
-    var n = (s.pairs || {})[r[2] + '|' + pk] || 0;
-    return '<dt>Seen before</dt><dd>' + esc(r[5] + (n ? ' on ' + r[2] + ' in ' + n + ' of ' + s.reports + ' earlier reports' : ' never on ' + r[2] + ' in ' + s.reports + ' earlier reports')) + '</dd>';
   }
 
   // Same command: how many other systems ran it this period.
@@ -1215,6 +1206,50 @@
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   });
+
+  // ---- Trends (UI-R1): the 4 / 8 / 12-week switch, its CSV and the
+  // Monthly summary (the page at 4 weeks, printed) ----
+  (function () {
+    var view = document.querySelector('.view[data-view="trends"]');
+    if (!view) return;
+    var weeks = 8;
+    function range(n) {
+      var crumb = view.querySelector('.head .crumb'), was = view.querySelector('[data-trview]:not([hidden])');
+      var to = view.querySelector('[data-trview="' + n + '"]');
+      if (!to) return;
+      if (crumb && was) crumb.textContent = crumb.textContent.replace(was.getAttribute('data-crumb'), to.getAttribute('data-crumb'));
+      view.querySelectorAll('[data-trview]').forEach(function (v) { v.hidden = v !== to; });
+      view.querySelectorAll('[data-trange]').forEach(function (b) {
+        var on = +b.getAttribute('data-trange') === n;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      weeks = n;
+    }
+    view.querySelectorAll('[data-trange]').forEach(function (b) {
+      b.addEventListener('click', function () { range(+b.getAttribute('data-trange')); });
+    });
+    BB.exportPage('trends', function () {
+      var f = meta.pagecsv && meta.pagecsv.trends;
+      if (!f) return null;
+      var rows = [f.rows[0]].concat(f.rows.slice(1).slice(-weeks));
+      return { label: 'Weekly counts, ' + (rows.length - 1) + ' weeks', file: f.file + '-' + weeks + 'w', rows: rows };
+    });
+    var pb = view.querySelector('[data-trprint]');
+    if (pb) pb.addEventListener('click', function () {
+      var back = weeks;
+      range(4);
+      document.body.classList.add('trprint');
+      var over = false, done = function () {
+        if (over) return;
+        over = true;
+        document.body.classList.remove('trprint'); range(back); window.removeEventListener('afterprint', done);
+      };
+      window.addEventListener('afterprint', done);
+      window.print();
+      setTimeout(done, 1000);
+    });
+  })();
 
   // Search and the event pages (after BB.exportPage is set up).
   document.querySelectorAll('[data-sq]').forEach(function (root) {

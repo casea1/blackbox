@@ -3,9 +3,12 @@ package report
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/casea1/blackbox/internal/event"
 )
 
 // Trends by calendar week (UI1). Each report keeps its counts day by day
@@ -24,6 +27,8 @@ type DayCounts struct {
 	Metrics map[string]int  `json:"metrics,omitempty"`
 	Hosts   []string        `json:"hosts,omitempty"` // systems with events that day
 	People  []PersonSummary `json:"people,omitempty"`
+	// Failed are the failed logons on each system that day (UI-R1).
+	Failed map[string]int `json:"failed_by_system,omitempty"`
 }
 
 // minWeeks is how many complete weeks trends need before they compare.
@@ -48,6 +53,18 @@ type trendWeek struct {
 	People     map[string]PersonSummary
 	HasPeople  bool // some day of it kept counts by person
 	HasData    bool
+	// UI-R1: what the week's reports saw (SeenKept: some report of it
+	// kept it), the systems matching the STIG at its last report, events
+	// lost, failed logons and detection titles by system.
+	Seen        seenSet
+	SeenKept    bool
+	Matching    int
+	MatchingSet []string
+	MatchingAt  time.Time
+	HasMatching bool
+	Lost        int
+	HostFailed  map[string]int
+	HostTitles  map[string][]string
 }
 
 // weekStart is the Monday 00:00 of t's week in loc.
@@ -83,9 +100,15 @@ func weekShort(w trendWeek, loc *time.Location) string {
 // first) and of cur, the report being made (it may be manual), by
 // calendar week up to the week cur ends in, at most shownWeeks. Weeks
 // before the first one with data are left out.
-func buildWeeks(hist []Summary, cur Summary, loc *time.Location) []trendWeek {
+//
+// pk keys people (r.pkey: people_aliases applied, so an earlier report's
+// "j.lee" counts as jlee); nil keeps the keys the summaries have.
+func buildWeeks(hist []Summary, cur Summary, loc *time.Location, pk func(string) string) []trendWeek {
 	if loc == nil {
 		loc = time.Local
+	}
+	if pk == nil {
+		pk = func(k string) string { return k }
 	}
 	end := cur.WindowEnd
 	last := weekStart(end.Add(-time.Second), loc)
@@ -94,7 +117,7 @@ func buildWeeks(hist []Summary, cur Summary, loc *time.Location) []trendWeek {
 	for i := range weeks {
 		s := first.AddDate(0, 0, 7*i)
 		weeks[i] = trendWeek{Start: s, End: s.AddDate(0, 0, 7), Metrics: map[string]int{}, Hosts: map[string]bool{},
-			HostDet: map[string]int{}, People: map[string]PersonSummary{}}
+			HostDet: map[string]int{}, People: map[string]PersonSummary{}, Seen: seenSet{}, HostFailed: map[string]int{}, HostTitles: map[string][]string{}}
 	}
 	weeks[len(weeks)-1].Current = true
 	at := func(t time.Time) *trendWeek {
@@ -137,12 +160,16 @@ func buildWeeks(hist []Summary, cur Summary, loc *time.Location) []trendWeek {
 			for _, h := range d.Hosts {
 				w.Hosts[strings.ToUpper(h)] = true
 			}
+			for h, n := range d.Failed {
+				w.HostFailed[h] += n
+			}
 			if d.People != nil || s.Days == nil && s.People != nil {
 				w.HasPeople = true
 			}
 			for _, p := range d.People {
-				q := w.People[p.Key]
-				q.Key = p.Key
+				k := pk(p.Key)
+				q := w.People[k]
+				q.Key = k
 				if q.Name == "" {
 					q.Name = p.Name
 				}
@@ -151,17 +178,30 @@ func buildWeeks(hist []Summary, cur Summary, loc *time.Location) []trendWeek {
 				q.Failed += p.Failed
 				q.AfterHours += p.AfterHours
 				q.Detections += p.Detections
-				w.People[p.Key] = q
+				w.People[k] = q
 			}
 		}
 		for _, d := range s.Detections {
 			if w := at(d.Time); w != nil {
 				w.HostDet[d.Host]++
+				if d.Title != "" && !slices.Contains(w.HostTitles[d.Host], d.Title) {
+					w.HostTitles[d.Host] = append(w.HostTitles[d.Host], d.Title)
+				}
 				if d.Severity == "high" {
 					w.High++
 				} else {
 					w.Med++
 				}
+			}
+		}
+		if w := at(s.WindowEnd.Add(-time.Second)); w != nil {
+			w.Lost += int(s.Lost)
+			if s.Seen != nil {
+				w.Seen.addAll(s.Seen.setKeyed(pk))
+				w.SeenKept = true
+			}
+			if s.Metrics[MSTIGChecked] > 0 && !s.WindowEnd.Before(w.MatchingAt) {
+				w.Matching, w.MatchingSet, w.MatchingAt, w.HasMatching = s.Metrics[MSTIGMatching], s.Matching, s.WindowEnd, true
 			}
 		}
 		if s.Interim || days == nil {
@@ -248,6 +288,12 @@ func (r *Report) days() []DayCounts {
 	for _, row := range r.rows {
 		d := day(row.Time)
 		addRowMetrics(d.Metrics, row)
+		if row.Category == event.CatFailedLogon {
+			if d.Failed == nil {
+				d.Failed = map[string]int{}
+			}
+			d.Failed[row.Host]++
+		}
 		if hosts[d.Date] == nil {
 			hosts[d.Date] = map[string]bool{}
 		}
@@ -283,14 +329,14 @@ func (r *Report) days() []DayCounts {
 func (r *Report) weeks() []trendWeek {
 	if r.weeksCache == nil {
 		cur := Summary{WindowStart: r.WindowStart, WindowEnd: r.WindowEnd, Interim: r.Interim, First: r.WindowStart.IsZero() && !r.Interim,
-			Days: r.days()}
+			Days: r.days(), Lost: r.lost(), Seen: seenOf(r.seenNow()), Matching: r.stigMatching(), Metrics: r.stigMetrics()}
 		if cur.WindowStart.IsZero() {
 			cur.WindowStart = r.FirstEvent
 		}
 		for _, f := range r.Findings {
-			cur.Detections = append(cur.Detections, Detection{Severity: string(f.Severity), Time: f.Time, Host: f.Host})
+			cur.Detections = append(cur.Detections, Detection{Severity: string(f.Severity), Time: f.Time, Host: f.Host, Title: f.Title})
 		}
-		r.weeksCache = buildWeeks(r.History, cur, r.Location)
+		r.weeksCache = buildWeeks(r.History, cur, r.Location, r.pkey)
 	}
 	return r.weeksCache
 }
@@ -303,6 +349,13 @@ func (w trendWeek) value(metric string) int {
 		return len(w.Hosts)
 	case MDetections:
 		return w.High + w.Med
+	case MSTIGMatching:
+		if !w.HasMatching {
+			return -1
+		}
+		return w.Matching
+	case MLost:
+		return w.Lost
 	}
 	return w.Metrics[metric]
 }
@@ -357,17 +410,7 @@ func (r *Report) metricTrend(metric string) trend {
 	return t
 }
 
-// nowLabel is how the current week is named: "so far this week (3 of 7
-// days)", or "last week" once it has ended.
-func (r *Report) nowLabel() string {
-	ws := r.weeks()
-	c := ws[len(ws)-1]
-	if !c.Current {
-		return "in the week to " + c.End.Add(-time.Second).In(r.Location).Format("2 Jan")
-	}
-	return fmt.Sprintf("so far this week (%s of 7 days)", trimFloat(c.Days))
-}
-
+// trimFloat is a number of days for "3 of 7 days": "2.5", "3", "under 1".
 func trimFloat(d float64) string {
 	switch {
 	case d < 1:

@@ -69,6 +69,18 @@ try { pw = require('playwright-core'); } catch (e) { pw = require('playwright');
   await page.click('aside [data-vline]');
   if (await page.$eval('[data-vhead]', h => h.classList.contains('bad'))) fail('Verified is red');
 
+  // Trends: the range switch shows that range's page and breadcrumb.
+  await page.goto(url + '#trends');
+  if (await page.$('[data-trange="4"]')) {
+    await page.click('[data-trange="4"]');
+    const four = await page.evaluate(() => {
+      const v = document.querySelector('.view[data-view="trends"]'), on = v.querySelector('[data-trview]:not([hidden])');
+      return on && on.getAttribute('data-trview') === '4' && v.querySelector('.head .crumb').textContent.indexOf(on.getAttribute('data-crumb')) >= 0;
+    });
+    if (!four) fail('Trends: 4 weeks did not show its weeks');
+    await page.click('[data-trange="8"]');
+  }
+
   // Every link inside the report leads to a page that exists, and a link
   // to one event opens its panel.
   await page.goto(url + '#overview');

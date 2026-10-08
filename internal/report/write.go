@@ -11,11 +11,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/casea1/blackbox/internal/archive"
-	"html/template"
 	"io"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -60,6 +58,13 @@ type Summary struct {
 	// First marks the first scheduled report, which reads back through
 	// the logs from before Blackbox was installed.
 	First bool `json:"first,omitempty"`
+	// Seen is what the report saw, for Trends' "New this week" in later
+	// reports (see seen.go). Nil before 0.24.
+	Seen *Seen `json:"seen,omitempty"`
+	// Matching are the systems whose audit settings match the STIG.
+	Matching []string `json:"stig_matching,omitempty"`
+	// Reason is why a manual report was made, when given.
+	Reason string `json:"reason,omitempty"`
 }
 
 // ArchiveJSON is one archive of original logs in summary.json.
@@ -102,7 +107,7 @@ func (r *Report) summary() Summary {
 	s := Summary{Site: r.Site, WindowStart: r.WindowStart, WindowEnd: r.WindowEnd,
 		Generated: r.Generated, Hosts: r.Hosts, Events: len(r.Events), ByCategory: map[string]int{}, Interim: r.Interim,
 		LogClears: r.Health.LogClears, Version: r.Version, Source: r.Source, Metrics: r.metrics(), People: r.peopleTotals(),
-		Days: r.days(), First: r.WindowStart.IsZero() && !r.Interim}
+		Days: r.days(), First: r.WindowStart.IsZero() && !r.Interim, Seen: seenOf(r.seenNow()), Matching: r.stigMatching(), Reason: r.Reason}
 	if s.People == nil {
 		s.People = []PersonSummary{} // kept, but nobody active: not "before people were kept"
 	}
@@ -575,249 +580,6 @@ func History(reportsDir string, end time.Time, n int) []Summary {
 // HistoryWeeks is how many earlier reports trends read: enough daily
 // reports for the weeks the charts show.
 const HistoryWeeks = 7 * shownWeeks
-
-// IndexRow is one report's line on the index page.
-type IndexRow struct {
-	Week, Dir, Trail, TrailClass, Search string
-	Systems, Events, High, Medium        int
-	Interim, Incomplete                  bool
-	// Missing is set for a scheduled report that is gone or changed: the
-	// row says so and has nothing to open.
-	Missing string
-	// Accepted: gone on purpose, recorded with blackbox reports accept.
-	Accepted bool
-	end      time.Time
-}
-
-// MissingReport is a scheduled report that was deleted, moved or changed
-// after it was written (from the report ledger), and not accepted.
-type MissingReport struct {
-	Name, Dir string
-	From, To  time.Time
-	Problem   string // "missing" or "changed"
-	// What says which file, e.g. "logs-WS-07.zip is missing" (LEDGER1).
-	What string
-	// Accepted, on the index only, is who accepted it as gone, when and
-	// why: the row stays, muted (LEDGER2).
-	Accepted string
-}
-
-// LostLogs says whether the problem reaches the period's original logs,
-// which are only in the report: the whole folder is gone, or a
-// logs-*.zip in it is missing or changed (LEDGER4b). Another file
-// (events.zip, report.html) can be made again from the data Blackbox
-// keeps.
-func (m MissingReport) LostLogs() bool {
-	if m.Problem == "missing" {
-		return true
-	}
-	f := strings.Fields(m.What)
-	if len(f) == 0 {
-		return false
-	}
-	name := path.Base(f[0])
-	return strings.HasPrefix(name, "logs-") && strings.HasSuffix(name, ".zip")
-}
-
-// missingRow is a missing scheduled report's line on the index page.
-func missingRow(m MissingReport, loc *time.Location) IndexRow {
-	r := IndexRow{Week: periodLabel(m.From, m.To, loc), Dir: m.Name, Incomplete: true, TrailClass: "bad", end: m.To,
-		Missing: "Missing: deleted or moved"}
-	if m.Problem == "changed" {
-		r.Missing = "Changed after it was written"
-	}
-	if m.What != "" {
-		r.Missing += ": " + m.What
-	}
-	r.Trail = r.Missing
-	if m.LostLogs() {
-		r.Trail += " · its original logs were only in it"
-	}
-	if m.Accepted != "" {
-		r.Incomplete, r.TrailClass, r.Accepted = false, "mute", true
-		r.Trail = m.Accepted
-	}
-	r.Search = r.Week + " " + m.Name + " missing"
-	return r
-}
-
-// periodLabel is a report's period on the index (UI6): one date for one
-// whole day ("5 Oct 2026"), times when it starts or ends during a day
-// ("5 Oct 00:00 – 06:44", "14 Sep 13:40 – 15 Sep 00:00"), else dates
-// ("28 Sep – 4 Oct 2026").
-func periodLabel(start, end time.Time, loc *time.Location) string {
-	a, z := start.In(loc), end.In(loc)
-	b := z.Add(-time.Second)
-	midnight := func(t time.Time) bool { return t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0 }
-	if !midnight(a) || !midnight(z) {
-		if a.Year() == z.Year() && a.YearDay() == z.YearDay() {
-			return a.Format("2 Jan 15:04") + " – " + z.Format("15:04")
-		}
-		return a.Format("2 Jan 15:04") + " – " + z.Format("2 Jan 15:04")
-	}
-	switch {
-	case a.Year() == b.Year() && a.YearDay() == b.YearDay():
-		return a.Format("2 Jan 2006")
-	case a.Year() != b.Year():
-		return a.Format("2 Jan 2006") + " – " + b.Format("2 Jan 2006")
-	case a.Month() != b.Month():
-		return a.Format("2 Jan") + " – " + b.Format("2 Jan 2006")
-	}
-	return a.Format("2") + " – " + b.Format("2 Jan 2006")
-}
-
-// indexRow describes one report: its week and whether its audit trail is
-// complete (nothing lost, no log cleared, every system reporting).
-func indexRow(e IndexEntry, loc *time.Location) IndexRow {
-	start := e.WindowStart
-	if start.IsZero() {
-		start = e.WindowEnd.AddDate(0, 0, -7)
-	}
-	week := periodLabel(start, e.WindowEnd, loc)
-	row := IndexRow{Week: week, Dir: e.Dir, Systems: len(e.Hosts), Events: e.Events, Interim: e.Interim, end: e.WindowEnd}
-	for _, d := range e.Detections { // detections by severity, as in the chart
-		if d.Severity == "high" {
-			row.High++
-		} else {
-			row.Medium++
-		}
-	}
-	var bad, warn []string
-	if e.Lost > 0 {
-		bad = append(bad, plural(int(e.Lost), "event")+" lost")
-	}
-	if e.LogClears > 0 {
-		bad = append(bad, plural(e.LogClears, "log")+" cleared")
-	}
-	if e.AuditOff > 0 {
-		bad = append(bad, "auditing was off")
-	}
-	silent := 0
-	for _, s := range e.Systems {
-		if s.Status == "silent" {
-			silent++
-		}
-	}
-	if silent > 0 {
-		bad = append(bad, commas(silent)+" silent")
-	}
-	if n := e.Metrics["late_events"]; n > 0 {
-		warn = append(warn, commas(n)+" late")
-	}
-	switch {
-	case len(bad) > 0:
-		row.Trail, row.TrailClass, row.Incomplete = strings.Join(append(bad, warn...), " · "), "bad", true
-	case len(warn) > 0:
-		row.Trail, row.TrailClass = strings.Join(warn, " · "), "warn"
-	default:
-		row.Trail, row.TrailClass = "Complete", "ok"
-	}
-	row.Search = week + " " + e.Dir + " " + strings.Join(e.Hosts, " ")
-	return row
-}
-
-// WriteIndex rebuilds reportsDir/index.html from every report's
-// summary.json. schedule describes when reports are made.
-// missing are the scheduled reports gone or changed, listed in their place.
-func WriteIndex(reportsDir, site, schedule string, loc *time.Location, missing []MissingReport) error {
-	matches, err := filepath.Glob(filepath.Join(reportsDir, "*", "summary.json"))
-	if err != nil {
-		return err
-	}
-	var entries []IndexEntry
-	for _, m := range matches {
-		b, err := os.ReadFile(m)
-		if err != nil {
-			continue
-		}
-		var s Summary
-		if json.Unmarshal(b, &s) != nil {
-			continue
-		}
-		e := IndexEntry{Summary: s, Dir: filepath.Base(filepath.Dir(m))}
-		entries = append(entries, e)
-	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].WindowEnd.After(entries[j].WindowEnd) })
-	t, err := template.New("index").Funcs(funcs(loc)).Parse(indexTemplate)
-	if err != nil {
-		return err
-	}
-	var buf bytes.Buffer
-	var rows []IndexRow
-	incomplete := 0
-	for _, e := range entries {
-		row := indexRow(e, loc)
-		if row.Incomplete {
-			incomplete++
-		}
-		rows = append(rows, row)
-	}
-	for _, m := range missing {
-		row := missingRow(m, loc)
-		if row.Incomplete {
-			incomplete++
-		}
-		rows = append(rows, row)
-	}
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].end.After(rows[j].end) })
-	// Detections per week (UI8): by calendar week, from the scheduled
-	// reports only, once there are minWeeks complete weeks.
-	chart, weeks := indexChart(entries, loc)
-	latest := ""
-	for _, r := range rows {
-		if r.Missing == "" {
-			latest = r.Dir
-			break
-		}
-	}
-	err = t.Execute(&buf, map[string]any{"Site": site, "Entries": entries, "Rows": rows, "Incomplete": incomplete, "Latest": latest,
-		"Chart": chart, "Weeks": weeks, "Schedule": schedule})
-	if err != nil {
-		return err
-	}
-	return store.WriteFileAtomic(filepath.Join(reportsDir, "index.html"), buf.Bytes(), 0o640)
-}
-
-// indexChart is the list of reports' "Detections per week": High and
-// Medium detections by calendar week, the current week "so far". Manual
-// reports never add a bar. Nothing is drawn before minWeeks complete
-// weeks. It returns the chart and how many weeks it shows.
-func indexChart(entries []IndexEntry, loc *time.Location) (template.HTML, int) {
-	var sums []Summary
-	for _, e := range entries {
-		if !e.Interim {
-			sums = append(sums, e.Summary)
-		}
-	}
-	if len(sums) == 0 {
-		return "", 0
-	}
-	sort.Slice(sums, func(i, j int) bool { return sums[i].WindowEnd.Before(sums[j].WindowEnd) })
-	if sums[0].Days == nil {
-		sums[0].First = true
-	}
-	ws := buildWeeks(sums[:len(sums)-1], sums[len(sums)-1], loc)
-	complete := 0
-	for _, w := range ws[:len(ws)-1] {
-		if w.Complete {
-			complete++
-		}
-	}
-	if complete < minWeeks {
-		return "", 0
-	}
-	var labels []string
-	hi, md := Series{Name: "High", Color: colBad}, Series{Name: "Medium", Color: colWarn}
-	for _, w := range ws {
-		l := WeekLabel(w.Start, loc)
-		if w.Current {
-			l = "This week (so far)"
-		}
-		labels = append(labels, l)
-		hi.Values, md.Values = append(hi.Values, w.High), append(md.Values, w.Med)
-	}
-	return stackedBars(labels, []Series{hi, md}, nil, true, 820, 100), len(ws)
-}
 
 // fileSHA256 hashes a file in pieces, so large log zips are not read into
 // memory.
