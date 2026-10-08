@@ -552,7 +552,7 @@ func (a *App) packLogs(st *store.Store, force bool) {
 	// overwritten one (AR5).
 	for _, g := range info.Gaps {
 		if g.Reason != "" {
-			st.State.LogGaps = append(st.State.LogGaps, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: a.now(), Reason: g.Reason})
+			st.State.LogGaps = addLogGap(st.State.LogGaps, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: a.now(), Reason: g.Reason})
 		}
 	}
 	// A sender, or a run with no report due, saves nothing after this.
@@ -1821,4 +1821,15 @@ func Describe(run *store.Run) string {
 		fmt.Fprintf(&b, "  %-58s %s\n", c.Channel, status)
 	}
 	return b.String()
+}
+
+// addLogGap adds g unless the same gap is already listed: a pack can
+// name one export's gap twice, and status should say it once.
+func addLogGap(gaps []store.LogGap, g store.LogGap) []store.LogGap {
+	for _, o := range gaps {
+		if o.Source == g.Source && o.Reason == g.Reason && o.From.Equal(g.From) && o.To.Equal(g.To) {
+			return gaps
+		}
+	}
+	return append(gaps, g)
 }
