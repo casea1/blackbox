@@ -38,8 +38,26 @@ func export(tmp string, from, to time.Time, skip func(string) bool) ([]Source, [
 			continue
 		}
 		sources = append(sources, Source{Name: name, Source: ch, Path: path})
+		sources = append(sources, localeMeta(tmp, path, ch)...)
 	}
 	return sources, notes
+}
+
+// localeMeta adds the message text of an exported log (wevtutil al), so
+// its events read the same on a computer without the programs that wrote
+// them (ASSESS1). Event Viewer finds it in LocaleMetaData next to the
+// .evtx. Without it the log is still complete, so a failure is not an
+// error.
+func localeMeta(dir, evtx, ch string) []Source {
+	if err := hidden.Command(wevtutil(), "al", evtx).Run(); err != nil {
+		return nil
+	}
+	matches, _ := filepath.Glob(filepath.Join(dir, MetaDir, strings.TrimSuffix(filepath.Base(evtx), ".evtx")+"_*.MTA"))
+	var out []Source
+	for _, m := range matches {
+		out = append(out, Source{Name: MetaDir + "/" + filepath.Base(m), Source: ch, Path: m})
+	}
+	return out
 }
 
 func wevtutil() string {
@@ -110,6 +128,7 @@ func exportFrom(tmp string, from, to time.Time, skip func(string) bool, p *Posit
 			continue
 		}
 		sources = append(sources, Source{Name: name, Source: ch, Path: path})
+		sources = append(sources, localeMeta(tmp, path, ch)...)
 		p.Next[ch] = q.next
 	}
 	return sources, notes, gaps

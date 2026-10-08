@@ -208,6 +208,7 @@ func (r *Report) Write(dir string) error {
 	if len(scapSums) > 0 {
 		contents["scap-open-rules.csv"] = r.scapCSV()
 	}
+	contents["README.txt"] = r.readme(scapSums)
 
 	sums := map[string]string{}
 	for name, sum := range scapSums {
@@ -281,8 +282,10 @@ func (r *Report) writeCSV(w io.Writer) error {
 	// A UTF-8 byte order mark makes Excel read accented names correctly.
 	w.Write([]byte("\xef\xbb\xbf"))
 	cw := csv.NewWriter(w)
+	// Times with their offset from UTC, and in UTC too (ASSESS1): the
+	// archive names are in UTC.
 	cw.Write([]string{"time", "host", "category", "severity", "summary", "user", "target", "source_ip",
-		"process", "command", "outcome", "action", "log", "event_id", "record_type", "record_id", "late"})
+		"process", "command", "outcome", "action", "log", "event_id", "record_type", "record_id", "late", "time_utc"})
 	for _, e := range r.Events {
 		rec, eventID := strconv.FormatUint(e.RecordID, 10), strconv.Itoa(e.EventID)
 		if e.RecordID == 0 {
@@ -291,9 +294,10 @@ func (r *Report) writeCSV(w io.Writer) error {
 		if e.EventID == 0 {
 			eventID = ""
 		}
-		cw.Write(csvSafe([]string{e.Time.In(r.Location).Format("2006-01-02 15:04:05"), e.Host, e.Category.Info().Title,
+		cw.Write(csvSafe([]string{e.Time.In(r.Location).Format("2006-01-02 15:04:05 -07:00"), e.Host, e.Category.Info().Title,
 			string(e.Severity), e.Summary, e.User, e.Target, e.SourceIP, e.Process, e.Command, e.Outcome,
-			e.Action, e.Source, eventID, e.RecordType, rec, map[bool]string{true: "yes", false: ""}[e.Late]}))
+			e.Action, e.Source, eventID, e.RecordType, rec, map[bool]string{true: "yes", false: ""}[e.Late],
+			e.Time.UTC().Format("2006-01-02 15:04:05Z")}))
 	}
 	cw.Flush()
 	return cw.Error()
@@ -814,4 +818,55 @@ func Latest(reportsDir string) (IndexEntry, bool) {
 		}
 	}
 	return best, found
+}
+
+// readme is README.txt (ASSESS1): for someone who receives only the
+// folder, what each file is, how to check it without Blackbox, how to
+// open the original logs, and the time zone.
+func (r *Report) readme(scap map[string]string) []byte {
+	var b strings.Builder
+	nl := "\r\n" // read on Windows too
+	line := func(format string, args ...any) { b.WriteString(fmt.Sprintf(format, args...) + nl) }
+	kind := "Scheduled report"
+	if r.Interim {
+		kind = "Manual report"
+	}
+	_, off := r.Generated.In(r.Location).Zone()
+	zone := fmt.Sprintf("%s (UTC%s)", r.Location.String(), time.Unix(0, 0).In(time.FixedZone("", off)).Format("-07:00"))
+	line("Blackbox %s: %s", r.Version, kind)
+	if r.Site != "" {
+		line("Site: %s", r.Site)
+	}
+	line("Period: %s to %s", r.WindowStart.In(r.Location).Format("2006-01-02 15:04"), r.WindowEnd.In(r.Location).Format("2006-01-02 15:04"))
+	line("Made: %s", r.Generated.In(r.Location).Format("2006-01-02 15:04"))
+	line("Time zone: times in the report and in events.csv are %s; events.csv also has time_utc.", zone)
+	line("The original-log archives are named, and their archive.json written, in UTC.")
+	line("")
+	line("FILES")
+	line("  report.html        the report: open it in a web browser (it needs no network)")
+	line("  data/              the report's event data, read by report.html")
+	line("  summary.json       the counts, for scripts")
+	line("  events.zip         events.csv: every event in the report, for a spreadsheet")
+	for _, a := range r.Archives {
+		line("  %-18s the original logs of %s, unaltered (see below)", a.Name, a.Host)
+	}
+	if len(scap) > 0 {
+		line("  scap-open-rules.csv  the STIG rules SCAP scans found open, and the scan result files")
+	}
+	line("  manifest.sha256    the SHA-256 of every other file")
+	line("")
+	line("CHECK THAT NOTHING WAS CHANGED (no Blackbox needed)")
+	line("  Linux:    sha256sum -c manifest.sha256")
+	line("  Windows:  Get-Content manifest.sha256 | ForEach-Object { $h, $f = $_ -split '  ', 2;")
+	line("              if ((Get-FileHash -Algorithm SHA256 $f).Hash -ne $h) { \"CHANGED: $f\" } }")
+	line("  Blackbox: blackbox verify <this folder>")
+	line("")
+	line("OPEN THE ORIGINAL LOGS")
+	line("  Unzip logs-<computer>.zip. Each day's logs are in a folder named for its period (UTC),")
+	line("  with archive.json listing each file, its SHA-256 and anything missing.")
+	line("  Windows .evtx: double-click to open in Event Viewer, or in PowerShell:")
+	line("    Get-WinEvent -Path (Get-ChildItem -Recurse *.evtx).FullName")
+	line("    (the LocaleMetaData folders let other computers show the messages)")
+	line("  Linux audit.log: ausearch -if audit.log   (syslog, auth.log: plain text)")
+	return []byte(b.String())
 }

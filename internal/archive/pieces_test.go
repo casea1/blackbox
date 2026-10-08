@@ -250,3 +250,40 @@ func TestPackLostAndChangedPieces(t *testing.T) {
 		t.Errorf("bundle: changed %+v gaps %+v", b.Changed, b.Gaps)
 	}
 }
+
+// ASSESS1: an .evtx's message text (wevtutil al, LocaleMetaData) is kept
+// with it, renamed with it when pieces are packed, so Event Viewer finds
+// it on another computer.
+func TestLocaleMetaKeptWithEvtx(t *testing.T) {
+	dir := t.TempDir()
+	pdir := filepath.Join(dir, "pieces")
+	t0 := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	exp := func(d string, from, to time.Time, skip func(string) bool) ([]Source, []string, []Gap) {
+		ev := filepath.Join(d, "Security.evtx")
+		os.WriteFile(ev, []byte("evtx "+from.Format("1504")), 0o644)
+		os.MkdirAll(filepath.Join(d, MetaDir), 0o755)
+		mta := filepath.Join(d, MetaDir, "Security_1033.MTA")
+		os.WriteFile(mta, []byte("mta "+from.Format("1504")), 0o644)
+		return []Source{{Name: "Security.evtx", Source: "Security", Path: ev}, {Name: MetaDir + "/Security_1033.MTA", Source: "Security", Path: mta}}, nil, nil
+	}
+	for i := 0; i < 2; i++ {
+		from := t0.Add(time.Duration(i) * 15 * time.Minute)
+		if _, err := SavePiece(pdir, Info{Host: "WIN11", From: from, To: from.Add(15 * time.Minute), Created: from}, exp, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pieces, _ := Pieces(pdir)
+	path := filepath.Join(dir, FileName("WIN11", t0, t0.Add(30*time.Minute)))
+	if _, err := Pack(path, "WIN11", "windows", pieces, t0.Add(30*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	got := readZip(t, path)
+	for name, body := range map[string]string{
+		"Security_20261007-120000Z.evtx": "evtx 1200", "LocaleMetaData/Security_20261007-120000Z_1033.MTA": "mta 1200",
+		"Security_20261007-121500Z.evtx": "evtx 1215", "LocaleMetaData/Security_20261007-121500Z_1033.MTA": "mta 1215",
+	} {
+		if got[name] != body {
+			t.Errorf("%s = %q (have %v)", name, got[name], got)
+		}
+	}
+}
