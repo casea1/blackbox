@@ -50,7 +50,7 @@ try { pw = require('playwright-core'); } catch (e) { pw = require('playwright');
   await page.waitForFunction(() => /\d.* events? /.test(document.querySelector('[data-title] span').textContent), null, { timeout: 30000 })
     .catch(() => fail('Search found nothing'));
   await page.goto(url + '#health');
-  await page.click('.view[data-view="health"] [data-open="verified"]');
+  await page.click('aside [data-vline]');
   if (await page.$eval('[data-vhead]', h => h.classList.contains('bad'))) fail('Verified is red');
 
   // Every link inside the report leads to a page that exists, and a link
