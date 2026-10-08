@@ -42,8 +42,14 @@ Usage:
   blackbox run                   Collect new events; send them or produce a report if one is due (what the schedule runs)
   blackbox send                  Collect and send to the collector now (e.g. before shutting down a VM)
   blackbox send --resend 214-219 Send batches again that the collector reports missing (kept keep_sent_days after delivery)
+  blackbox send --new-id         Give this computer a new sender ID (a computer cloned from another)
   blackbox systems               List the computers whose events this collector reports on
   blackbox systems remove NAME   Stop listing a retired computer
+  blackbox systems rename OLD NEW
+                                 Accept OLD as a former name of NEW
+  blackbox inbox                 List the senders' own folders in this collector's inbox
+  blackbox inbox add NAME ACCOUNT [--host COMPUTER]
+                                 Make a folder in the inbox that only ACCOUNT can write to
   blackbox gaps                  List batches that never arrived (collector)
   blackbox gaps accept NAME FROM-TO "why"
                                  Accept that those batches will not arrive
@@ -110,6 +116,8 @@ func main() {
 		err = cmdSend(args)
 	case "systems":
 		err = cmdSystems(args)
+	case "inbox":
+		err = cmdInbox(args)
 	case "gaps":
 		err = cmdGaps(args)
 	case "reports":
@@ -564,6 +572,7 @@ func cmdSend(args []string) error {
 	var c common
 	c.register(fs)
 	resend := fs.String("resend", "", "send kept batches again, for example 214-219 (the numbers the collector reports missing)")
+	newID := fs.Bool("new-id", false, "give this computer a new sender ID (a computer cloned from another)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -573,6 +582,17 @@ func cmdSend(args []string) error {
 	}
 	logf, closeLog := openLog(cfg.DataDir)
 	defer closeLog()
+	if *newID {
+		if err := install.RequireAdmin(); err != nil {
+			return err
+		}
+		old, id, err := newApp(cfg, logf).NewSendID()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("This computer now sends as %s (it was %s). The collector treats it as a new sender from its next delivery.\n", id, orNone(old))
+		return nil
+	}
 	if *resend != "" {
 		return resendBatches(cfg, logf, *resend)
 	}
@@ -654,8 +674,57 @@ func cmdSystems(args []string) error {
 		}
 		fmt.Printf("%s will no longer be listed or reported as silent. Its events stay in earlier reports.\nIf it sends again, it will be listed again.\n", rest[1])
 		return nil
+	case len(rest) == 3 && rest[0] == "rename":
+		if err := install.RequireAdmin(); err != nil {
+			return err
+		}
+		if err := a.RenameSystem(rest[1], rest[2]); err != nil {
+			return err
+		}
+		fmt.Printf("%s is accepted as a former name of %s: data recorded under %s is shown as %s's.\n", rest[1], rest[2], rest[1], rest[2])
+		return nil
 	}
-	return errors.New("usage: blackbox systems              (list)\n       blackbox systems remove NAME  (stop listing a retired computer)")
+	return errors.New("usage: blackbox systems                  (list)\n       blackbox systems remove NAME      (stop listing a retired computer)\n       blackbox systems rename OLD NEW   (OLD is a former name of NEW)")
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "none"
+	}
+	return s
+}
+
+// cmdInbox lists the senders' own folders in this collector's inbox, or
+// makes one (SEC1).
+func cmdInbox(args []string) error {
+	fs := flag.NewFlagSet("inbox", flag.ContinueOnError)
+	var c common
+	c.register(fs)
+	host := fs.String("host", "", "the computer that delivers there (default: the first one that does)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := c.load()
+	if err != nil {
+		return err
+	}
+	a := newApp(cfg, nil)
+	rest := fs.Args()
+	switch {
+	case len(rest) == 0:
+		return a.InboxFolders(os.Stdout)
+	case len(rest) == 3 && rest[0] == "add":
+		if err := install.RequireAdmin(); err != nil {
+			return err
+		}
+		dir, err := a.AddSenderFolder(rest[1], rest[2], *host)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Made %s: only %s can write there.\nSenders from 0.23 find it themselves and deliver into it from their next run.\n", dir, rest[2])
+		return nil
+	}
+	return errors.New("usage: blackbox inbox                                   (list the senders' folders)\n       blackbox inbox add NAME ACCOUNT [--host COMPUTER]  (a folder only ACCOUNT can write to)")
 }
 
 // cmdGaps lists batches that never arrived, or accepts a known gap (L13b).

@@ -47,6 +47,9 @@ type SendState struct {
 	// VM: send_to is a VirtualBox shared folder, so this computer is a
 	// virtual machine on the collector's PC (UI2).
 	VM bool `json:"vm,omitempty"`
+	// Folder is this computer's own folder in the collector's inbox ("":
+	// it delivers into the inbox itself, the shared folder) (SEC1).
+	Folder string `json:"folder,omitempty"`
 }
 
 // SenderState is what a collector knows about one sender.
@@ -72,6 +75,50 @@ type SenderState struct {
 	// ("blackbox gaps accept"): no longer missing, and kept with who,
 	// when and why.
 	Accepted []AcceptedGap `json:"accepted,omitempty"`
+	// Names are the host names this sender ID has delivered as: a former
+	// name it claims is accepted only from these (SEC1).
+	Names []string `json:"names,omitempty"`
+	// Sums are the content hashes of the batches imported recently, by
+	// number: a batch delivered again is "already imported" only if it
+	// is the same batch (SEC1).
+	Sums map[uint64]string `json:"sums,omitempty"`
+	// Folder is the inbox folder this sender delivers through ("" for the
+	// shared inbox folder), and Writer the account that wrote its latest
+	// file (SEC1).
+	Folder string `json:"folder,omitempty"`
+	Writer string `json:"writer,omitempty"`
+	// Raised is when each inbox conflict about this sender was last
+	// raised, by kind and host, so one is raised once a day (SEC1).
+	Raised map[string]time.Time `json:"raised,omitempty"`
+}
+
+// InboxFolder is one sender's folder in a collector's inbox: only its
+// account can write there, and what it delivers must be from Hosts
+// (SEC1). Hosts is learned from the first file when the folder was made
+// without one.
+type InboxFolder struct {
+	Account string    `json:"account,omitempty"`
+	Hosts   []string  `json:"hosts,omitempty"`
+	Added   time.Time `json:"added,omitzero"`
+}
+
+// InboxConflict is data in the inbox that claims to be from a computer
+// but may not be (SEC1): kept for the next report, which shows it as a
+// High row. Details are label, value pairs.
+type InboxConflict struct {
+	Time    time.Time `json:"time"`
+	Host    string    `json:"host"`
+	Summary string    `json:"summary"`
+	Details []string  `json:"details,omitempty"`
+}
+
+// Rename is a former name an administrator accepted for a computer with
+// "blackbox systems rename OLD NEW" (SEC1).
+type Rename struct {
+	Old  string    `json:"old"`
+	New  string    `json:"new"`
+	Who  string    `json:"who,omitempty"`
+	When time.Time `json:"when"`
 }
 
 // AcceptedGap is a range of batches accepted as never arriving.

@@ -53,11 +53,19 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
 
 ## LAN security
 
-- **Least privilege on the inbox.** On a Windows collector, the inbox
-  folder is restricted by SID to:
+- **Least privilege on the inbox (SEC1).** On a Windows collector, the
+  inbox folder is restricted by SID to:
   - Administrators and SYSTEM
-  - a local group, **Blackbox Senders**, that may add, change and remove files
-    there (Modify), and nothing else
+  - a local group, **Blackbox Senders**, that may reach the share
+
+  Each sender has its own folder in it (`blackbox inbox add NAME
+  ACCOUNT`), which only its account can write to: it can create and write
+  files, but not delete or rename them, change their permissions, or open
+  another sender's folder. On a Linux collector each SFTP account has its
+  own directory (root and the account's group, mode 1730). Collectors set
+  up before 0.23 also accept files in the inbox itself, where every member
+  of Blackbox Senders can write, for one more release; `blackbox status`
+  lists the senders that still deliver there.
 
   If shared, the share grants Change to that group only. The installer
   creates the group and, when asked, adds named accounts to it. It never
@@ -132,16 +140,19 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
   data. The Systems page lists every computer seen, so an unexpected one
   stands out. If one computer delivers collection records for another,
   the report marks that system "via" the computer that delivered them.
-- **Which account delivered a batch (not checked yet, L2).** Any member
-  of Blackbox Senders can write a batch to the inbox, and the collector
-  does not compare the account that wrote the file with the sender it
-  claims to be. A sender could therefore deliver batches under another
-  sender's name; the sequence numbers would then show a gap or a
-  duplicate for the real one, and the report says so. A planned check
-  would record, for each sender ID, the account that owned its first
-  batch (the file's owner on NTFS, or the mounting account on Linux), and
-  set aside later batches owned by anyone else. Until then, give each
-  sender its own account, and keep Blackbox Senders to those accounts.
+- **Which account delivered a file (SEC1).** The collector reads the
+  owner of each file it imports (the file's owner on NTFS, its user ID on
+  Linux), logs it, and puts it in the note of any file it sets aside and
+  in any High row about the inbox. What a sender's folder holds must be
+  from that folder's computer, and a sender ID belongs to one folder: a
+  file that claims to be from another computer is set aside in
+  `inbox\rejected` with a `.why.txt`, and `blackbox status` exits 4.
+- **What the collector raises (SEC1).** Two different batches under one
+  number, two computers using one sender ID (a cloned computer), two
+  different original-log archives for one period, and a former name that
+  is another live computer are each kept and raised as a High row; nothing
+  is thrown away unread. A batch is "already imported" only when its
+  content hash matches the batch imported under that number.
 
 ## Integrity
 

@@ -254,9 +254,7 @@ func (a *App) Health() (Health, error) {
 		h.Lost = slices.DeleteFunc(h.Lost, func(l LostLog) bool { return !mine(l.Host) })
 	}
 	if a.Cfg.Inbox != "" {
-		if rej, _ := filepath.Glob(filepath.Join(a.Cfg.Inbox, "rejected", "*")); len(rej) > 0 {
-			h.Rejected = len(rej)
-		}
+		h.Rejected = len(lan.Rejected(a.Cfg.Inbox))
 		h.Unreadable = lan.Unreadable(a.Cfg.Inbox)
 	}
 	return h, nil

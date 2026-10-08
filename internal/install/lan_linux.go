@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -239,4 +241,24 @@ var errFIPS = fmt.Errorf("FIPS mode is on: SMB sign-in with a password (NTLM) ne
 func fipsEnabled() bool {
 	b, err := os.ReadFile("/proc/sys/crypto/fips_enabled")
 	return err == nil && strings.TrimSpace(string(b)) == "1"
+}
+
+// SenderFolderAccess lets only account write into a sender's folder in
+// the inbox (SEC1), for an SFTP (sshfs) sender signing in as that
+// account: the folder belongs to root and the account's group, which can
+// create files there but not list the folder, and (sticky) can't delete
+// or rename anyone else's file. Other accounts can't reach it at all.
+func SenderFolderAccess(dir, account string) error {
+	u, err := user.Lookup(account)
+	if err != nil {
+		return fmt.Errorf("no account %q on this computer: %v", account, err)
+	}
+	gid, err := strconv.Atoi(u.Gid)
+	if err != nil {
+		return err
+	}
+	if err := os.Chown(dir, 0, gid); err != nil {
+		return err
+	}
+	return os.Chmod(dir, 0o730|os.ModeSticky)
 }
