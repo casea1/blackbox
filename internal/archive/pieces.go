@@ -147,8 +147,9 @@ func SavePiece(dir string, info Info, export ExportFunc, skip func(string) bool)
 			fi.SHA256 = sum
 		}
 		// Exported into the piece folder already, under its own name.
-		if filepath.Dir(s.Path) != pdir || filepath.Base(s.Path) != s.Name {
-			if err := os.Rename(s.Path, filepath.Join(pdir, s.Name)); err != nil {
+		if dst := filepath.Join(pdir, filepath.FromSlash(s.Name)); filepath.Clean(s.Path) != dst {
+			os.MkdirAll(filepath.Dir(dst), 0o750)
+			if err := os.Rename(s.Path, dst); err != nil {
 				os.RemoveAll(pdir)
 				return Piece{}, err
 			}
@@ -249,6 +250,7 @@ func Pack(path, host, osName string, pieces []Piece, created time.Time) (Info, e
 	var covers [][]LogCover
 	seenNote := map[string]bool{}
 	for _, p := range pieces {
+		renamed := map[string]string{} // .evtx base name → its name here
 		covers = append(covers, p.Info.Logs)
 		info.Gaps = append(info.Gaps, p.Info.Gaps...)
 		for _, n := range p.Info.Notes {
@@ -258,7 +260,7 @@ func Pack(path, host, osName string, pieces []Piece, created time.Time) (Info, e
 			}
 		}
 		for _, f := range p.Info.Files {
-			src := filepath.Join(p.Dir, f.Name)
+			src := filepath.Join(p.Dir, filepath.FromSlash(f.Name))
 			// A file deleted or unreadable since it was exported is a gap
 			// in this archive, not a reason to stop archiving (AR5); one
 			// changed since is packed as found and marked (AR6).
@@ -286,7 +288,22 @@ func Pack(path, host, osName string, pieces []Piece, created time.Time) (Info, e
 				if len(pieces) > 1 {
 					name = strings.TrimSuffix(f.Name, filepath.Ext(f.Name)) + "_" + p.Info.From.UTC().Format(pieceStamp) + filepath.Ext(f.Name)
 				}
-				sources = append(sources, Source{Name: uniqueName(name, names), Source: f.Source, Path: src, Changed: changed})
+				name = uniqueName(name, names)
+				renamed[strings.TrimSuffix(f.Name, filepath.Ext(f.Name))] = strings.TrimSuffix(name, filepath.Ext(name))
+				sources = append(sources, Source{Name: name, Source: f.Source, Path: src, Changed: changed})
+				continue
+			}
+			// The message text of an .evtx goes with it, under its name
+			// (ASSESS1): LocaleMetaData/Security_1033.MTA.
+			if strings.HasPrefix(f.Name, MetaDir+"/") {
+				base := strings.TrimPrefix(f.Name, MetaDir+"/")
+				for old, now := range renamed {
+					if strings.HasPrefix(base, old+"_") {
+						base = now + strings.TrimPrefix(base, old)
+						break
+					}
+				}
+				sources = append(sources, Source{Name: uniqueName(MetaDir+"/"+base, names), Source: f.Source, Path: src, Changed: changed})
 				continue
 			}
 			out := joined[f.Name]
@@ -330,6 +347,10 @@ func Pack(path, host, osName string, pieces []Piece, created time.Time) (Info, e
 	}
 	return info, nil
 }
+
+// MetaDir is the folder next to an .evtx holding its message text
+// (wevtutil al), where Event Viewer looks for it.
+const MetaDir = "LocaleMetaData"
 
 // pieceStamp names a piece's .evtx files in an archive by its start.
 const pieceStamp = "20060102-150405Z"

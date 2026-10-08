@@ -297,11 +297,16 @@ too, for an assessor or an investigation, because the report's own event
 lists and `events.zip` hold only the security-relevant events, translated.
 
 Each report's folder holds the original logs it was made from, unaltered:
-one zip per computer, `logs-COMPUTER.zip`, covering the report's period.
+one zip per computer, `logs-COMPUTER.zip`, holding that computer's daily
+archives up to the report. Each computer archives once a day on its own
+schedule, so a zip need not line up with the report's period (a sender's
+day can start hours before it and end hours before its end): the Original
+logs page says, for each computer, where its zip starts and that the rest
+is in the next scheduled report's folder (AR10).
 
 | Computer | What is in the zip | Open it with |
 |---|---|---|
-| Windows | `Security.evtx`, `System.evtx`, and the USB, Defender, device and PowerShell (`Microsoft-Windows-PowerShell-Operational.evtx`, every script block, not only the ones reported) logs, as `.evtx` files | Event Viewer (Open Saved Log), or `Get-WinEvent -Path` |
+| Windows | `Security.evtx`, `System.evtx`, and the USB, Defender, device and PowerShell (`Microsoft-Windows-PowerShell-Operational.evtx`, every script block, not only the ones reported) logs, as `.evtx` files | Event Viewer (Open Saved Log), or `Get-WinEvent -Path`. Each `.evtx` has its message text next to it (`LocaleMetaData`, from `wevtutil al`), so its events read the same on a computer without the programs that wrote them |
 | Linux | `audit.log`: the audit records, in their original format | `ausearch -if audit.log`, or `aureport -if audit.log` |
 | Linux | `syslog`/`messages` and `auth.log`/`secure`: the lines for the period (or `journal.log` from the systemd journal when there are no log files) | Any text editor |
 
@@ -708,8 +713,9 @@ Every report is a folder containing:
 | `report.html` | The report. Open it in any browser; it works offline |
 | `data/` | The events the report's pages list, compressed, one file per page and day. `report.html` reads them only when a page needs them; keep them next to it |
 | `logs-COMPUTER.zip` | The original logs, one per computer (see above) |
-| `events.zip` | Every event as `events.csv`, for Excel. Double-click to open. A field that starts with `=`, `+`, `-` or `@` gets a `'` in front, so Excel shows it as text and never runs it as a formula |
+| `events.zip` | Every event as `events.csv`, for Excel. Double-click to open. Times are local with their offset (`2026-10-05 06:28:28 -07:00`), and `time_utc` gives them in UTC, like the archive names. A field that starts with `=`, `+`, `-` or `@` gets a `'` in front, so Excel shows it as text and never runs it as a formula |
 | `summary.json` | Counts and period, used by the report list |
+| `README.txt` | For someone who receives only the folder: what each file is, how to check them without Blackbox (`sha256sum -c manifest.sha256`, or `Get-FileHash` in PowerShell), how to open the original logs (`Get-WinEvent -Path …`, `ausearch -if audit.log`) and the time zone |
 | `manifest.sha256` | SHA-256 hash of each file |
 
 To confirm a report has not been altered, run

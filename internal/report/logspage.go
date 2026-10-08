@@ -14,9 +14,12 @@ import (
 // LogArchive is one system's line on the Original logs page.
 type LogArchive struct {
 	Host, OS, Logs, Size, Short, SHA256, Name, Covers string
-	Bytes                                             uint64
-	Status, Class                                     string // Verified / Missing / Hash mismatch
-	Files                                             []LogFile
+	// Coverage says, when the zip ends before the period does, where the
+	// rest is (AR10).
+	Coverage      string
+	Bytes         uint64
+	Status, Class string // Verified / Missing / Hash mismatch
+	Files         []LogFile
 	// Issues are logs that do not cover the whole period (AR2), and Notes
 	// what the archives say about the period, e.g. a clock change (AR1).
 	Issues, Notes []string
@@ -127,6 +130,18 @@ func (r *Report) logsPage() *LogsPage {
 		}
 		if s, ok := osOf[h]; ok {
 			la.OS = osLabel(s)
+		}
+		// Each computer archives once a day on its own schedule, so its
+		// zip need not line up with the period (AR10): say what it covers
+		// and where the rest is.
+		if ws := r.WindowStart; !ws.IsZero() && a.From.Before(ws.Add(-time.Minute)) {
+			la.Notes = append(la.Notes, fmt.Sprintf("Starts at %s, before this period (%s): %s archives its logs once a day on its own schedule, so its zip holds them from there.",
+				r.stamp(a.From), r.stamp(ws), a.Host))
+		}
+		if we := r.WindowEnd; !we.IsZero() && a.To.Before(we.Add(-time.Minute)) {
+			la.Notes = append(la.Notes, fmt.Sprintf("Ends at %s: its logs from then to the end of this period (%s) are in the next scheduled report's folder.",
+				r.stamp(a.To), r.stamp(we)))
+			la.Coverage = "to " + a.To.In(r.Location).Format("2 Jan 15:04") + "; the rest in the next report"
 		}
 		la.Status, la.Class = "Verified", "ok"
 		if st, ok := r.archiveState[a.Name]; ok && !st.Verified {
