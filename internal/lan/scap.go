@@ -80,11 +80,11 @@ func DeliverScap(st *store.Store, inbox string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	dir, own := deliveryDir(st, inbox, "")
 	sent := 0
 	for _, name := range list {
 		src := filepath.Join(OutboxDir(st), name)
-		if _, err := copyInto(src, dir, scapPrefix+st.State.Send.ID+"_"+strings.TrimPrefix(name, scapPrefix), own); err != nil {
+		base := scapPrefix + st.State.Send.ID + "_" + strings.TrimSuffix(strings.TrimPrefix(name, scapPrefix), scapExt)
+		if _, err := drop(src, deliveryDir(st, inbox), base, scapExt); err != nil {
 			return sent, fmt.Errorf("copy SCAP result %s to %s: %w", name, inbox, err)
 		}
 		if err := os.Remove(src); err != nil {
@@ -96,9 +96,9 @@ func DeliverScap(st *store.Store, inbox string) (int, error) {
 }
 
 // importScap checks a delivered scan result and files it under the
-// computer it is for. Its contents must match the hash in its name, and
-// the computer must be its folder's (SEC1).
-func importScap(st *store.Store, dir, folder, name, scapDir string, now time.Time) error {
+// computer it is for. Its contents must match the hash in its name
+// (scap_ID_HASH-RANDOM.xml.gz; earlier senders gave no random part).
+func importScap(st *store.Store, dir, name, scapDir string, now time.Time) error {
 	rest := strings.TrimSuffix(strings.TrimPrefix(name, scapPrefix), scapExt)
 	id, sum, _ := strings.Cut(rest, "_")
 	sum, _, _ = strings.Cut(sum, "-")
@@ -123,8 +123,11 @@ func importScap(st *store.Store, dir, folder, name, scapDir string, now time.Tim
 		_, err = plain.ReadFrom(io.LimitReader(z, maxBatchBytes))
 	}
 	if err != nil {
-		if folder != "" && now.Sub(fi.ModTime()) < settle {
-			return errWriting
+		if truncated(err) {
+			if writing(fi, now) {
+				return errWriting // its sender may still be writing it (DESIGN1)
+			}
+			return incomplete(err)
 		}
 		return fmt.Errorf("it can't be read: %v", err)
 	}
@@ -143,21 +146,12 @@ func importScap(st *store.Store, dir, folder, name, scapDir string, now time.Tim
 	if !archive.UsableHost(host) {
 		return fmt.Errorf("it gives the computer as %q, which is not a usable name", res[0].Host)
 	}
-	if err := checkFolder(st, folder, host, id); err != nil {
-		return err
-	}
 	dest := filepath.Join(scapDir, safeName(host))
 	if err := os.MkdirAll(dest, 0o750); err != nil {
 		return err
 	}
 	if err := store.WriteFileAtomic(filepath.Join(dest, name), b, 0o640); err != nil {
 		return err
-	}
-	bindFolder(st, folder, host, now)
-	if folder != "" {
-		if err := st.Save(); err != nil {
-			return err
-		}
 	}
 	return os.Remove(path)
 }

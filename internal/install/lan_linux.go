@@ -138,7 +138,15 @@ func TryInbox(sendTo, user, pw string) error {
 	return nil
 }
 
-// prepareInbox creates a collector's inbox folder and its marker.
+// SendersGroupLinux is the group whose members (the accounts SFTP
+// senders sign in as) may add files to a Linux collector's inbox.
+const SendersGroupLinux = "blackbox-senders"
+
+// prepareInbox creates a collector's inbox folder and its marker, and
+// makes it drop-only (DESIGN1): owned by root and the blackbox-senders
+// group, mode 1730. Members can create files there, but can't list the
+// folder or remove anyone else's files (sticky); the marker stays
+// readable, so a sender tells the inbox from an unmounted folder.
 func prepareInbox(opt Options, logf func(string, ...any)) error {
 	if err := os.MkdirAll(opt.Inbox, 0o750); err != nil {
 		return err
@@ -146,8 +154,43 @@ func prepareInbox(opt Options, logf func(string, ...any)) error {
 	if err := lan.PrepareInbox(opt.Inbox, collect.LocalHost()); err != nil {
 		return err
 	}
-	logf("Inbox:               %s", opt.Inbox)
+	if n := lan.MigrateSenderFolders(nil, opt.Inbox, logf); n > 0 {
+		logf("Inbox:               moved %d file(s) out of 0.23's per-sender folders; they are imported at the next run", n)
+	}
+	gid, err := sendersGID(logf)
+	if err != nil {
+		return err
+	}
+	if err := dropOnlyDir(opt.Inbox, 0, gid); err != nil {
+		return err
+	}
+	os.Chmod(filepath.Join(opt.Inbox, lan.MarkerFile), 0o644)
+	logf("Inbox:               %s (members of %s can add files to it, and nothing else: not list or read it, or remove others' files)", opt.Inbox, SendersGroupLinux)
 	return nil
+}
+
+// sendersGID is the blackbox-senders group's ID, making the group (a
+// system group with no members) if there is none.
+func sendersGID(logf func(string, ...any)) (int, error) {
+	g, err := user.LookupGroup(SendersGroupLinux)
+	if err != nil {
+		if out, err := exec.Command("groupadd", "--system", SendersGroupLinux).CombinedOutput(); err != nil {
+			return 0, fmt.Errorf("create the %s group: %v: %s", SendersGroupLinux, err, strings.TrimSpace(string(out)))
+		}
+		logf("Local group:         %s created (accounts that may deliver to the inbox: add the SFTP senders' account to it)", SendersGroupLinux)
+		if g, err = user.LookupGroup(SendersGroupLinux); err != nil {
+			return 0, err
+		}
+	}
+	return strconv.Atoi(g.Gid)
+}
+
+// dropOnlyDir makes dir uid:gid, mode 1730 (DESIGN1).
+func dropOnlyDir(dir string, uid, gid int) error {
+	if err := os.Chown(dir, uid, gid); err != nil {
+		return err
+	}
+	return os.Chmod(dir, 0o730|os.ModeSticky)
 }
 
 func removeInbox(logf func(string, ...any)) {}
@@ -241,24 +284,4 @@ var errFIPS = fmt.Errorf("FIPS mode is on: SMB sign-in with a password (NTLM) ne
 func fipsEnabled() bool {
 	b, err := os.ReadFile("/proc/sys/crypto/fips_enabled")
 	return err == nil && strings.TrimSpace(string(b)) == "1"
-}
-
-// SenderFolderAccess lets only account write into a sender's folder in
-// the inbox (SEC1), for an SFTP (sshfs) sender signing in as that
-// account: the folder belongs to root and the account's group, which can
-// create files there but not list the folder, and (sticky) can't delete
-// or rename anyone else's file. Other accounts can't reach it at all.
-func SenderFolderAccess(dir, account string) error {
-	u, err := user.Lookup(account)
-	if err != nil {
-		return fmt.Errorf("no account %q on this computer: %v", account, err)
-	}
-	gid, err := strconv.Atoi(u.Gid)
-	if err != nil {
-		return err
-	}
-	if err := os.Chown(dir, 0, gid); err != nil {
-		return err
-	}
-	return os.Chmod(dir, 0o730|os.ModeSticky)
 }

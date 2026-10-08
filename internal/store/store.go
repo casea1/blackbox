@@ -102,8 +102,9 @@ type State struct {
 	Send    *SendState              `json:"send,omitempty"`
 	Senders map[string]*SenderState `json:"senders,omitempty"` // by sender ID
 	Systems map[string]*System      `json:"systems,omitempty"` // by SystemKey(host)
-	// InboxFolders are the senders' own folders in this collector's
-	// inbox, by folder name in upper case, and Renames the former names
+	// InboxFolders are 0.23's per-sender folders in this collector's
+	// inbox, by folder name in upper case: read only to empty them, and
+	// dropped once they are gone (DESIGN1). Renames are the former names
 	// an administrator accepted (SEC1).
 	InboxFolders map[string]*InboxFolder `json:"inbox_folders,omitempty"`
 	Renames      []Rename                `json:"renames,omitempty"`

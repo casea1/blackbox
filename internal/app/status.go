@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -226,13 +225,6 @@ func (a *App) Status(w io.Writer) error {
 		if a.Cfg.ShareUser != "" {
 			p("Share account:", "%s", a.Cfg.ShareUser)
 		}
-		if snd := s.Send; snd != nil && !snd.LastDelivered.IsZero() {
-			if snd.Folder != "" {
-				p("Inbox folder:", "%s (only this computer's account can write there)", snd.Folder)
-			} else {
-				p("Inbox folder:", "the collector's shared inbox folder, where every sender can write. Ask the collector's administrator for a folder of its own (blackbox inbox add); the shared folder stops working in the next release.")
-			}
-		}
 		waiting := lan.Queued(st)
 		oldest := ""
 		since := a.waitingSince(st)
@@ -296,9 +288,7 @@ func (a *App) Status(w io.Writer) error {
 		}
 		waiting := 0
 		if list, err := filepath.Glob(filepath.Join(a.Cfg.Inbox, "*.bbx")); err == nil {
-			own, _ := filepath.Glob(filepath.Join(a.Cfg.Inbox, "*", "*.bbx")) // senders' own folders (SEC1)
-			own = slices.DeleteFunc(own, func(p string) bool { return filepath.Base(filepath.Dir(p)) == "rejected" })
-			waiting = len(list) + len(own)
+			waiting = len(list)
 		}
 		// A shared inbox the firewall keeps closed (N2): reported, never changed.
 		if runtime.GOOS == "windows" && install.InboxShared() {
@@ -337,12 +327,6 @@ func (a *App) Status(w io.Writer) error {
 			for _, r := range rej {
 				p("", "  %s", r)
 			}
-		}
-		// SEC1: senders still writing into the shared inbox folder.
-		if shared := sharedSenders(st, now); len(shared) > 0 {
-			p("SHARED FOLDER:", "%s still deliver%s into the inbox itself, where every sender can write. Give each its own folder:",
-				strings.Join(shared, ", "), map[bool]string{true: "s"}[len(shared) == 1])
-			p("", "blackbox inbox add NAME ACCOUNT on this computer, then upgrade the sender (see docs/lan.md). The shared folder stops working in the next release.")
 		}
 	}
 	if a.Cfg.Inbox != "" {
@@ -612,17 +596,4 @@ func unreadableText(bad []string) string {
 func retiredSender(st *store.Store, snd *store.SenderState) bool {
 	sys := st.State.Systems[store.SystemKey(snd.Host)]
 	return sys != nil && !sys.Removed.IsZero() && !snd.LastReceived.After(sys.Removed)
-}
-
-// sharedSenders are the senders that delivered into the inbox itself (not
-// their own folder) in the last 30 days (SEC1).
-func sharedSenders(st *store.Store, now time.Time) []string {
-	var out []string
-	for _, snd := range st.State.Senders {
-		if snd.Folder == "" && snd.LastReceived.After(now.AddDate(0, 0, -30)) && !retiredSender(st, snd) {
-			out = append(out, snd.Host)
-		}
-	}
-	sort.Strings(out)
-	return out
 }

@@ -47,9 +47,6 @@ Usage:
   blackbox systems remove NAME   Stop listing a retired computer
   blackbox systems rename OLD NEW
                                  Accept OLD as a former name of NEW
-  blackbox inbox                 List the senders' own folders in this collector's inbox
-  blackbox inbox add NAME ACCOUNT [--host COMPUTER]
-                                 Make a folder in the inbox that only ACCOUNT can write to
   blackbox gaps                  List batches that never arrived (collector)
   blackbox gaps accept NAME FROM-TO "why"
                                  Accept that those batches will not arrive
@@ -307,6 +304,9 @@ environment variable (so it is not shown in the process list).
 			ans.ShareInbox = true
 		}
 		ans.InboxWriters = writers
+		// A role named on the command line replaces the kept one: --inbox
+		// on a former sender makes a collector, not a sender that ignores it.
+		ans = flagRole(ans, *sendTo, *inbox)
 	}
 	ans.Role = install.RoleOf(ans.SendTo, ans.Inbox)
 	ans = install.ForRole(ans)
@@ -697,37 +697,10 @@ func orNone(s string) string {
 	return s
 }
 
-// cmdInbox lists the senders' own folders in this collector's inbox, or
-// makes one (SEC1).
+// cmdInbox is gone (DESIGN1): 0.23's per-sender folders were replaced by
+// a drop-only inbox in 0.24. It says so rather than "unknown command".
 func cmdInbox(args []string) error {
-	fs := flag.NewFlagSet("inbox", flag.ContinueOnError)
-	var c common
-	c.register(fs)
-	host := fs.String("host", "", "the computer that delivers there (default: the first one that does)")
-	rest, err := parseAnywhere(fs, args)
-	if err != nil {
-		return err
-	}
-	cfg, err := c.load()
-	if err != nil {
-		return err
-	}
-	a := newApp(cfg, nil)
-	switch {
-	case len(rest) == 0:
-		return a.InboxFolders(os.Stdout)
-	case len(rest) == 3 && rest[0] == "add":
-		if err := install.RequireAdmin(); err != nil {
-			return err
-		}
-		dir, err := a.AddSenderFolder(rest[1], rest[2], *host)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("Made %s: only %s can write there.\nSenders from 0.23 find it themselves and deliver into it from their next run.\n", dir, rest[2])
-		return nil
-	}
-	return errors.New("usage: blackbox inbox                                   (list the senders' folders)\n       blackbox inbox add NAME ACCOUNT [--host COMPUTER]  (a folder only ACCOUNT can write to)")
+	return errors.New("blackbox inbox was removed in 0.24: senders no longer need folders of their own. Every sender delivers into the one inbox, which they can add files to but not list, read, change or delete (see docs/lan.md, \"How the inbox is protected\"). Setup and the upgrade set this up; there is nothing to add")
 }
 
 // cmdGaps lists batches that never arrived, or accepts a known gap (L13b).
@@ -1116,4 +1089,18 @@ func parseWhen(s string, loc *time.Location) (time.Time, bool, error) {
 		return t, false, fmt.Errorf("%q is not a date like 2026-09-01 or 2026-09-01 08:00", s)
 	}
 	return t, true, nil
+}
+
+// flagRole drops the kept setting of the other role when only one of
+// --send-to and --inbox is given (a path, not "none").
+func flagRole(ans install.Answers, sendTo, inbox string) install.Answers {
+	setSend := sendTo != "" && sendTo != "none"
+	setInbox := inbox != "" && inbox != "none"
+	switch {
+	case setInbox && !setSend:
+		ans.SendTo, ans.ShareUser, ans.SharePassword = "", "", ""
+	case setSend && !setInbox:
+		ans.Inbox, ans.ShareInbox, ans.InboxWriters, ans.ShareWriters = "", false, nil, nil
+	}
+	return ans
 }

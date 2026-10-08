@@ -11,8 +11,9 @@
 // Delivery is exactly-once:
 //   - A sender first writes each batch to its own outbox, then records that
 //     the data was batched. A crash in between rewrites the same batch.
-//   - Batches are copied to the inbox under a temporary name and renamed
-//     when complete, so the collector never reads a partial file.
+//   - Batches are written into the drop-only inbox under a name of their
+//     own, made only if it is free (DESIGN1); the collector leaves a file
+//     that is not complete yet until it has not changed for 10 minutes.
 //   - The collector imports each sender's batches in order and ignores
 //     numbers it already has, so a batch delivered twice is imported once.
 //     A number that never arrives is recorded as a gap and shown in the
@@ -168,6 +169,14 @@ func Decode(r io.Reader) (*Batch, error) {
 	first, n := true, 0
 	for sc.Scan() {
 		raw := sc.Bytes()
+		if err := sc.Err(); err != nil {
+			// The last, partial line of a file cut short (DESIGN1): the
+			// reader's error says so, not the line.
+			if first {
+				return nil, fmt.Errorf("reading batch: %w", err)
+			}
+			return head(b), fmt.Errorf("reading batch: %w", err)
+		}
 		if first {
 			if err := json.Unmarshal(raw, &b.Header); err != nil || b.Kind != batchKind {
 				return nil, errors.New("not a Blackbox batch (bad header)")
