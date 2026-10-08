@@ -315,7 +315,10 @@ func notices(m trayMemory, h app.Health, v trayView, version string, now time.Ti
 					what += " (" + r.What + ")"
 				}
 			}
-			text := fmt.Sprintf("The scheduled report for %s – %s %s. It held the only copy of that period's original logs.", when(r.From, now), when(r.To, now), what)
+			text := fmt.Sprintf("The scheduled report for %s – %s %s.", when(r.From, now), when(r.To, now), what)
+			if r.LostLogs() {
+				text += " It held the only copy of that period's original logs."
+			}
 			if len(gone) > 1 {
 				text += fmt.Sprintf(" (%s in all; see blackbox reports.)", plural(len(gone), "report"))
 			}

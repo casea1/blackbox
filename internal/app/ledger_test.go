@@ -11,6 +11,7 @@ import (
 
 	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/event"
+	"github.com/casea1/blackbox/internal/report"
 	"github.com/casea1/blackbox/internal/store"
 )
 
@@ -275,5 +276,34 @@ func TestReportProblemSystemLog(t *testing.T) {
 	a.verifyReports(st)
 	if len(logged) != 2 {
 		t.Fatalf("logged after accepting: %q", logged)
+	}
+}
+
+// LEDGER4b: "It held the only copy of that period's original logs" only
+// when the logs went with it: the whole report, or a logs-*.zip in it.
+// A missing events.zip or report.html can be made again.
+func TestReportProblemTextOriginalLogs(t *testing.T) {
+	from := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	const held = "It held the only copy of that period's original logs."
+	for _, tc := range []struct {
+		problem, what string
+		held          bool
+	}{
+		{"missing", "", true},
+		{"changed", "logs-WS-07.zip is missing", true},
+		{"changed", "logs-WS-07.zip was changed (its size differs)", true},
+		{"changed", "events.zip is missing", false},
+		{"changed", "report.html was changed (its size differs)", false},
+		{"changed", "manifest.sha256 was changed", false},
+		{"changed", "", false},
+	} {
+		m := report.MissingReport{Name: "2026-10-07_CI", From: from, To: from.AddDate(0, 0, 7), Problem: tc.problem, What: tc.what}
+		got := ReportProblemText(m, time.UTC)
+		if strings.Contains(got, held) != tc.held {
+			t.Errorf("%s %q: %s", tc.problem, tc.what, got)
+		}
+		if !strings.Contains(got, `blackbox reports accept 2026-10-07_CI "why"`) || strings.Contains(got, "..") {
+			t.Errorf("%s %q: %s", tc.problem, tc.what, got)
+		}
 	}
 }

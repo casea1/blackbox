@@ -15,6 +15,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -601,6 +602,23 @@ type MissingReport struct {
 	Accepted string
 }
 
+// LostLogs says whether the problem reaches the period's original logs,
+// which are only in the report: the whole folder is gone, or a
+// logs-*.zip in it is missing or changed (LEDGER4b). Another file
+// (events.zip, report.html) can be made again from the data Blackbox
+// keeps.
+func (m MissingReport) LostLogs() bool {
+	if m.Problem == "missing" {
+		return true
+	}
+	f := strings.Fields(m.What)
+	if len(f) == 0 {
+		return false
+	}
+	name := path.Base(f[0])
+	return strings.HasPrefix(name, "logs-") && strings.HasSuffix(name, ".zip")
+}
+
 // missingRow is a missing scheduled report's line on the index page.
 func missingRow(m MissingReport, loc *time.Location) IndexRow {
 	r := IndexRow{Week: periodLabel(m.From, m.To, loc), Dir: m.Name, Incomplete: true, TrailClass: "bad", end: m.To,
@@ -611,7 +629,10 @@ func missingRow(m MissingReport, loc *time.Location) IndexRow {
 	if m.What != "" {
 		r.Missing += ": " + m.What
 	}
-	r.Trail = r.Missing + " · its original logs were only in it"
+	r.Trail = r.Missing
+	if m.LostLogs() {
+		r.Trail += " · its original logs were only in it"
+	}
 	if m.Accepted != "" {
 		r.Incomplete, r.TrailClass, r.Accepted = false, "mute", true
 		r.Trail = m.Accepted
