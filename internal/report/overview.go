@@ -288,6 +288,21 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []Che
 		lines = append(lines, CheckLine{Level: "bad", Icon: "hard-drive", Title: title, Who: strings.Join(hosts, ", "),
 			What: "archive failed its check and was set aside: " + strings.Join(why, "; "), Count: frac(len(hosts))})
 	}
+	// Original logs that waited past retention_days without a report
+	// (RET1): kept, and raised here as well as on Original logs.
+	if len(r.Overdue) > 0 {
+		bad = true
+		var hosts []string
+		most := 0
+		for _, o := range r.Overdue {
+			if !containsFold(hosts, o.Host) {
+				hosts = append(hosts, o.Host)
+			}
+			most = max(most, o.Days)
+		}
+		lines = append(lines, CheckLine{Level: "bad", Icon: "hard-drive", Title: "Original logs never put in a report", Who: strings.Join(hosts, ", "),
+			What: fmt.Sprintf("waiting up to %d days; kept, as they may be the only copy", most), Href: "#logs", Count: frac(len(hosts))})
+	}
 	switch {
 	case len(r.NoArchive) > 0:
 		lines = append(lines, CheckLine{Level: "warn", Icon: "hard-drive", Title: "Original logs missing", Who: strings.Join(r.NoArchive, ", "), What: "no original logs for this period", Count: frac(len(r.NoArchive))})
