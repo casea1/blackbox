@@ -664,7 +664,7 @@ func cmdSystems(args []string) error {
 		return err
 	}
 	a := newApp(cfg, nil)
-		switch {
+	switch {
 	case len(rest) == 0:
 		return a.Systems(os.Stdout)
 	case len(rest) == 2 && (rest[0] == "remove" || rest[0] == "forget"):
@@ -712,7 +712,7 @@ func cmdInbox(args []string) error {
 		return err
 	}
 	a := newApp(cfg, nil)
-		switch {
+	switch {
 	case len(rest) == 0:
 		return a.InboxFolders(os.Stdout)
 	case len(rest) == 3 && rest[0] == "add":
@@ -743,7 +743,7 @@ func cmdGaps(args []string) error {
 		return err
 	}
 	a := newApp(cfg, nil)
-		switch {
+	switch {
 	case len(rest) == 0:
 		return a.Gaps(os.Stdout)
 	case len(rest) >= 4 && rest[0] == "accept":
@@ -779,7 +779,7 @@ func cmdReports(args []string) error {
 		return err
 	}
 	a := newApp(cfg, nil)
-		switch {
+	switch {
 	case len(rest) == 0:
 		err := a.Reports(os.Stdout)
 		var na *app.NeedsAttention
