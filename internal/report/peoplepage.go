@@ -233,6 +233,7 @@ type actedStat struct {
 
 type personData struct {
 	key, name, domainName string
+	local                 bool // written HOST\name with HOST one of the report's computers (PPL1)
 	hosts                 map[string]*hostStat
 	logons, admin         int
 	ways                  map[string]int
@@ -261,6 +262,12 @@ func (r *Report) peoplePage() *PeoplePage {
 	}
 	labels := r.weekLabels()
 	people := map[string]*personData{}
+	// The report's computer names: an account written HOST\name with one
+	// of them is a local account, not a domain one (PPL1).
+	computers := map[string]bool{}
+	for _, sr := range append(append([]SystemRow(nil), r.SystemRows...), r.Retired...) {
+		computers[shortHost(sr.Name)] = true
+	}
 	get := func(u string) *personData {
 		k := r.pkey(u)
 		p := people[k]
@@ -277,8 +284,12 @@ func (r *Report) peoplePage() *PeoplePage {
 		if p.name == "" || personKey(p.name) != k && personKey(name) == k {
 			p.name = name
 		}
-		if strings.Contains(u, `\`) && p.domainName == "" {
-			p.domainName = u
+		if d, _, ok := strings.Cut(u, `\`); ok {
+			if computers[shortHost(d)] {
+				p.local = true
+			} else if p.domainName == "" {
+				p.domainName = u
+			}
 		}
 		return p
 	}
@@ -695,6 +706,8 @@ func (r *Report) personView(p *personData, inv []invAccount, cards []DetectionCa
 		default:
 			line = append(line, "not an administrator")
 		}
+	case p.local && len(have) > 0:
+		line = append(line, "Local account on "+plural(len(have), "system"))
 	}
 	if usedN > 0 {
 		u := "used on " + plural(usedN, "system") + " this period"
@@ -1127,4 +1140,11 @@ func lerpColor(r1, g1, b1, r2, g2, b2 int, t float64) string {
 	t = math.Max(0, math.Min(1, t))
 	f := func(a, b int) int { return int(math.Round(float64(a) + (float64(b)-float64(a))*t)) }
 	return fmt.Sprintf("#%02X%02X%02X", f(r1, r2), f(g1, g2), f(b1, b2))
+}
+
+// shortHost is a computer name to compare with others: lower case, without
+// its DNS domain ("WIN11-TEST.corp.local" → "win11-test").
+func shortHost(h string) string {
+	h, _, _ = strings.Cut(strings.ToLower(strings.TrimSpace(h)), ".")
+	return h
 }
