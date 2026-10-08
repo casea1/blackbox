@@ -156,7 +156,27 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
   The collector reports missing batch numbers, and sets damaged or
   altered batches aside and reports them. These checks detect loss and
   accidental or careless change, not a determined attacker with write
-  access to the inbox. The batches are not cryptographically signed.
+  access to the inbox. Since 0.24 every delivery is also signed (below).
+- **Signed deliveries (DESIGN1).** Each sender signs every batch,
+  original-log archive and SCAP result with its own Ed25519 key (inside
+  Go's FIPS 140-3 module v1.0.0; it works with `GODEBUG=fips140=only`).
+  The signature covers the file's SHA-256, the computer's name, its sender
+  ID and batch number (an archive: its period; a SCAP result: its hash) and
+  the time. The private key is in the data folder (Administrators and
+  SYSTEM only, root `0600`), never leaves the computer, and the sender
+  checks those permissions in `blackbox status`. The collector pins each
+  computer to the first key it signs with (trust on first use;
+  `new_senders = hold` makes a new one wait for `blackbox senders
+  approve`); a different key later is held, not imported, with a High
+  row, until `blackbox senders rekey`; one key on two computers is a High
+  row. Host and sender-ID spoofing, a forged first batch number, false
+  former names and forged archives or SCAP results can't be made without
+  the computer's key. Unsigned deliveries are taken for this release only
+  from computers that have never signed (`require_signed = yes` refuses
+  them all), and are listed to upgrade. Limits: the first delivery is
+  trusted as it comes (compare the key with the sender's `blackbox
+  status`), and someone with administrator rights on a sender can use its
+  key, as they can change what it collects.
 - **No loops, no spoofed collectors.**
   - A computer refuses its own batches.
   - It only delivers to a folder that has the collector's marker file, so

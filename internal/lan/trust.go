@@ -174,6 +174,10 @@ func conflictEvent(c store.InboxConflict) *event.Event {
 	e := &event.Event{Time: c.Time, Collected: c.Time, Host: c.Host, Source: "Blackbox", RecordType: "Blackbox",
 		Category: event.CatIntegrity, Severity: event.SevHigh, Action: "blackbox_inbox_conflict", Summary: c.Summary,
 		Fields: map[string]string{"blackbox_inbox": "conflict"}}
+	if c.Severity == "info" {
+		// A note, such as a new sender and its key (DESIGN1).
+		e.Severity, e.Action, e.Fields["blackbox_inbox"] = event.SevInfo, "blackbox_new_sender", "new_sender"
+	}
 	for i := 0; i+1 < len(c.Details); i += 2 {
 		e.AddDetail(c.Details[i], c.Details[i+1])
 	}

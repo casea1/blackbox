@@ -31,6 +31,9 @@ type SystemInfo struct {
 	// RemovedBy who did it (ROLE1b): zero while it is not.
 	Removed   time.Time
 	RemovedBy string
+	// Delivery is how its data reached this collector: signed with its
+	// key, or not (DESIGN1). Nil for the collector itself.
+	Delivery *Delivery
 }
 
 // CheckSet is the latest audit settings check of one computer.

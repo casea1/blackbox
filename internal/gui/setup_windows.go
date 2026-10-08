@@ -312,6 +312,9 @@ func (s *setupWin) build() {
 		s.c["swriters"] = s.edit(strings.Join(s.a.ShareWriters, ", "), x+20, y+184, w-20, false)
 		s.on(s.c["share"], func(uint16) { enable(s.c["swriters"], checked(s.c["share"])) })
 		enable(s.c["swriters"], checked(s.c["share"]))
+		// Signed deliveries (DESIGN1): ticked, a new computer is taken at
+		// its first signed delivery; unticked, it waits for approval.
+		s.c["acceptnew"] = s.check(install.QAcceptNewSenders+" (each computer signs what it sends; new ones appear in blackbox status)", !s.a.HoldNewSenders, x, y-24, w)
 	case pSendTo:
 		s.label(install.QSendTo, x, y, w, 20)
 		s.note(strings.ReplaceAll(install.SendToExample(true), "\n", " "), x, y+20, w, 20)
@@ -447,6 +450,7 @@ func (s *setupWin) save() {
 			s.a.InboxWriters = install.SplitList(get("writers"))
 		}
 		s.a.ShareInbox = checked(s.c["share"])
+		s.a.HoldNewSenders = !checked(s.c["acceptnew"])
 		s.a.ShareWriters = nil
 		if s.a.ShareInbox {
 			s.a.ShareWriters = install.SplitList(get("swriters"))

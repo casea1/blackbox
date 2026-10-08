@@ -488,6 +488,7 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []Che
 	if l, ok := r.scapCheckLine(); ok {
 		lines = append(lines, l)
 	}
+	lines = append(lines, r.deliveryCheckLines()...)
 	if len(r.Removed) > 0 {
 		lines = append(lines, CheckLine{Level: "warn", Icon: "history", Title: "Older reports removed",
 			What: fmt.Sprintf("%s deleted under retention_days = %d, with their original logs: %s", plural(len(r.Removed), "report"), r.RetentionDays, strings.Join(r.Removed, ", ")), Count: ""})

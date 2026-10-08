@@ -55,6 +55,8 @@ type SystemView struct {
 	Detections  []DetectionCard
 	Message     string // why it is silent, if it is
 	FailedItems []check.Result
+	// Delivery: "signed · key SHA256:ab12… since 8 Oct" (DESIGN1).
+	Delivery string
 }
 
 // SystemsPage is the Systems page.
@@ -242,6 +244,7 @@ func (r *Report) systemsPage() *SystemsPage {
 			}
 		}
 
+		v.Delivery = s.Delivery.Text(r.Location)
 		v.Bar = r.collectionBar(s, cleared[h])
 		v.Health = r.systemHealth(s, cleared[h], on)
 		if retired {

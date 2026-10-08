@@ -222,7 +222,7 @@ func TestParseAnywhereErrors(t *testing.T) {
 func TestCommandsFlagsAfterSubcommand(t *testing.T) {
 	missing := t.TempDir() + "/no-such.conf"
 	for name, run := range map[string]func([]string) error{
-		"systems": cmdSystems, "gaps": cmdGaps, "reports": cmdReports,
+		"systems": cmdSystems, "gaps": cmdGaps, "reports": cmdReports, "senders": cmdSenders,
 	} {
 		err := run([]string{"accept", "PC", "--config", missing, "1-5", "why"})
 		if err == nil || !strings.Contains(err.Error(), "no-such.conf") {

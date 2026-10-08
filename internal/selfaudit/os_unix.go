@@ -29,8 +29,9 @@ func Who() string {
 	return ""
 }
 
-// systemLog writes msg to syslog/the journal with the ident blackbox.
-func systemLog(msg string, warn bool) error {
+// systemLog writes msg to syslog/the journal with the ident blackbox (a
+// sender's key, too: the message says what it is).
+func systemLog(msg string, warn, _ bool) error {
 	prio := syslog.LOG_AUTH | syslog.LOG_NOTICE
 	if warn {
 		prio = syslog.LOG_AUTH | syslog.LOG_WARNING
@@ -48,4 +49,4 @@ func systemLog(msg string, warn bool) error {
 
 // reportLog writes a warning about a scheduled report to syslog/the
 // journal, ident blackbox (LEDGER4).
-func reportLog(msg string) error { return systemLog(msg, true) }
+func reportLog(msg string) error { return systemLog(msg, true, false) }

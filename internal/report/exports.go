@@ -102,6 +102,10 @@ func (r *Report) verification() Verification {
 		v.OK = false
 	}
 	v.Lines = append(v.Lines, chain)
+	// 4. On a collector: whether every delivery was signed (DESIGN1).
+	if l, ok := r.deliveryVerifyLine(); ok {
+		v.Lines = append(v.Lines, l)
+	}
 	// The failing checks first.
 	sort.SliceStable(v.Lines, func(i, j int) bool { return v.Lines[i].Bad && !v.Lines[j].Bad })
 	host, _ := os.Hostname()

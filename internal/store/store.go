@@ -108,6 +108,9 @@ type State struct {
 	// an administrator accepted (SEC1).
 	InboxFolders map[string]*InboxFolder `json:"inbox_folders,omitempty"`
 	Renames      []Rename                `json:"renames,omitempty"`
+	// SenderKeys are the signing keys pinned to the computers that
+	// deliver here, by SystemKey(host) (DESIGN1).
+	SenderKeys map[string]*SenderKey `json:"sender_keys,omitempty"`
 	// InboxConflicts are kept 90 days (SEC1).
 	InboxConflicts []InboxConflict `json:"inbox_conflicts,omitempty"`
 	Pending        *PendingImport  `json:"pending_import,omitempty"`
@@ -220,6 +223,9 @@ func Open(dir string) (*Store, error) {
 	}
 	if s.State.Systems == nil {
 		s.State.Systems = map[string]*System{}
+	}
+	if s.State.SenderKeys == nil {
+		s.State.SenderKeys = map[string]*SenderKey{}
 	}
 	return s, nil
 }

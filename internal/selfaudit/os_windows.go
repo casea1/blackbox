@@ -26,9 +26,20 @@ const EventID = 100
 // found missing or changed (LEDGER4), a warning.
 const ReportEventID = 101
 
+// SenderEventID is the Application log event ID for an administrator's
+// decision about a sender's signing key: blackbox senders approve, rekey
+// or forget (DESIGN1).
+const SenderEventID = 102
+
 // systemLog writes msg to the Application log, source Blackbox, with
-// eventcreate (part of Windows), which registers the source the first time.
-func systemLog(msg string, warn bool) error { return eventLog(msg, warn, EventID) }
+// eventcreate (part of Windows), which registers the source the first
+// time: event 100, or 102 for a sender's key.
+func systemLog(msg string, warn, sender bool) error {
+	if sender {
+		return eventLog(msg, warn, SenderEventID)
+	}
+	return eventLog(msg, warn, EventID)
+}
 
 func reportLog(msg string) error { return eventLog(msg, true, ReportEventID) }
 

@@ -39,6 +39,10 @@ type Answers struct {
 	ShareInbox   bool     // Windows: share the inbox on the network
 	InboxWriters []string // Windows: local accounts allowed to deliver (e.g. the user who runs VirtualBox)
 	ShareWriters []string // Windows: accounts allowed to deliver over the network share (S11)
+	// HoldNewSenders: a computer delivering for the first time waits for
+	// "blackbox senders approve" (setup's "Accept new computers
+	// automatically", ticked, is false) (DESIGN1).
+	HoldNewSenders bool
 
 	Tray bool // Windows collector or standalone: the status icon for administrators
 
@@ -457,6 +461,14 @@ func (w *wizard) askInbox(a *Answers) error {
 			break
 		}
 	}
+	// Signed deliveries (DESIGN1): new computers are taken at their first
+	// signed delivery, or held for approval.
+	w.note(NoteNewSenders)
+	accept, err := w.yes(QAcceptNewSenders, !a.HoldNewSenders)
+	if err != nil {
+		return err
+	}
+	a.HoldNewSenders = !accept
 	if !w.isWindows {
 		return nil
 	}
@@ -497,6 +509,12 @@ func (w *wizard) askInbox(a *Answers) error {
 	a.ShareWriters = SplitList(s)
 	return nil
 }
+
+// QAcceptNewSenders is setup's checkbox for new_senders (DESIGN1).
+const QAcceptNewSenders = "Accept new computers automatically"
+
+// NoteNewSenders explains it.
+const NoteNewSenders = "Each computer signs what it sends with its own key; the collector takes a computer's key at its first delivery and names it in blackbox status. Untick to hold a new computer's deliveries until you run: blackbox senders approve NAME."
 
 // NoteShareWriters explains the accounts that may deliver over the share
 // (S11): they are added to the Blackbox Senders group.

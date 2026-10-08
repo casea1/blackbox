@@ -109,6 +109,7 @@
 <div class="panel" style="margin-bottom:12px"><div class="dh"><div><h2>{{.Name}}</h2><p>{{.Line}}</p></div><span class="sv {{if eq .Level "bad"}}high{{else if eq .Level "warn"}}medium{{else if eq .Level "retired"}}retired{{else}}ok{{end}}">{{.Status}}</span></div>
 {{if .Message}}<div class="alertbar{{if eq .Level "warn"}} interim{{end}}" style="margin-bottom:12px">{{icon "clock-alert" 18}}<span>{{.Message}}</span></div>{{end}}
 <div class="facts4">{{range .Facts}}{{template "fact" .}}{{end}}</div>
+{{if .Delivery}}<p class="pm" style="margin:10px 0 0">Delivery: {{.Delivery}}</p>{{end}}
 <div class="sub2">Collection this period</div>{{.Bar}}</div>
 <div class="row" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
 <div class="panel"><div class="ph"><h2>{{icon "shield-check" 17}}Health</h2></div>{{range .Health}}{{template "ck" .}}{{end}}</div>

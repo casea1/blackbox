@@ -43,6 +43,13 @@ type Config struct {
 	// them, so "blackbox send --resend" can fill a gap the collector
 	// reports (L11). 0 = not kept.
 	KeepSentDays int
+	// HoldNewSenders (new_senders = hold): a computer that delivers for
+	// the first time waits for "blackbox senders approve NAME"; with
+	// accept (the default) it is taken on its first signed delivery.
+	// RequireSigned (require_signed = yes) refuses unsigned deliveries,
+	// from senders before 0.24 (DESIGN1).
+	HoldNewSenders bool
+	RequireSigned  bool
 
 	// SCAP scan results to show with the report (docs/design.md 13a):
 	// ScapResults is the folder to read ("" = scap in the data folder,
@@ -255,6 +262,24 @@ func (c *Config) set(k, v string) error {
 			return fmt.Errorf("keep_sent_days must be 0 or a positive number of days")
 		}
 		c.KeepSentDays = n
+	case "new_senders":
+		switch strings.ToLower(v) {
+		case "", "accept":
+			c.HoldNewSenders = false
+		case "hold":
+			c.HoldNewSenders = true
+		default:
+			return fmt.Errorf("new_senders must be accept or hold")
+		}
+	case "require_signed":
+		switch strings.ToLower(v) {
+		case "", "no":
+			c.RequireSigned = false
+		case "yes":
+			c.RequireSigned = true
+		default:
+			return fmt.Errorf("require_signed must be no or yes")
+		}
 	case "send_to":
 		c.SendTo = v
 	case "inbox":
@@ -376,7 +401,7 @@ func RawValues(path string) map[string]string {
 }
 
 // Settable lists the settings `blackbox config set` may change.
-var Settable = []string{"site_name", "report_every", "report_at", "report_dir", "archive_dir", "retention_days", "exclude_users", "exclude_processes", "working_hours", "send_to", "inbox", "share_user", "keep_sent_days", "scap_results", "scap_max_age_days"}
+var Settable = []string{"site_name", "report_every", "report_at", "report_dir", "archive_dir", "retention_days", "exclude_users", "exclude_processes", "working_hours", "send_to", "inbox", "share_user", "keep_sent_days", "new_senders", "require_signed", "scap_results", "scap_max_age_days"}
 
 // SetValue changes one user-settable setting in the config file (see
 // Settable), keeping its comments and line endings.
@@ -673,6 +698,16 @@ inbox = {{INBOX}}
 # again with "blackbox send --resend FROM-TO" if the collector reports a
 # gap. 0 = delete them once delivered.
 keep_sent_days = 14
+
+# Collector: each sender signs what it sends with its own key, and the
+# collector takes a computer's key at its first signed delivery.
+# new_senders = accept takes a new computer straight away (blackbox status
+# names it); hold keeps its deliveries until: blackbox senders approve NAME
+new_senders = accept
+# require_signed = yes refuses unsigned deliveries, from senders not yet
+# upgraded to 0.24. no (this release's default) takes them from a computer
+# that has never sent signed; blackbox status lists them.
+require_signed = no
 
 # Days to keep reports and collected events. 0 = keep forever.
 retention_days = 0

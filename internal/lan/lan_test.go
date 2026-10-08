@@ -429,7 +429,7 @@ func TestScapResultsTravel(t *testing.T) {
 	if n, _ := QueueScap(ws, files, t0); n != 0 {
 		t.Error("the same result queued twice")
 	}
-	if n, err := DeliverScap(ws, in); err != nil || n != 1 || QueuedScap(ws) != 0 {
+	if n, err := DeliverScap(ws, in, "WS-07"); err != nil || n != 1 || QueuedScap(ws) != 0 {
 		t.Fatalf("delivered %d %v", n, err)
 	}
 	col, _ := store.Open(t.TempDir())

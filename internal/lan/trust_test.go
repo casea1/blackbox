@@ -344,7 +344,7 @@ func TestDropRetriesTakenName(t *testing.T) {
 	os.WriteFile(src, []byte("batch"), 0o640)
 	seen := map[string]bool{}
 	for i := 0; i < 20; i++ {
-		name, err := drop(src, in, "H_id_0000000001", batchExt)
+		name, err := drop(src, in, "H_id_0000000001", batchExt, nil)
 		if err != nil || seen[name] {
 			t.Fatalf("drop %d: %s %v", i, name, err)
 		}
@@ -353,10 +353,10 @@ func TestDropRetriesTakenName(t *testing.T) {
 			t.Errorf("%s parses as %s %d %v", name, id, seq, ok)
 		}
 	}
-	if err := writeNew(src, filepath.Join(in, "taken")); err != nil {
+	if err := writeNew(filepath.Join(in, "taken"), func(*os.File) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeNew(src, filepath.Join(in, "taken")); !errors.Is(err, fs.ErrExist) {
+	if err := writeNew(filepath.Join(in, "taken"), func(*os.File) error { return nil }); !errors.Is(err, fs.ErrExist) {
 		t.Errorf("O_EXCL: %v", err)
 	}
 }

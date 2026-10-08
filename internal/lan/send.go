@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/casea1/blackbox/internal/archive"
 	"github.com/casea1/blackbox/internal/store"
 )
 
@@ -219,6 +220,10 @@ func Deliver(st *store.Store, inbox, host string, keep bool) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	key, err := signingKey(st)
+	if err != nil {
+		return 0, err
+	}
 	sent := 0
 	for _, name := range list {
 		seq, err := strconv.ParseUint(strings.TrimSuffix(name, batchExt), 10, 64)
@@ -226,7 +231,7 @@ func Deliver(st *store.Store, inbox, host string, keep bool) (int, error) {
 			continue
 		}
 		src := filepath.Join(OutboxDir(st), name)
-		if _, err := drop(src, inbox, inboxBase(host, st.State.Send.ID, seq), batchExt); err != nil {
+		if err := dropBatch(src, inbox, inboxBase(host, st.State.Send.ID, seq), key); err != nil {
 			return sent, fmt.Errorf("copy batch %d to %s: %w", seq, inbox, err)
 		}
 		if err := retire(st, src, name, keep); err != nil {
@@ -320,6 +325,10 @@ func Resend(st *store.Store, inbox, host string, from, to uint64) (sent []uint64
 	if st.State.Send == nil {
 		return nil, nil, errors.New("this computer has not sent any batches yet")
 	}
+	key, err := signingKey(st)
+	if err != nil {
+		return nil, nil, err
+	}
 	for seq := from; seq <= to; seq++ {
 		src := filepath.Join(SentDir(st), outboxName(seq))
 		if _, err := os.Stat(src); err != nil {
@@ -329,7 +338,7 @@ func Resend(st *store.Store, inbox, host string, from, to uint64) (sent []uint64
 			}
 			continue
 		}
-		if _, err := drop(src, inbox, inboxBase(host, st.State.Send.ID, seq), batchExt); err != nil {
+		if err := dropBatch(src, inbox, inboxBase(host, st.State.Send.ID, seq), key); err != nil {
 			return sent, missing, fmt.Errorf("copy batch %d to %s: %w", seq, inbox, err)
 		}
 		sent = append(sent, seq)
@@ -358,10 +367,22 @@ func DeliverArchives(st *store.Store, inbox string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	key, err := signingKey(st)
+	if err != nil {
+		return 0, err
+	}
 	sent := 0
 	for _, name := range list {
 		src := filepath.Join(OutboxDir(st), name)
-		if _, err := drop(src, inbox, archivePrefix+st.State.Send.ID+"_"+strings.TrimSuffix(name, archiveExt), archiveExt); err != nil {
+		info, err := archive.Verify(src)
+		if err != nil {
+			return sent, fmt.Errorf("log archive %s: %w", name, err)
+		}
+		sig, err := makeSig(key, src, "archive", info.Host, st.State.Send.ID, archiveWhat(info.From, info.To), time.Now())
+		if err != nil {
+			return sent, err
+		}
+		if _, err := drop(src, inbox, archivePrefix+st.State.Send.ID+"_"+strings.TrimSuffix(name, archiveExt), archiveExt, sig); err != nil {
 			return sent, fmt.Errorf("copy log archive %s to %s: %w", name, inbox, err)
 		}
 		if err := os.Remove(src); err != nil {
@@ -404,14 +425,55 @@ const dropTries = 8
 // sender can't rename or delete anything in the inbox, so it writes the
 // final name straight away, and the collector waits for a file that is
 // not complete yet. A name already taken means someone else made that
-// file; the batch then goes under a new random part. Nothing in the
+// file; the file then goes under a new random part. Nothing in the
 // inbox is listed or read.
-func drop(src, inbox, base, ext string) (string, error) {
+//
+// With sig, NAME.sig is written first, the same way: when the collector
+// sees the file, its signature is already there.
+func drop(src, inbox, base, ext string, sig []byte) (string, error) {
+	return dropWith(inbox, base, ext, sig, func(out *os.File) error {
+		in, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+		_, err = io.Copy(out, in)
+		return err
+	})
+}
+
+// dropBatch signs a batch and drops it into the inbox: the signature is
+// in its end marker.
+func dropBatch(src, inbox, base string, key *Key) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	if data, err = SignBatch(data, key, time.Now()); err != nil {
+		return fmt.Errorf("sign: %w", err)
+	}
+	_, err = dropWith(inbox, base, batchExt, nil, func(out *os.File) error {
+		_, err := out.Write(data)
+		return err
+	})
+	return err
+}
+
+func dropWith(inbox, base, ext string, sig []byte, write func(*os.File) error) (string, error) {
 	for i := 0; i < dropTries; i++ {
 		name := base + "_" + randomPart() + ext
-		err := writeNew(src, filepath.Join(inbox, name))
+		if sig != nil {
+			err := writeNew(filepath.Join(inbox, name+sigExt), func(f *os.File) error { _, err := f.Write(sig); return err })
+			if errors.Is(err, fs.ErrExist) {
+				continue
+			}
+			if err != nil {
+				return "", err
+			}
+		}
+		err := writeNew(filepath.Join(inbox, name), write)
 		if errors.Is(err, fs.ErrExist) {
-			continue
+			continue // the signature written above is set aside by the collector
 		}
 		return name, err
 	}
@@ -425,18 +487,13 @@ func randomPart() string {
 	return hex.EncodeToString(b)
 }
 
-// writeNew writes src to path, which must not exist yet.
-func writeNew(src, path string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
+// writeNew makes path, which must not exist yet, and writes it.
+func writeNew(path string, write func(*os.File) error) error {
 	out, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, in); err != nil {
+	if err := write(out); err != nil {
 		out.Close()
 		return err
 	}
@@ -445,6 +502,16 @@ func writeNew(src, path string) error {
 		return err
 	}
 	return out.Close()
+}
+
+// signingKey is this sender's signing key, made if it has none yet (a
+// sender upgraded without setup, DESIGN1).
+func signingKey(st *store.Store) (*Key, error) {
+	k, _, err := EnsureKey(st.Dir)
+	if err != nil {
+		return nil, fmt.Errorf("signing key: %w", err)
+	}
+	return k, nil
 }
 
 // OldestQueued is when the oldest item still waiting in the outbox (a
@@ -572,6 +639,9 @@ func restamp(path string, first uint64, earlier string) error {
 func NewID(st *store.Store) (old, id string, err error) {
 	if st.State.Send == nil {
 		st.State.Send = &store.SendState{ID: store.NewID(), NextSeq: 1}
+		if _, err := NewKey(st.Dir); err != nil {
+			return "", "", fmt.Errorf("new signing key: %w", err)
+		}
 		return "", st.State.Send.ID, st.Save()
 	}
 	s := st.State.Send
@@ -617,5 +687,10 @@ func NewID(st *store.Store) (old, id string, err error) {
 		}
 	}
 	s.ID, s.NextSeq, s.FirstSeq, s.Earlier = id, seq, 0, ""
+	// A new signing key too: a computer copied with its data folder must
+	// not sign as the one it was copied from (DESIGN1).
+	if _, err := NewKey(st.Dir); err != nil {
+		return old, id, fmt.Errorf("new signing key: %w", err)
+	}
 	return old, id, st.Save()
 }

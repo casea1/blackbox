@@ -199,6 +199,11 @@ func Summary(a Answers, defaultReports string, windows bool) []SummaryLine {
 		if w := append(append([]string{}, a.InboxWriters...), a.ShareWriters...); len(w) > 0 {
 			l = append(l, SummaryLine{"Can deliver", strings.Join(w, ", ")})
 		}
+		newOnes := "taken at their first signed delivery"
+		if a.HoldNewSenders {
+			newOnes = "held until: blackbox senders approve NAME"
+		}
+		l = append(l, SummaryLine{"New computers", newOnes})
 	}
 	if a.SendTo != "" {
 		l = append(l, SummaryLine{"Sends to", a.SendTo})
