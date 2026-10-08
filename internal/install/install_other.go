@@ -80,3 +80,16 @@ func VirtualBoxInstalled() bool { return false }
 func RefreshSchedule(time.Duration) error { return nil }
 
 func applySchedule(time.Duration) error { return nil }
+
+// AddSSHKey is for a Windows collector.
+func AddSSHKey(string, string) (string, error) {
+	return "", errors.New("adding a sender's SSH key is for a Windows collector; on Linux, add it to the account's ~/.ssh/authorized_keys")
+}
+
+// SFTPPrompts are SetupSFTP's questions.
+type SFTPPrompts struct {
+	Yes func(prompt string, def bool) (bool, error)
+}
+
+// SetupSFTP is for a Linux sender.
+func SetupSFTP(string, *SFTPPrompts, func(string, ...any)) (string, error) { return "", errLinux }

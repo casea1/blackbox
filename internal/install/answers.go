@@ -153,6 +153,9 @@ func SendToAnswer(s string, windows bool) (string, error) {
 	if s == "" {
 		return "", fmt.Errorf("Please enter the collector's inbox.")
 	}
+	if !windows && IsSFTP(s) {
+		return strings.TrimSpace(s), nil
+	}
 	if !config.IsAbs(s) && !config.IsShare(s) {
 		return "", fmt.Errorf("Please enter a full path or a share name.")
 	}
@@ -167,7 +170,7 @@ func SendToExample(windows bool) string {
 	if windows {
 		return fmt.Sprintf("Enter the collector's shared folder, for example \\\\COLLECTOR\\%s", ShareName)
 	}
-	return fmt.Sprintf("A VirtualBox shared folder (for example /media/sf_%s), or\na Windows share on the network (for example //COLLECTOR/%s).", ShareName, ShareName)
+	return fmt.Sprintf("A VirtualBox shared folder (for example /media/sf_%s),\na Windows share on the network (for example //COLLECTOR/%s), or\nan SFTP inbox, which works in FIPS mode (for example bbsend@COLLECTOR:/C:/%s).", ShareName, ShareName, ShareName)
 }
 
 // SummaryLine is one line of the summary shown before installing.
