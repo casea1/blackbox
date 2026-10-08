@@ -394,3 +394,103 @@ func TestUpgradeMidStream(t *testing.T) {
 		t.Errorf("%d events, want 5 (one per batch, none twice)", len(evs))
 	}
 }
+
+// SEC1f: an unsigned copy of a batch already imported signed (the copy a
+// sender keeps in outbox\sent, replayed into the inbox) is "already
+// imported", not refused. An unsigned batch claiming that signed sender
+// that is not an exact copy (other content, or a number not imported) is
+// still refused, and makes no gap.
+func TestUnsignedCopyOfImportedBatch(t *testing.T) {
+	in := inbox(t)
+	col, _ := store.Open(t.TempDir())
+	ws := system(t, "WS-09", "windows", 2, t0)
+	Export(ws, "WS-09", "test", t0)
+	if n, err := Deliver(ws, in, "WS-09", true); err != nil || n != 1 {
+		t.Fatalf("deliver: %d %v", n, err)
+	}
+	if res, _ := Import(col, in, Dirs{}, t0.Add(time.Minute), t.Logf); res.Batches != 1 {
+		t.Fatalf("signed import: %+v", res)
+	}
+	id := ws.State.Send.ID
+	kept, err := os.ReadFile(filepath.Join(SentDir(ws), outboxName(1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, err := Decode(bytes.NewReader(kept)); err != nil || b.Sig != nil {
+		t.Fatalf("the kept copy should be unsigned: %v %+v", err, b)
+	}
+	replay := filepath.Join(in, fmt.Sprintf("WS-09_%s_0000000001-0123456789ab.bbx", id))
+	os.WriteFile(replay, kept, 0o644)
+	res, _ := Import(col, in, Dirs{}, t0.Add(time.Hour), t.Logf)
+	if res.Already != 1 || res.Batches != 0 || len(res.Rejected) != 0 {
+		t.Fatalf("unsigned copy: %+v, want already imported", res)
+	}
+	if _, err := os.Stat(replay); err == nil {
+		t.Error("the copy was left in the inbox")
+	}
+
+	// Not an exact copy: refused as before, with no gap.
+	writeBatch(t, in, &Batch{Header: Header{Sender: "WS-09", SenderID: id, Seq: 1, Created: t0},
+		Events: [][]byte{[]byte(`{"host":"WS-09","summary":"other"}`)}})
+	writeBatch(t, in, &Batch{Header: Header{Sender: "WS-09", SenderID: id, Seq: 2, Created: t0},
+		Events: [][]byte{[]byte(`{"host":"WS-09","summary":"new"}`)}})
+	res, _ = Import(col, in, Dirs{}, t0.Add(2*time.Hour), t.Logf)
+	if res.Already != 0 || res.Batches != 0 || len(res.Rejected) != 2 {
+		t.Fatalf("unsigned, not a copy: %+v", res)
+	}
+	for _, r := range res.Rejected {
+		if !strings.Contains(r, "it is not signed, but") {
+			t.Errorf("reason: %s", r)
+		}
+	}
+	if s := col.State.Senders[id]; len(s.Missing) != 0 || s.LastSeq != 1 || len(col.State.InboxConflicts) != 1 {
+		t.Errorf("after the refusals: %+v, conflicts %+v", s, col.State.InboxConflicts)
+	}
+}
+
+// SEC1f: a file in the inbox that is not a delivery (anything but a
+// batch, log archive, SCAP result, their signatures and the marker) is
+// set aside in inbox/rejected with a note once it has not changed for 10
+// minutes, never deleted. A recent one is left for now.
+func TestStrayFilesSetAside(t *testing.T) {
+	in := inbox(t)
+	col, _ := store.Open(t.TempDir())
+	old := t0.Add(-time.Hour)
+	for _, n := range []string{"probe2.txt", ".hidden", "notes.txt.sig", "desktop.ini"} {
+		p := filepath.Join(in, n)
+		os.WriteFile(p, []byte("x"), 0o644)
+		os.Chtimes(p, old, old)
+	}
+	recent := filepath.Join(in, "new.txt")
+	os.WriteFile(recent, []byte("x"), 0o644)
+	os.Chtimes(recent, t0.Add(-time.Minute), t0.Add(-time.Minute))
+	os.MkdirAll(filepath.Join(in, "someone-elses"), 0o750)
+	res, err := Import(col, in, Dirs{}, t0, t.Logf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Rejected) != 4 {
+		t.Fatalf("set aside: %v", res.Rejected)
+	}
+	for _, n := range []string{"probe2.txt", ".hidden", "notes.txt.sig", "desktop.ini"} {
+		if _, err := os.Stat(filepath.Join(in, rejectedDir, n)); err != nil {
+			t.Errorf("%s not set aside: %v", n, err)
+		}
+		why, err := os.ReadFile(filepath.Join(in, rejectedDir, n+whyExt))
+		if err != nil || !strings.Contains(string(why), "not a Blackbox delivery") {
+			t.Errorf("%s: note %q %v", n, why, err)
+		}
+	}
+	for _, p := range []string{recent, filepath.Join(in, MarkerFile), filepath.Join(in, "someone-elses")} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s was moved: %v", p, err)
+		}
+	}
+	if got := Rejected(in); len(got) != 4 {
+		t.Errorf("Rejected lists %v", got)
+	}
+	// Ten minutes on, the recent one goes too.
+	if res, _ := Import(col, in, Dirs{}, t0.Add(10*time.Minute), t.Logf); len(res.Rejected) != 1 {
+		t.Errorf("later: %v", res.Rejected)
+	}
+}
