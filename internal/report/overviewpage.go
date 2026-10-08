@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"html/template"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -285,7 +286,17 @@ func (o *Overview) review(r *Report, systems []SystemRow) {
 		return
 	}
 	o.Review = "Needs review: " + strings.Join(parts, ", ")
-	o.ReviewDetail = strings.Join(facts, " ")
+	o.ReviewDetail = shortFPs(strings.Join(facts, " "))
+}
+
+// fpRe matches a full key fingerprint in a sentence.
+var fpRe = regexp.MustCompile(`SHA256:[A-Za-z0-9+/=]{16,}`)
+
+// shortFPs shortens every key fingerprint in a summary sentence, as the
+// rest of the report does ("SHA256:LuoiZpT8…"); the full ones stay in the
+// detection itself and in blackbox senders (UI22).
+func shortFPs(s string) string {
+	return fpRe.ReplaceAllStringFunc(s, shortFP)
 }
 
 // detRank orders detections for the summary sentence: logs cleared or
