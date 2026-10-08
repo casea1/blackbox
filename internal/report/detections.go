@@ -230,8 +230,12 @@ func (r *Report) detectionViews() []DetectionView {
 			first, last = key[0].Time, key[len(key)-1].Time
 		}
 		from, to := first.Add(-tlWindow), last.Add(tlWindow)
-		v.SearchHref = searchLink("host", f.Host, "user", pk, "when", first.In(r.Location).Format("20060102"),
-			"from", fmt.Sprint(from.Unix()), "to", fmt.Sprint(to.Unix()))
+		// Search's at and span: the same window, ten minutes either side of
+		// the key events, centred on them (span is 600 for a single event).
+		half := last.Sub(first) / 2
+		at := first.Add(half)
+		v.SearchHref = searchLink("host", f.Host, "user", pk,
+			"at", fmt.Sprint(at.Unix()), "span", fmt.Sprint(int64((tlWindow+half+time.Second-1)/time.Second)))
 
 		// The four facts.
 		pf := DetFact{Label: "Person", Value: "—", Sub: "no account named"}

@@ -718,7 +718,7 @@ until its last column is in view; at 768 pixels the page itself, the
 STIG compliance table included, needs no sideways scrolling.
 
 The report is checked with axe-core for the accessibility rules on
-names and structure (UI19): every filter list (Search, and the filters
+names and structure (UI19): every filter (Search, and the filters
 on each event page) has a name; each chart is an image named for what it
 shows, the activity heatmap a named group (its hours are links), and
 icons are hidden from screen readers; Inventory's rows open with a
@@ -792,9 +792,78 @@ sidebar is a bar with a **Menu** button that opens the same list.
 Every page has **one header**: a breadcrumb line (the report, its period
 and the time zone the page's times are in, then what the page holds,
 e.g. "Daily report · 7 Oct 00:00 – 8 Oct 00:00 EDT · 12 detections"), the title, and only the page's own buttons on the right:
-**Export**, and **Export CSV** on Detections. Search has the same kinds as
-chips, with their counts, and a timeline with times of day for a short
-period.
+**Export**, and **Export CSV** on Detections, Search and each event page.
+
+**Search** (UI-R1) is one box that searches every field of every event
+(the summary, system, person, account, address, event ID, action, log,
+program, command, outcome and kind), with dropdowns beside it: **Kind**
+(all, or one kind of event), **Person**, **System** (grouped Servers and
+Workstations), **Servers / workstations**, **Severity** (any, high,
+medium, high or medium, low or info) and **When** (this period, outside
+working hours, or one day). **Common searches ▾** is a menu of eight
+ready-made searches (everything one person did, USB devices on servers,
+admin work after hours, failed logons by source, changes to admin
+groups, logs cleared or audit changed, PowerShell that downloads, Remote
+Desktop logons). On the left, **field counts** for the results shown
+(System, Event, Severity), each with a bar: click a value to show only
+it, click it again to clear it, Alt-click to leave it out (a "Not …"
+chip, with ×, says so). On the right, a count line ("317 events · 14
+systems · 2 high"), **events per hour** across the period (click a bar
+for that hour), then the results, newest first: Time, System, Person,
+Event, Details, ID and Severity, high rows tinted red. **Group by ▾**
+(system, person or event) groups the rows, biggest group first, and
+**Show 50 more** adds the next 50, so a large report stays quick. The
+search runs in the browser over the report's data files; nothing leaves
+the computer.
+
+The page's link keeps the search (`#search?user=jlee&sev=high`), so it
+can be bookmarked or sent, and other pages link to Search the same way.
+The link's parameters, all optional: `page` (the kind of event, an event
+page's name such as `privileged`), `user` (a person), `host` (a system),
+`role` (`server`, `workstation` or `vm`; `host=@server` also works),
+`sev` (`high`, `medium`, `hm` for high or medium, `li` for low or info),
+`when` (a day `20261007`, an hour `2026100714`, `@after` for outside
+working hours, or `@slot:D-H`, a weekday hour from People), `at` and
+`span` (a time in Unix seconds and the seconds either side of it:
+"±10 min"), `text`, `event` (an action, e.g. `log_cleared`), `sub` (an
+event page's kind, e.g. `Admin logon`), `flag` (e.g. `New device`), `not`
+(`field:value` to leave out, may repeat), `group` (`host`, `user`,
+`event` or `sub`), `sort` (`src` for by source address; `sort=host` groups
+by system) and `preset` (a common search's name). `#search/<text>`
+searches for the text.
+
+**Events by kind.** Each event page (Privileged activity, Audit
+integrity, Logon activity, …) is Search with its **Kind** preset, shown as
+a chip: the same box ("Search within privileged activity…"), filters,
+field counts (Person, System and the page's own kind, e.g. Admin logon or
+sudo / run as admin), events per hour and results. The results are High
+and Medium first, then newest, with the columns Time, System, Person,
+Command or action (the command when there is one) and Severity. The ×
+on the Kind chip opens Search with the same filters for every kind of
+event. The breadcrumb says what the page holds ("admin rights, sudo and
+root commands").
+
+**The event panel** opens from any row (Search, an event page, an event
+on Detections or a system's page) at the right of the page: a breadcrumb
+("Search › event · Security 4688"), the event in plain words, its
+severity and "part of the detection … →" when it is in one. Then **When**
+(local time and UTC, to the millisecond), **System** (with its OS),
+**Person** (`HOST\account`, and "administrator" or "standard user" from
+the system's inventory), the address it came **From**, **Program**,
+**Command**, **Started by** (the program that started it and the logon
+session it came from, e.g. "cmd.exe (from a Remote Desktop session from
+WS-ADM-01)"), **Outcome**, and the **Original record**: the file in the
+system's original-log zip that holds it and its record number
+(`logs-SRV-DC02.zip › Security.evtx, record 884,212`), for an assessor to
+find it in Event Viewer or with `ausearch`. **Around it on <system>** lists
+the four events before and after it on that system (click one to open
+it). **Context** gives the ATT&CK technique its action stands for, where
+the mapping is clear (a log cleared is T1070.001 on Windows, T1070.002 on
+Linux; a program run has none), and, for a command, how many other
+systems ran it this period. Then **Everything <person> did**, **±10 min on
+<system>** (Search around it), **Copy for a ticket** (the event as plain
+text, its time with the zone, for a ticket or an email) and **Raw
+record ▾**, the event's original fields.
 
 **Export** opens a menu in two parts. **This page** is what the page shown
 holds, as CSV: "Detections shown (12)" (only those the filters show), the
@@ -842,7 +911,7 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
   **Activity this period** is the events per hour (per day over more than
   eight days), Windows and Linux stacked in two colours, with a red dot on
   each hour that has a detection. Clicking a bar opens Search for that
-  hour.
+  hour (`when=2026100714`), or that day for a per-day bar.
   **Systems at a glance** lists only the systems with a red check, grouped
   Servers / Workstations, with six squares (Reporting, Logs intact,
   Settings, Antivirus, Original logs, SCAP; green ok, amber warning, red
@@ -861,20 +930,15 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
   in this report still hold of it. **What happened** lists the events ten
   minutes either side on that system for that person, the detection's own
   events marked in red; a row opens the event. **Open in Search (±10 min)**
-  and **Everything <person> did** open Search. **Related this period**
+  opens Search on the same events (that system and person, `at` and
+  `span`), and **Everything <person> did** opens Search for the person. **Related this period**
   lists the other detections with the same person or system. Export CSV
   saves the detections the filters show.
 - **Each fact once.** The Systems page gives a system's audit settings
   to fix as a count that links to Audit health, which lists them. A
   system that sent nothing says so once.
-- **Columns that say nothing are hidden.** Severity when no row is High
-  or Medium; a Kind, Session or From that is the same on every row. With
-  a Person column, the summary leaves out the person's name (the event's
-  panel keeps it).
-- **Short and empty periods.** A page with no events is one line. A
-  period of a day or less is charted by hour, and "Above normal" is shown
-  only when there are at least three days with events to compare. "Not
-  enough history" is said once, and trend tiles appear once there is
+- **Short and empty periods.** A page with no events is one line.
+  "Not enough history" is said once, and trend tiles appear once there is
   history.
 - **A manual report** says so in a banner on the Overview, and in a
   "Manual" chip by the title on every other page.
@@ -995,10 +1059,7 @@ counts; one that spans two weeks (a weekly report ending mid-week) can't
 be split and is left out, except for its detections, which carry their
 times.
 
-**Clicking through.** The boxes at the top of each event page filter the
-table below them: for example **Accounts locked out** shows only the
-lockouts, **New devices** only the devices seen for the first time, and the
-first box shows everything again. Boxes about another page open it. On a
-person's page, each hour of **When they were active** can be clicked: a
+**Clicking through.** On an event page or Search, a value in the field
+counts or a bar of the chart filters the results. On a person's page, each hour of **When they were active** can be clicked: a
 red hour shows only the detections in that hour; any other hour opens
 Search with that person's events in that hour of the week.

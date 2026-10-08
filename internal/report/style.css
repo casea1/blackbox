@@ -746,3 +746,102 @@ a.cell:hover{outline:2px solid rgba(11,95,255,.4)}
   .dtl .tx{grid-column:2}.dtl .id{display:none}
   .detfacts{grid-template-columns:1fr 1fr}
 }
+
+/* UI-R1: Search, Events by kind, Event detail */
+/* The search bar: one box that searches every field, then the filters. */
+.sq-bar{margin-bottom:12px}
+.sq [hidden],.drawer [hidden]{display:none!important}
+.sq-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sq-text{flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:8px;padding:0 12px;height:38px;border:1px solid #0B5FFF;background:#fff;color:#5A6785}
+.sq-text input{flex:1;min-width:0;border:0;outline:0;background:none;font:inherit;font-size:14px;color:#0B1630}
+.sq-hint{font-size:13px;color:#6A7590;white-space:nowrap}
+.sq-dd{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 10px;border:1px solid rgba(0,30,98,.16);background:#fff;font:600 13px 'Public Sans',sans-serif;color:#0B1630;white-space:nowrap;cursor:pointer}
+.sq-dd select{border:0;background:none;font:inherit;font-weight:400;color:#4A5675;outline:0;cursor:pointer;max-width:170px;field-sizing:content;min-width:3em}
+.sq-dd:focus-within{border-color:#0B5FFF}
+.sq-dd i{font-style:normal;color:#5A6785;font-size:11px}
+.sq-kind{background:rgba(11,95,255,.07);border-color:rgba(11,95,255,.35);cursor:default}
+.sq-kind b{font-weight:400;color:#2F4F9E}
+.sq-kind button,.sq-chip button{border:0;background:none;font:600 15px/1 'Public Sans',sans-serif;color:#2F4F9E;cursor:pointer;padding:2px 4px}
+.sq-common{position:relative;flex-basis:100%}
+.sq-menu{position:absolute;left:0;top:calc(100% + 4px);z-index:4;width:280px;padding:6px 0;background:#fff;border:1px solid rgba(0,30,98,.15);box-shadow:0 12px 32px rgba(0,30,98,.16)}
+.sq-menu button{display:flex;align-items:center;gap:10px;width:100%;padding:8px 14px;border:0;background:none;font:500 13px 'Public Sans',sans-serif;color:#0B1630;text-align:left;cursor:pointer}
+.sq-menu button svg{color:#0B5FFF;flex:none}
+.sq-menu button:hover,.sq-menu button:focus{background:rgba(11,95,255,.06);outline:0}
+.sq-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.sq-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 4px 2px 10px;background:rgba(11,95,255,.07);border:1px solid rgba(11,95,255,.3);font-size:12.5px;color:#0A2A7A}
+/* Field counts on the left, the chart and the results on the right. */
+.sq-main{display:grid;grid-template-columns:242px minmax(0,1fr);gap:12px;align-items:start}
+.sq-right{display:grid;gap:12px;min-width:0}
+.sq-facets .fg{margin-bottom:14px}
+.sq-facets h2{display:block;margin:0 0 6px;font-size:11px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:#5A6785}
+.fc{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;width:100%;padding:5px 0 6px;border:0;background:none;font:13.5px 'Public Sans',sans-serif;color:#0B1630;text-align:left;cursor:pointer}
+.fc span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fc b{font:400 11.5px 'Source Code Pro',monospace;color:#5A6785;align-self:center}
+.fc s{grid-column:1/-1;display:block;height:3px;background:#3A6FF0;text-decoration:none}
+.fc:hover span{color:#0B5FFF}.fc.on span{color:#0B5FFF;font-weight:650}
+.fc:focus-visible{outline:2px solid #0B5FFF;outline-offset:1px}
+.fmore{margin:2px 0 0;font-size:12px;color:#5A6785}
+.fnote{margin:0;line-height:1.5}
+.sq-ch{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px}
+.sq-ch h2{font-size:15px}
+.sq-chart svg{display:block}.sq-chart .hb{cursor:pointer}.sq-chart .hb:hover{fill:#0B5FFF}
+.sq-axis{position:relative;height:16px;margin-top:4px;font:11px 'Source Code Pro',monospace;color:#6A7590}
+.sq-axis span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.sq-axis span:first-child{transform:none}.sq-axis span:last-child:not(:first-child){transform:translateX(-100%)}
+.sq-tools{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px}
+.sq-group{font-size:12px;color:#5A6785;white-space:nowrap}
+.sq-group select{border:0;background:none;font:600 12px 'Public Sans',sans-serif;color:#0B1630;cursor:pointer;field-sizing:content}
+.sq-wrap{overflow-x:auto}
+.sq-tbl th{padding:10px 8px;border-bottom:1px solid rgba(0,30,98,.14);color:#5A6785}
+.sq-tbl td{padding:9px 8px;border-bottom:1px solid rgba(0,30,98,.07);font-size:13.5px;vertical-align:top}
+.sq-tbl td b{display:inline;font-weight:600}
+.sq-tbl td.mono{font-size:12px;color:#5A6785;padding-top:11px}
+.sq-tbl td.mute{font-size:11.5px;color:#6A7590}
+.sq-tbl td.what{min-width:200px;overflow-wrap:anywhere}
+.sq-tbl td:nth-child(2),.sq-tbl td:nth-child(3){white-space:nowrap}
+.sq-tbl:not(.kind) td:nth-child(4){min-width:110px}
+.sq-tbl td.cmd code{font:600 12px/1.5 'Source Code Pro',monospace;color:#0B1630;word-break:break-word}
+.sq-tbl tbody tr[data-i]{cursor:pointer}
+.sq-tbl tbody tr[data-i]:hover{background:rgba(11,95,255,.04)}
+.sq-tbl tbody tr[data-i]:focus-visible{outline:2px solid #0B5FFF;outline-offset:-2px}
+.sq-tbl tr.hi{background:rgba(209,44,44,.07)}
+.sq-tbl tr.hi td:not(.mono),.sq-tbl tr.hi td:not(.mono) b,.sq-tbl tr.hi td.cmd code{color:#B01C1C}
+.sq-tbl tr.sq-g th{padding:14px 8px 6px;font-size:11.5px;letter-spacing:.04em;text-transform:none;color:#0A2A7A;background:rgba(0,30,98,.03)}
+.sq-tbl td .sv{white-space:nowrap}
+.sq-msg{padding:28px 8px!important;color:#5A6785}
+.sq-more{display:flex;justify-content:space-between;align-items:center;padding-top:12px;font-size:13px;color:#5A6785}
+.sq-more button{border:0;background:none;padding:0;font:600 13px 'Public Sans',sans-serif;color:#0B5FFF;cursor:pointer}
+@media (max-width:900px){.sq-main{grid-template-columns:1fr}.sq-hint{display:none}.sq-facets{order:2}}
+@media (max-width:640px){
+  .sq-dd{flex:1 1 calc(50% - 4px);min-width:0}.sq-dd select{max-width:none;flex:1;min-width:0}
+  .sq-common,.sq-role{flex:1 1 100%}.sq-common .sq-dd{width:100%}
+  .sq-tbl thead{display:none}
+  .sq-tbl,.sq-tbl tbody{display:block}
+  .sq-tbl tr[data-i]{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:2px 10px;padding:8px 4px;border-bottom:1px solid rgba(0,30,98,.07)}
+  .sq-tbl tr[data-i] td{border:0;padding:0}
+  .sq-tbl tr[data-i] td.what,.sq-tbl tr[data-i] td.cmd{grid-column:1/-1;min-width:0}
+  .sq-tbl tr[data-i] td.mute{display:none}
+  .sq-tbl tr.sq-g{display:block}
+}
+/* The event panel (design 16). */
+.drawer{width:520px;padding:22px 24px 28px;z-index:9}.ov{z-index:8}
+.drawer .x{top:18px;right:20px;width:34px;height:34px;padding:0;display:grid;place-items:center;font:600 14px 'Public Sans',sans-serif;color:#0B1630;cursor:pointer}
+.drawer .ecrumb{font-size:12.5px;color:#5A6785;padding-right:48px}
+.drawer h3{margin:6px 0 0;padding-right:48px;font-size:17px}
+.epart{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:10px;font-size:13px;color:#5A6785}
+.chip-sev{display:inline-block;padding:2px 8px;font-size:12px;font-weight:650}
+.chip-sev.high{background:rgba(209,44,44,.12);color:#B01C1C}.chip-sev.medium{background:rgba(224,138,0,.15);color:#8F4F00}
+.evf{display:grid;grid-template-columns:132px minmax(0,1fr);gap:7px 12px;margin:16px 0 0;font-size:13.5px}
+.evf dt{color:#5A6785}.evf dd{margin:0;color:#0B1630;overflow-wrap:anywhere}
+.evf code{font:12px 'Source Code Pro',monospace;background:#EEF2F9;padding:1px 5px;overflow-wrap:anywhere}
+.evf small{display:block;font-size:11.5px;color:#5A6785}
+.evf.ctx{margin-top:0}
+.drawer .sub2{margin:20px 0 6px}
+.near button{display:grid;grid-template-columns:78px minmax(0,1fr);gap:10px;width:100%;padding:7px 4px;border:0;border-bottom:1px solid rgba(0,30,98,.07);background:none;font:13px 'Public Sans',sans-serif;color:#0B1630;text-align:left;cursor:pointer}
+.near button span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.near button.me{background:rgba(11,95,255,.08);font-weight:600;cursor:default}
+.near button .mono{font-size:12px;color:#5A6785}
+.drawer .dbtns{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:18px}
+.drawer .dbtns .btn{justify-content:flex-start;padding:8px 10px;font:550 13px/1.35 'Public Sans',sans-serif;text-align:left;cursor:pointer;color:#0B1630;background:#fff;border:1px solid rgba(0,30,98,.16)}
+.drawer .raw{margin-top:12px}
+@media (max-width:640px){.drawer{width:100vw;padding:18px 16px}.drawer .dbtns{grid-template-columns:1fr 1fr}.evf{grid-template-columns:110px minmax(0,1fr)}}

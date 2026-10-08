@@ -805,11 +805,12 @@ func (r *Report) activityChart() *ActivityChart {
 			b.Title += " · a detection"
 		}
 		if b.N > 0 {
-			kv := []string{"from", fmt.Sprint(a.Unix()), "to", fmt.Sprint(z.Unix())}
-			if step == time.Hour {
-				kv = append(kv, "when", a.In(loc).Format("20060102"))
+			// Search's when: the hour (YYYYMMDDHH), or the day for a per-day bar.
+			when := a.In(loc).Format("2006010215")
+			if step > time.Hour {
+				when = a.In(loc).Format("20060102")
 			}
-			b.Href = searchLink(kv...)
+			b.Href = searchLink("when", when)
 		}
 		c.Bars = append(c.Bars, b)
 	}

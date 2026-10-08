@@ -73,13 +73,20 @@ func TestOverviewUIR1(t *testing.T) {
 		t.Fatalf("activity: %+v", a)
 	}
 	b := a.Bars[14] // 14:00–15:00: the Security log cleared at 14:22
-	start := time.Date(2026, 10, 7, 14, 0, 0, 0, demo30Zone)
-	if !b.Det || b.Href != "#search?from="+strconv.FormatInt(start.Unix(), 10)+"&to="+strconv.FormatInt(start.Add(time.Hour).Unix(), 10)+"&when=20261007" {
+	if !b.Det || b.Href != "#search?when=2026100714" {
 		t.Errorf("14:00 bar: %+v", b)
 	}
 	if !strings.Contains(h, `class="ach"`) || !strings.Contains(h, "24:00</span>") {
 		t.Error("no activity chart")
 	}
+	// Over more than eight days, a bar per day opens Search for that day.
+	ws, we := r.WindowStart, r.WindowEnd
+	r.WindowStart = time.Date(2026, 9, 28, 0, 0, 0, 0, demo30Zone)
+	r.WindowEnd = time.Date(2026, 10, 8, 0, 0, 0, 0, demo30Zone)
+	if d := r.activityChart(); d == nil || d.Unit != "day" || len(d.Bars) != 10 || d.Bars[9].Href != "#search?when=20261007" || d.Bars[0].Href != "" {
+		t.Errorf("day bars: %+v", d)
+	}
+	r.WindowStart, r.WindowEnd = ws, we
 
 	// Systems at a glance: only systems with a red check, grouped.
 	n := 0
@@ -156,7 +163,7 @@ func TestDetectionsUIR1(t *testing.T) {
 	for _, f := range v.Facts {
 		facts = append(facts, f.Label+"="+f.Value+"|"+f.Sub)
 	}
-	if got := strings.Join(facts, " "); got != "System=SRV-DC02|Windows Server 2025 · server Person=adm-jlee|administrator on SRV-DC02 When=7 Oct 14:22:00|EDT (UTC−4) Record=Security 1102|record "+commas(int(r.rows[rowIndex(r.Findings[v.Index].RowID)].RecordID)) {
+	if got := strings.Join(facts, " "); got != "System=SRV-DC02|Windows Server 2025 · server Person=adm-jlee|administrator on SRV-DC02 When=7 Oct 14:22:05|EDT (UTC−4) Record=Security 1102|record "+commas(int(r.rows[rowIndex(r.Findings[v.Index].RowID)].RecordID)) {
 		t.Errorf("facts: %s", got)
 	}
 	if !strings.HasPrefix(v.Why, "Clearing a log removes the record of everything before it. The original logs in this report (logs-SRV-DC02.zip) keep a copy up to the last collection") {
@@ -171,7 +178,9 @@ func TestDetectionsUIR1(t *testing.T) {
 	if keys != 1 || len(v.Timeline) < 2 || v.TLHead != "adm-jlee on SRV-DC02, 14:12–14:32" {
 		t.Errorf("timeline: %q %+v", v.TLHead, v.Timeline)
 	}
-	if !strings.Contains(v.SearchHref, "host=SRV-DC02") || !strings.Contains(v.SearchHref, "user=adm-jlee") || !strings.Contains(v.SearchHref, "from=") ||
+	// Open in Search (±10 min): at and span around the log cleared.
+	at := strconv.FormatInt(time.Date(2026, 10, 7, 14, 22, 5, 0, demo30Zone).Unix(), 10)
+	if v.SearchHref != "#search?at="+at+"&host=SRV-DC02&span=600&user=adm-jlee" ||
 		v.PersonHref != "#search?user=adm-jlee" || v.Person != "adm-jlee" {
 		t.Errorf("buttons: %s %s", v.SearchHref, v.PersonHref)
 	}

@@ -79,18 +79,14 @@ func TestOverviewOnce(t *testing.T) {
 	}
 }
 
-// UX4: a page with no events is one line; a period of a day is charted by
-// hour, with no "Above normal" (nothing to compare with).
+// UX4: a page with no events is one line.
 func TestEmptyAndShortPages(t *testing.T) {
 	_, h := uxReport(t)
 	if !strings.Contains(h, "Nothing on USB &amp; removable this period.") {
 		t.Error("an empty page is not one line")
 	}
-	if strings.Contains(h, `data-events="usb"`) {
+	if strings.Contains(h, `data-sq="usb"`) {
 		t.Error("an empty page still has its table")
-	}
-	if !strings.Contains(h, "per hour</h2>") || strings.Contains(h, "Above normal") {
-		t.Error("one-day chart")
 	}
 }
 
@@ -101,8 +97,8 @@ func TestNavigation(t *testing.T) {
 	if strings.Contains(h, `href="#usb" data-nav="usb"`) {
 		t.Error("an empty kind of event is in the sidebar")
 	}
-	if !strings.Contains(h, `data-cat="privileged"`) || strings.Contains(h, `data-cat="usb"`) {
-		t.Error("Search category chips")
+	if !strings.Contains(h, `<option value="privileged">`) || strings.Contains(h, `<option value="usb">`) {
+		t.Error("Search's Kind filter")
 	}
 	if strings.Count(h, "<b>Manual report.</b>") != 1 || !strings.Contains(h, `class="chip-manual"`) {
 		t.Error("manual banner once, chip after it")
