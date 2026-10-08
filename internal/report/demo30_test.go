@@ -417,6 +417,7 @@ func demo30Network(t testing.TB) *demo30Net {
 		}
 	}
 
+	routine := len(evs) // the routine activity, before the story
 	// The mockups' story.
 	at := func(h, m int) time.Time { return start.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute) }
 	sys := byName
@@ -453,15 +454,11 @@ func demo30Network(t testing.TB) *demo30Net {
 	e.EventID, e.SourceIP, e.Interactive = 4624, "10.20.3.44", true
 	e.AddDetail("Privileges", "SeDebugPrivilege, SeBackupPrivilege")
 	e = add(at(10, 20), sys["SRV-APP01"], event.CatOther, event.SevMedium, "service_installed", "kpatel", `kpatel installed the service UpdaterSvc (C:\ProgramData\upd\svc.exe).`)
-	e.EventID = 4697
+	e.EventID, e.Target = 4697, "UpdaterSvc"
 
-	// The previous daily report, so this one continues with no gap.
-	var history []Summary
-	for d := 6; d >= 1; d-- {
-		we := start.AddDate(0, 0, -d+1)
-		history = append(history, Summary{WindowStart: we.AddDate(0, 0, -1), WindowEnd: we, Generated: we.Add(2 * time.Minute), Events: 15000 + rnd.Intn(4000),
-			Metrics: map[string]int{MPrivileged: 8000 + rnd.Intn(2000), MFailedLogons: 300 + rnd.Intn(200), MSystems: 30}})
-	}
+	// Twelve weeks of earlier daily reports (UI-R1 Trends), the last one
+	// the day before, so this one continues with no gap.
+	history := demo30History(start, net.Systems, evs[:routine], checks)
 	net.Events = evs
 	net.Options = Options{Site: "ENG-NET", WindowStart: start, WindowEnd: end, Generated: end.Add(2 * time.Minute), Location: demo30Zone,
 		Version: "0.23.0", Source: "Live collection", Collector: true, Period: "daily", Systems: infos, CheckSets: checks, History: history,

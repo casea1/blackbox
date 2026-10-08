@@ -1014,6 +1014,50 @@
     }
   });
 
+  // ---- Trends (UI-R1): the 4 / 8 / 12-week switch, its CSV and the
+  // Monthly summary (the page at 4 weeks, printed) ----
+  (function () {
+    var view = document.querySelector('.view[data-view="trends"]');
+    if (!view) return;
+    var weeks = 8;
+    function range(n) {
+      var crumb = view.querySelector('.head .crumb'), was = view.querySelector('[data-trview]:not([hidden])');
+      var to = view.querySelector('[data-trview="' + n + '"]');
+      if (!to) return;
+      if (crumb && was) crumb.textContent = crumb.textContent.replace(was.getAttribute('data-crumb'), to.getAttribute('data-crumb'));
+      view.querySelectorAll('[data-trview]').forEach(function (v) { v.hidden = v !== to; });
+      view.querySelectorAll('[data-trange]').forEach(function (b) {
+        var on = +b.getAttribute('data-trange') === n;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      weeks = n;
+    }
+    view.querySelectorAll('[data-trange]').forEach(function (b) {
+      b.addEventListener('click', function () { range(+b.getAttribute('data-trange')); });
+    });
+    BB.exportPage('trends', function () {
+      var f = meta.pagecsv && meta.pagecsv.trends;
+      if (!f) return null;
+      var rows = [f.rows[0]].concat(f.rows.slice(1).slice(-weeks));
+      return { label: 'Weekly counts, ' + (rows.length - 1) + ' weeks', file: f.file + '-' + weeks + 'w', rows: rows };
+    });
+    var pb = view.querySelector('[data-trprint]');
+    if (pb) pb.addEventListener('click', function () {
+      var back = weeks;
+      range(4);
+      document.body.classList.add('trprint');
+      var over = false, done = function () {
+        if (over) return;
+        over = true;
+        document.body.classList.remove('trprint'); range(back); window.removeEventListener('afterprint', done);
+      };
+      window.addEventListener('afterprint', done);
+      window.print();
+      setTimeout(done, 1000);
+    });
+  })();
+
   window.addEventListener('hashchange', show);
   show();
 })();

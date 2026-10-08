@@ -170,6 +170,7 @@ func (r *Report) pageCSVs(hp *HealthPage, ip *InventoryPage) map[string]CSVFile 
 	m := map[string]CSVFile{
 		"detections": csvFile("Detections shown", "detections", r.detectionsRows()),
 		"systems":    csvFile("Systems", "systems", r.systemsRows()),
+		"trends":     csvFile("Weekly counts", "trends-by-week", r.trendsRows()),
 	}
 	if hp != nil {
 		m["health"] = csvFile("Audit settings, every system", "audit-settings", r.healthRows(hp))

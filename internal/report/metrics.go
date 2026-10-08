@@ -26,6 +26,12 @@ const (
 	MSuspiciousPS   = "suspicious_powershell"
 	MAccountsOff    = "accounts_disabled"
 	MLate           = "late_events"
+	// UI-R1 Trends: systems whose audit settings match the STIG, of those
+	// checked (a level at the report's end, not a sum of days), and events
+	// lost to rollover (summary.json events_lost).
+	MSTIGMatching = "stig_matching"
+	MSTIGChecked  = "stig_checked"
+	MLost         = "events_lost"
 )
 
 // metrics counts what this report's pages and trends show.
@@ -49,6 +55,9 @@ func (r *Report) metrics() map[string]int {
 		reporting = len(r.Hosts)
 	}
 	m[MSystems] = reporting
+	for k, v := range r.stigMetrics() {
+		m[k] = v
+	}
 	return m
 }
 

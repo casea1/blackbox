@@ -35,7 +35,7 @@ func (r *Report) whatChanged() []Change {
 
 	// The network's totals.
 	for _, t := range trendMetrics {
-		if t.Metric == MAfterHours && !r.WorkingHours.Set() {
+		if t.Metric == MAfterHours && !r.WorkingHours.Set() || t.Metric == MSTIGMatching || t.Metric == MLost {
 			continue
 		}
 		tr := r.metricTrend(t.Metric)
@@ -121,66 +121,4 @@ func trimSign(d string) string {
 		return d[1:]
 	}
 	return d
-}
-
-// peopleByWeek is the Trends page's privileged actions by person, by
-// calendar week: the 20 most active people this week and before.
-func (r *Report) peopleByWeek() []WeekRow {
-	ws := r.weeks()
-	n := len(ws)
-	counts := map[string][]int{}
-	names := map[string]string{}
-	for i, w := range ws {
-		for k, p := range w.People {
-			if p.Privileged == 0 {
-				continue
-			}
-			if counts[k] == nil {
-				counts[k] = make([]int, n)
-			}
-			counts[k][i] = p.Privileged
-			if names[k] == "" {
-				names[k] = p.Name
-			}
-		}
-	}
-	keys := make([]string, 0, len(counts))
-	for k := range counts {
-		keys = append(keys, k)
-	}
-	total := func(v []int) int {
-		t := 0
-		for _, x := range v {
-			t += x
-		}
-		return t
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		a, b := counts[keys[i]], counts[keys[j]]
-		if a[n-1] != b[n-1] {
-			return a[n-1] > b[n-1]
-		}
-		if total(a) != total(b) {
-			return total(a) > total(b)
-		}
-		return keys[i] < keys[j]
-	})
-	if len(keys) > 20 {
-		keys = keys[:20]
-	}
-	top := 1
-	for _, k := range keys {
-		for _, v := range counts[k] {
-			top = max(top, v)
-		}
-	}
-	var rows []WeekRow
-	for _, k := range keys {
-		row := WeekRow{Name: names[k], Href: "#people/" + k}
-		for _, v := range counts[k] {
-			row.Cells = append(row.Cells, heatCell(v, top))
-		}
-		rows = append(rows, row)
-	}
-	return rows
 }
