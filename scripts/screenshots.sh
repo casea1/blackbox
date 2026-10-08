@@ -10,7 +10,7 @@ CHROME="${CHROME:-$(ls /opt/pw-browsers/chromium_headless_shell-*/chrome-linux/h
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 go run ./cmd/blackbox report --xml testdata/sample-events.xml --out "$tmp/r" --config none >/dev/null
-for v in overview:overview failed-logons:r13 usb:removable_media privileged:privileged health:health; do
+for v in overview:overview 'failed-logons:logons?part=failed' 'usb:other?part=usb' privileged:privileged health:health; do
 	name=${v%%:*}
 	view=${v#*:}
 	"$CHROME" --no-sandbox --disable-gpu --hide-scrollbars --window-size=2560,1300 \
@@ -18,7 +18,7 @@ for v in overview:overview failed-logons:r13 usb:removable_media privileged:priv
 	echo "docs/images/$name.png"
 done
 go run ./cmd/blackbox report --audit testdata/linux/ubuntu-audit.log --syslog testdata/linux/ubuntu-syslog --out "$tmp/u" --config none >/dev/null
-for v in ubuntu-overview:overview ubuntu-privileged:privileged ubuntu-usb:removable_media; do
+for v in ubuntu-overview:overview ubuntu-privileged:privileged 'ubuntu-usb:other?part=usb'; do
 	name=${v%%:*}
 	view=${v#*:}
 	"$CHROME" --no-sandbox --disable-gpu --hide-scrollbars --window-size=2560,1300 \

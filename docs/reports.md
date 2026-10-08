@@ -837,8 +837,8 @@ the service.
 The sidebar (UI-R1) lists every page in five groups, always open:
 **Review** (Overview, Detections, Search), **Who and what** (Systems,
 People), **Evidence** (Audit health, Original logs), **Events by kind**
-(Privileged activity, Audit integrity, Logon activity, …, each with its
-count; a kind with no events is left out) and **More** (Inventory,
+(Privileged activity, Audit integrity, Logon activity, Other security,
+PowerShell, each with its count; a kind with no events is left out) and **More** (Inventory,
 Trends). Above them, "Blackbox" with the network's name (or the
 computer's, for a standalone report). At the bottom, the **report card**
 says which report this is (Daily report), its period with the time
@@ -878,7 +878,10 @@ the computer.
 The page's link keeps the search (`#search?user=jlee&sev=high`), so it
 can be bookmarked or sent, and other pages link to Search the same way.
 The link's parameters, all optional: `page` (the kind of event, an event
-page's name such as `privileged`), `user` (a person), `host` (a system),
+page's name such as `privileged`), `part` (one part of a kind: `failed`
+for failed logons on Logon activity, `usb` on Other security, `accounts`
+on Privileged activity, or the kind's own events: `logons`, `other`,
+`privileged`), `user` (a person), `host` (a system),
 `role` (`server`, `workstation` or `vm`; `host=@server` also works),
 `sev` (`high`, `medium`, `hm` for high or medium, `li` for low or info),
 `when` (a day `20261007`, an hour `2026100714`, `@after` for outside
@@ -891,8 +894,22 @@ event page's kind, e.g. `Admin logon`), `flag` (e.g. `New device`), `not`
 by system) and `preset` (a common search's name). `#search/<text>`
 searches for the text.
 
-**Events by kind.** Each event page (Privileged activity, Audit
-integrity, Logon activity, …) is Search with its **Kind** preset, shown as
+**Events by kind.** There are five event pages: **Privileged activity**
+(admin rights, sudo and root commands, and accounts and groups changed),
+**Audit integrity**, **Logon activity** (logons and logoffs, and logons
+that failed), **Other security** (services, antivirus, USB drives and the
+rest) and **PowerShell**. Three earlier pages are now part of one of
+them, their events under kinds that say what they were: **Failed logons**
+are on Logon activity ("Failed: bad password", "Failed: expired",
+"Failed: locked out"), **USB & removable** on Other security ("USB
+connected or removed", "USB files copied", "USB blocked") and **Accounts
+& groups** on Privileged activity ("Account created", "Account changed",
+"Account added to group", "Account disabled"). Each page's count is the
+sum of what it holds. Old links still work: `#failed`, `#usb` and
+`#accounts` (with any filters, and `#search?page=failed` and the like)
+open the kind's page with an "Only: Failed logons" chip (`part=failed`)
+showing the same events, an old `sub=Bad password` read as its new name.
+Each event page is Search with its **Kind** preset, shown as
 a chip: the same box ("Search within privileged activity…"), filters,
 field counts (Person, System and the page's own kind, e.g. Admin logon or
 sudo / run as admin), events per hour and results. The results are High
@@ -975,12 +992,16 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
   eight days), Windows and Linux stacked in two colours, with a red dot on
   each hour that has a detection. Clicking a bar opens Search for that
   hour (`when=2026100714`), or that day for a per-day bar.
-  **Systems at a glance** lists only the systems with a red check, grouped
+  **Systems at a glance** lists only the systems with a problem: a red
+  check or a high detection (the detection said under its name, "High
+  detection: Group membership added", when no check is red), grouped
   Servers / Workstations, with six squares (Reporting, Logs intact,
   Settings, Antivirus, Original logs, SCAP; green ok, amber warning, red
   problem, grey no data; each opens its detail) and the events; then "23
-  more systems with no problems (20 with warnings, 3 all OK)" and a link
-  to all of them on the Systems page. The trends and "what changed" are on
+  more systems with no problems (16 with warnings, 2 all OK)" and a link
+  to all of them on the Systems page. A warning is an amber check or a
+  medium detection. The Systems page's Problems, Warnings and OK count
+  the systems by the same rule, so the two pages always agree. The trends and "what changed" are on
   Trends.
 - **Systems** (UI-R1). One table of every system, grouped **Servers** and
   **Workstations**, worst first, with a filter bar: **Find a system**,

@@ -88,7 +88,8 @@ func TestOverviewUIR1(t *testing.T) {
 	}
 	r.WindowStart, r.WindowEnd = ws, we
 
-	// Systems at a glance: only systems with a red check, grouped.
+	// Systems at a glance: only systems with a problem, a red check or a
+	// high detection (said as the reason when no check is red), grouped.
 	n := 0
 	for _, g := range o.Glance {
 		for _, row := range g.Items {
@@ -97,7 +98,7 @@ func TestOverviewUIR1(t *testing.T) {
 			for _, c := range row.Cells {
 				red = red || c.Level == "bad"
 			}
-			if !red || len(row.Cells) != 6 {
+			if !red && !strings.HasPrefix(row.Reason, "High detection: ") || red && row.Reason != "" || len(row.Cells) != 6 {
 				t.Errorf("glance row: %+v", row)
 			}
 		}

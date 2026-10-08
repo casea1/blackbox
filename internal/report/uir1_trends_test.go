@@ -252,10 +252,13 @@ func TestTrendsSearchLinks(t *testing.T) {
 	b, _ := os.ReadFile(filepath.Join(dir, "report.html"))
 	view := between2(string(b), `<section class="view" data-view="trends">`, `</section>`)
 	ok := map[string]bool{"page": true, "user": true, "host": true, "role": true, "sev": true, "when": true, "at": true, "span": true, "text": true,
-		"event": true, "sub": true, "flag": true, "not": true, "group": true, "sort": true, "preset": true}
-	pages := map[string]bool{}
+		"event": true, "sub": true, "flag": true, "not": true, "group": true, "sort": true, "preset": true, "part": true}
+	pages, parts := map[string]bool{}, map[string]bool{}
+	for _, k := range eventKinds(nil) {
+		pages[k.ID] = true
+	}
 	for _, p := range eventPages() {
-		pages[p.ID] = true
+		parts[p.ID] = true
 	}
 	n := 0
 	for _, part := range strings.Split(view, `href="#search?`)[1:] {
@@ -269,6 +272,9 @@ func TestTrendsSearchLinks(t *testing.T) {
 			}
 			if k == "page" && !pages[v] {
 				t.Errorf("no event page %q: #search?%s", v, q)
+			}
+			if k == "part" && !parts[v] {
+				t.Errorf("no part %q: #search?%s", v, q)
 			}
 			if k == "when" && v != "%40after" && v != "@after" {
 				t.Errorf("when=%s: #search?%s", v, q)

@@ -50,6 +50,7 @@ type Overview struct {
 	// GlanceMore says how many others there are.
 	Glance     []Group[GlanceRow]
 	GlanceMore string
+	levels     map[string]string // each system's level (systemLevel), as Systems has it
 	SystemsN   int
 }
 
@@ -110,7 +111,7 @@ func (o *Overview) GlanceChecks() []GlanceCol { return glanceChecks }
 
 // overview builds the Overview page.
 func (r *Report) overview(pages []*EventPage) *Overview {
-	o := &Overview{PeriodNoun: r.periodNoun(), Standalone: !r.IsLAN()}
+	o := &Overview{PeriodNoun: r.periodNoun(), Standalone: !r.IsLAN(), levels: map[string]string{}}
 	systems := r.SystemRows
 	if len(systems) == 0 {
 		for _, h := range r.Hosts {
@@ -154,6 +155,7 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 			d = &sysDets{}
 		}
 		level := systemLevel(cs, d.High, d.Med)
+		o.levels[s.Name] = level
 		switch level {
 		case "bad":
 		case "warn":
@@ -170,7 +172,7 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 			red = red || c.Level == "bad"
 		}
 		if !red && d.FirstHigh != "" {
-			reason = "High detection: " + d.FirstHigh
+			reason = "High detection: " + strings.TrimSuffix(d.FirstHigh, " on "+s.Name)
 			if d.High > 1 {
 				reason += fmt.Sprintf(" +%d more", d.High-1)
 			}
@@ -324,9 +326,9 @@ func (r *Report) overviewStrip(systems []SystemRow, pages []*EventPage, high, me
 		sr.Note = fmt.Sprintf("%d silent", len(systems)-rep)
 	}
 	out = append(out, sr)
-	total := map[string]int{}
-	for _, p := range pages {
-		total[p.ID] = p.Total
+	total := map[string]int{} // as the sidebar's kinds of event count them
+	for _, k := range eventKinds(pages) {
+		total[k.ID] = k.Total
 	}
 	out = append(out, StripCell{Label: "Events", Value: commas(len(r.Events)), Href: "#search",
 		Note: fmt.Sprintf("%s privileged · %s logons", commas(total["privileged"]), commas(total["logons"]))})

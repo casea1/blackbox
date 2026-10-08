@@ -107,14 +107,14 @@ var trendMetrics = []struct {
 	Chart         bool
 }{
 	{"Detections", MDetections, true, "#detections", true},
-	{"Failed logons", MFailedLogons, true, "#failed", true},
-	{"Privileged actions (people)", MPrivileged, true, "#privileged", true},
+	{"Failed logons", MFailedLogons, true, partPage("failed"), true},
+	{"Privileged actions (people)", MPrivileged, true, partPage("privileged"), true},
 	{"Systems matching the STIG", MSTIGMatching, false, "#health", true},
 	{"Events lost to rollover", MLost, true, "#health", true},
 	{"After-hours admin actions", MAfterHours, true, searchLink("page", "privileged", "when", "@after"), true},
 	{"High-severity events", MHighEvents, true, "#detections", false},
-	{"USB events", MUSB, true, "#usb", false},
-	{"Account changes", MAccountChanges, true, "#accounts", false},
+	{"USB events", MUSB, true, partPage("usb"), false},
+	{"Account changes", MAccountChanges, true, partPage("accounts"), false},
 	{"Systems reporting", MSystems, false, "#systems", false},
 }
 
@@ -366,7 +366,7 @@ func (r *Report) biggestChanges(ws []trendWeek) ([]ChangeRow, string) {
 			}
 			return w.HostFailed[host]
 		})
-		add(host, searchLink("page", "failed", "host", host), "Failed logons", s, true, r.failedWhy(host))
+		add(host, partLink("failed", "host", host), "Failed logons", s, true, r.failedWhy(host))
 	}
 
 	// Each person's activity, from the weeks that kept it.
@@ -727,7 +727,7 @@ func newItem(kind, label, level, key string, what map[string]string) NewItem {
 		f := strings.SplitN(key, "|", 3)
 		if len(f) == 3 {
 			it.Text = fmt.Sprintf("%s → %s (%s)", f[0], f[1], f[2])
-			it.Href = searchLink("page", "logons", "user", f[0], "host", f[1])
+			it.Href = partLink("logons", "user", f[0], "host", f[1])
 		}
 	case SeenSource:
 		it.Text = key
@@ -742,7 +742,7 @@ func newItem(kind, label, level, key string, what map[string]string) NewItem {
 			n = d
 		}
 		it.Text = n + " on " + h
-		it.Href = searchLink("page", "usb", "host", h)
+		it.Href = partLink("usb", "host", h)
 	}
 	if it.Text == "" {
 		it.Text = key

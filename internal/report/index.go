@@ -549,13 +549,18 @@ func indexSideNav(e IndexEntry, dir string) []indexNav {
 		{Group: "Evidence", Title: "Audit health", Icon: "shield-check", Href: h + "health"},
 		{Group: "Evidence", Title: "Original logs", Icon: "scroll-text", Href: h + "logs"},
 	}
+	// The five kinds of event, each its parts' counts summed (UI-R1).
+	n := map[string]int{}
 	for _, pg := range eventPages() {
 		key := string(pg.Category)
 		if pg.Category == "" {
 			key = pg.ID
 		}
-		if n := e.ByCategory[key]; n > 0 {
-			nav = append(nav, indexNav{Group: "Events by kind", Title: pg.Title, Icon: pg.Icon, Href: h + pg.ID, Count: n})
+		n[pg.Kind] += e.ByCategory[key]
+	}
+	for _, k := range eventKinds(nil) {
+		if n[k.ID] > 0 {
+			nav = append(nav, indexNav{Group: "Events by kind", Title: k.Title, Icon: k.Icon, Href: h + k.ID, Count: n[k.ID]})
 		}
 	}
 	return append(nav, indexNav{Group: "More", Title: "Inventory", Icon: "cpu", Href: h + "inventory"},

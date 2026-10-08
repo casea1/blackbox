@@ -98,9 +98,36 @@ try { pw = require('playwright-core'); } catch (e) { pw = require('playwright');
   // Every link inside the report leads to a page that exists, and a link
   // to one event opens its panel.
   await page.goto(url + '#overview');
-  const bad = await page.$$eval('a[href^="#"]', (as, views) => as.map(a => a.getAttribute('href'))
-    .filter(h => h.length > 1 && views.indexOf(h.slice(1).split(/[/?]/)[0]) < 0), views);
+  // A search's page= is one of the five kinds of event, not a part that
+  // was once a page of its own (page=failed).
+  const meta = await page.$eval('#bb-meta', m => JSON.parse(m.textContent));
+  const kinds = (meta.kinds || []).map(k => k.ID);
+  const bad = await page.$$eval('a[href^="#"]', (as, [views, kinds]) => as.map(a => a.getAttribute('href'))
+    .filter(h => {
+      if (h.length <= 1) return false;
+      if (views.indexOf(h.slice(1).split(/[/?]/)[0]) < 0) return true;
+      const m = /[?&]page=([^&]*)/.exec(h);
+      return !!m && kinds.indexOf(decodeURIComponent(m[1])) < 0;
+    }), [views, kinds]);
   if (bad.length) fail('links to pages that do not exist: ' + Array.from(new Set(bad)).slice(0, 10).join(', '));
+  // Events by kind (owner, UI-R1): the five kinds in the sidebar, and the
+  // pages that became part of one (#failed, #usb, #accounts; Search's
+  // page=failed) open their kind's page showing the same events.
+  const side = await page.$$eval('nav[aria-label="Events by kind"] a', as => as.map(a => a.getAttribute('data-nav')));
+  if (side.some(id => kinds.indexOf(id) < 0) || kinds.length !== 5) fail('Events by kind: ' + side.join(', '));
+  for (const p of meta.pages || []) {
+    if (p.Kind === p.ID || !p.Total) continue;
+    const n = p.Total - (p.Omitted || 0);
+    for (const [route, view] of [['#' + p.ID, p.Kind], ['#search?page=' + p.ID, 'search']]) {
+      await page.goto(url + route);
+      const got = await page.waitForFunction(([view, n]) => {
+        const h = document.querySelector('.view[data-view="' + view + '"]:not([hidden]) [data-qhead]');
+        return h && /^\d/.test(h.textContent) && h.textContent;
+      }, [view, n], { timeout: 20000 }).then(h => h.jsonValue()).catch(() => '');
+      const hash = await page.evaluate(() => location.hash);
+      if (got.indexOf(n.toLocaleString('en-US') + ' ') !== 0 || hash.indexOf('part=' + p.ID) < 0) fail(route + ' shows "' + got + '" at ' + hash + ', want ' + n + ' events of ' + p.ID);
+    }
+  }
   await page.goto(url + '#detections');
   const ev = await page.$('.view[data-view="detections"] [data-pane]:not([hidden]) [data-ev]');
   if (ev) {

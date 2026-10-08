@@ -144,7 +144,7 @@ func TestWriteAndVerify(t *testing.T) {
 	for _, want := range []string{
 		// every page is in the one file
 		`data-view="overview"`, `data-view="detections"`, `data-view="search"`, `data-view="people"`, `data-view="systems"`,
-		`data-view="privileged"`, `data-view="usb"`, `data-view="failed"`, `data-view="accounts"`, `data-view="integrity"`,
+		`data-view="privileged"`, `data-view="integrity"`,
 		`data-view="powershell"`, `data-view="other"`, `data-view="logons"`,
 		`data-view="health"`, `data-view="trends"`, `data-view="logs"`, "Test Site",
 		`data-pick="admin_jd"`, `data-pane="admin_jd"`, "Where and when", // People

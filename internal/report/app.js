@@ -165,6 +165,15 @@
   var views = document.querySelectorAll('.view');
   function show() {
     var id = (location.hash || '#overview').slice(1).split(/[/?]/)[0];
+    // A page that became part of a kind (#failed?host=X): its kind's
+    // page showing that part (#logons?part=failed&host=X).
+    var moved = movedTo(id);
+    if (moved) {
+      var oh = location.hash, oq = oh.indexOf('?'), otext = oq < 0 ? oh.split('/').slice(1).join('/') : '';
+      var nh = '#' + moved + '?part=' + id + (oq >= 0 && oh.length > oq + 1 ? '&' + oh.slice(oq + 1) : '') + (otext ? '&text=' + otext : '');
+      if (history.replaceState) history.replaceState(null, '', nh); else location.hash = nh;
+      id = moved;
+    }
     if (!document.querySelector('.view[data-view="' + id + '"]')) id = 'overview';
     views.forEach(function (v) { v.hidden = v.getAttribute('data-view') !== id; });
     document.querySelectorAll('[data-nav]').forEach(function (a) {
@@ -429,8 +438,22 @@
   // Rows are kept as compact arrays: [index, time, host, sev, action, user,
   // target, source, summary, eventID, log, process, command, outcome, flags,
   // day, offset, kind, extra, page], strings already looked up.
-  var pageByID = {};
+  // pageByID: the events' parts, each with its data files (meta.pages);
+  // kindByID: the five kinds of event, the event pages and Search's Kind,
+  // each showing its parts (owner, UI-R1). A row's r[19] is its part.
+  var pageByID = {}, kindByID = {};
   (meta.pages || []).forEach(function (p) { pageByID[p.ID] = p; });
+  (meta.kinds || []).forEach(function (k) { kindByID[k.ID] = k; });
+  // Sub-kinds the absorbed parts had on their own pages, for old links
+  // (#failed?sub=Bad password).
+  var OLDSUB = {
+    failed: { 'Bad password': 'Failed: bad password', 'Expired': 'Failed: expired', 'Locked out': 'Failed: locked out' },
+    usb: { 'Blocked': 'USB blocked', 'Files copied': 'USB files copied', 'Connected or removed': 'USB connected or removed' },
+    accounts: { 'Created': 'Account created', 'Changed': 'Account changed', 'Added to group': 'Account added to group', 'Disabled': 'Account disabled' }
+  };
+  // movedTo is the kind page an old part's link (#failed, #usb,
+  // #accounts) now opens, or ''.
+  function movedTo(id) { return !kindByID[id] && pageByID[id] ? pageByID[id].Kind : ''; }
 
   // rowOf turns one row of a data file (chunk c, day, page p) into a row.
   function rowOf(c, r, day, p) {
@@ -495,7 +518,10 @@
   // keeps the search (#search?… or #privileged?…), so it can be shared.
   //
   // Link parameters (all optional; see docs/reports.md):
-  //   page   the kind of event (an event page's ID; Search only)
+  //   page   the kind of event (an event page's ID; Search only; an old
+  //          part's ID, page=failed, opens its kind with part= set)
+  //   part   one part of a kind: failed, usb, accounts (and logons,
+  //          other, privileged, their kinds' own part)
   //   user   a person's key; host  a system; role  server|workstation|vm
   //          (host=@server and the like still work)
   //   sev    high|medium|hm (high or medium)|li (low or info)|low|info
@@ -510,20 +536,21 @@
   var PS_DOWNLOAD = /downloadstring|downloadfile|downloaddata|invoke-webrequest|\biwr\b|invoke-restmethod|\birm\b|net\.webclient|start-bitstransfer|wget|curl/i;
   var PRESETS = {
     person: { label: 'Everything one person did', set: function () { return { user: meta.firstPerson || '' }; } },
-    usbservers: { label: 'USB devices on servers', set: function () { return { page: 'usb', role: 'server' }; } },
+    usbservers: { label: 'USB devices on servers', set: function () { return { page: 'other', part: 'usb', role: 'server' }; } },
     afterhours: { label: 'Admin work after hours', set: function () { return { page: 'privileged', when: '@after' }; } },
-    failedsource: { label: 'Failed logons by source', set: function () { return { page: 'failed', sort: 'src' }; } },
-    admingroups: { label: 'Changes to admin groups', set: function () { return { page: 'accounts' }; }, test: function (r) { return /^group_member/.test(r[4]); } },
+    failedsource: { label: 'Failed logons by source', set: function () { return { page: 'logons', part: 'failed', sort: 'src' }; } },
+    admingroups: { label: 'Changes to admin groups', set: function () { return { page: 'privileged', part: 'accounts' }; }, test: function (r) { return /^group_member/.test(r[4]); } },
     audit: { label: 'Logs cleared or audit changed', set: function () { return { page: 'integrity' }; } },
     psdownload: { label: 'PowerShell that downloads', set: function () { return { page: 'powershell' }; }, test: function (r) { return PS_DOWNLOAD.test(r[12] + ' ' + r[8]); } },
-    rdp: { label: 'Remote Desktop logons', set: function () { return { page: 'logons' }; }, test: function (r) { return r[17] === 'Remote Desktop'; } }
+    rdp: { label: 'Remote Desktop logons', set: function () { return { page: 'logons', part: 'logons' }; }, test: function (r) { return r[17] === 'Remote Desktop'; } }
   };
-  var CHIPS = ['event', 'sub', 'flag'];
+  var CHIPS = ['event', 'sub', 'flag', 'part'];
   var FIELD = {
     host: function (r) { return r[2]; },
     user: function (r) { return r[5] ? key(r[5]) : ''; },
     event: function (r) { return r[4]; },
     sub: function (r) { return r[17]; },
+    part: function (r) { return r[19]; },
     sev: function (r) { return sevBucket(r[3]); }
   };
   var finders = {};
@@ -546,7 +573,7 @@
       } else if (k === 'group') {
         el.addEventListener('change', function () { self.order(); self.draw(); self.sync(); });
       } else {
-        el.addEventListener('change', function () { if (k === 'page') self.preset = ''; self.run(); });
+        el.addEventListener('change', function () { if (k === 'page') { self.preset = ''; self.inc.part = ''; } self.run(); });
       }
     });
     root.addEventListener('click', function (e) {
@@ -569,7 +596,7 @@
     document.addEventListener('click', function (e) { if (self.menuOpen && !e.target.closest('.sq-common')) self.menu(false); });
     BB.exportPage(this.view, function () {
       if (!self.list.length) return null;
-      var p = pageByID[self.kind];
+      var p = kindByID[self.kind];
       return { label: (p ? p.Title : 'Search results') + ' shown', file: self.kind ? self.kind + '-events' : 'search', rows: self.csvRows() };
     });
   }
@@ -624,9 +651,8 @@
   };
 
   Finder.prototype.pages = function () {
-    if (this.kind) return [pageByID[this.kind]];
-    var k = this.q.page.value;
-    return (meta.pages || []).filter(function (p) { return (!k || p.ID === k) && p.Days && p.Days.length; });
+    var k = this.kind || this.q.page.value, part = this.inc.part;
+    return (meta.pages || []).filter(function (p) { return (!k || p.Kind === k) && (!part || p.ID === part) && p.Days && p.Days.length; });
   };
 
   Finder.prototype.run = function () {
@@ -670,6 +696,7 @@
       if (at && Math.abs(r[1] - at) > span) return false;
       if (inc.event && r[4] !== inc.event) return false;
       if (inc.sub && r[17] !== inc.sub) return false;
+      if (inc.part && r[19] !== inc.part) return false;
       if (inc.flag && (',' + r[14] + ',').indexOf(',' + inc.flag + ',') < 0) return false;
       for (var k = 0; k < not.length; k++) if (FIELD[not[k][0]](r) === not[k][1]) return false;
       if (pre && !pre(r)) return false;
@@ -713,7 +740,8 @@
   };
 
   Finder.prototype.draw = function () {
-    var rows = this.rows, hosts = {}, high = 0, med = 0, p = pageByID[this.kind];
+    var rows = this.rows, hosts = {}, high = 0, med = 0, p = kindByID[this.kind];
+    if (this.inc.part && pageByID[this.inc.part] && pageByID[this.inc.part].Unit) p = pageByID[this.inc.part]; // "891 failed logons"
     rows.forEach(function (r) { hosts[r[2]] = 1; if (r[3] === 'high') high++; else if (r[3] === 'medium') med++; });
     var nh = Object.keys(hosts).length, unit = p && p.Unit ? p.Unit : 'events';
     if (rows.length === 1) unit = unit.replace(/s$/, '');
@@ -763,7 +791,7 @@
 
   // The field counts on the left, for the results shown.
   Finder.prototype.facets = function () {
-    var self = this, p = pageByID[this.kind];
+    var self = this, p = kindByID[this.kind];
     var fields = this.kind ? [['user', 'Person'], ['host', 'System'], ['sub', p.KindLabel || 'Kind']] : [['host', 'System'], ['event', 'Event'], ['sev', 'Severity']];
     var html = '';
     fields.forEach(function (fd) {
@@ -805,7 +833,11 @@
   // The filters a dropdown doesn't show, as chips with a ×.
   Finder.prototype.chips = function () {
     var self = this, out = [];
-    CHIPS.forEach(function (k) { if (self.inc[k]) out.push([k, ({ event: 'Event', sub: 'Kind', flag: 'Only' })[k] + ': ' + (k === 'event' ? actLabel(self.inc[k]) : self.inc[k])]); });
+    CHIPS.forEach(function (k) {
+      if (!self.inc[k]) return;
+      var v = k === 'event' ? actLabel(self.inc[k]) : k === 'part' ? (pageByID[self.inc[k]] || {}).Title || self.inc[k] : self.inc[k];
+      out.push([k, ({ event: 'Event', sub: 'Kind', flag: 'Only', part: 'Only' })[k] + ': ' + v]);
+    });
     if (this.at) out.push(['at', '±' + Math.round(this.span / 60) + ' min around ' + when(this.at, this.atOff || meta.zoneOff || 0).slice(7)]);
     if (this.preset && PRESETS[this.preset]) out.push(['preset', PRESETS[this.preset].label]);
     this.not.forEach(function (x, i) { out.push(['not' + i, 'Not ' + (x[0] === 'sev' ? SEVWORD[x[1]] : x[0] === 'event' ? actLabel(x[1]) : x[1])]); });
@@ -869,6 +901,7 @@
     var self = this, v = pr.set();
     this.reset();
     ['page', 'user', 'host', 'role', 'sev', 'when', 'text'].forEach(function (k) { self.set(k, v[k]); });
+    this.inc.part = v.part || '';
     this.q.group.value = '';
     if (v.sort) this.sortBy = v.sort;
     this.preset = pr.test ? name : '';
@@ -910,6 +943,10 @@
     if (p.host && p.host.charAt(0) === '@') { p.role = p.host.slice(1); p.host = ''; }
     if (p.user) p.user = key(p.user); // any spelling: "SRV-DC02\\jlee", an alias
     if (p.sort === 'host') { p.group = 'host'; p.sort = ''; }
+    // An old link to a part as a kind (page=failed): its kind, showing
+    // that part, with the part's old sub-kind names (UI-R1).
+    if (p.page && movedTo(p.page)) { p.part = p.page; p.page = movedTo(p.page); }
+    if (p.part && p.sub && OLDSUB[p.part] && OLDSUB[p.part][p.sub]) p.sub = OLDSUB[p.part][p.sub];
     ['page', 'user', 'host', 'role', 'sev', 'when', 'text'].forEach(function (k) { self.set(k, p[k]); });
     this.q.group.value = Array.prototype.some.call(this.q.group.options, function (o) { return o.value === p.group; }) ? p.group : '';
     CHIPS.forEach(function (k) { self.inc[k] = p[k] || ''; });
@@ -935,7 +972,7 @@
   // csvRows is the rows shown, header first, every time with its zone
   // (ASSESS1): the page's Export CSV and the Export menu's "This page".
   Finder.prototype.csvRows = function () {
-    var p = pageByID[this.kind], kind = ((p && p.KindLabel) || 'kind').toLowerCase();
+    var p = kindByID[this.kind], kind = ((p && p.KindLabel) || 'kind').toLowerCase();
     var rows = [['time', 'system', 'person', 'target', 'source', 'what happened', kind, 'severity', 'event id', 'log', 'process', 'command', 'outcome']];
     this.list.forEach(function (r) {
       rows.push([when(r[1], r[16]) + ' ' + zoneOf(r[16]), r[2], r[5], r[6], r[7], r[8], r[17], r[3], r[9], r[10], r[11], r[12], r[13]].map(csvSafe));

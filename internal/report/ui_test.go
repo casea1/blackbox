@@ -71,7 +71,7 @@ func TestClickableCardsAndHeatmap(t *testing.T) {
 	b, _ := os.ReadFile(filepath.Join(dir, "report.html"))
 	html := string(b)
 	for _, want := range []string{
-		`<div class="sq" data-sq="failed">`, // Failed logons is Search with its kind preset
+		`<div class="sq" data-sq="logons">`, // Logon activity is Search with its kind preset
 		`data-kindclear`,
 		`href="../index.html" title="Every report in this folder, newest first"`,
 		`href="#search?host=WS-07&amp;user=admin_jd"`, // a person's lane on People opens Search
