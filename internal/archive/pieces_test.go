@@ -14,10 +14,10 @@ import (
 // names them; "fail" makes every log fail.
 func fakeExport(fail bool) ExportFunc {
 	n := 0
-	return func(dir string, from, to time.Time, skip func(string) bool) ([]Source, []string) {
+	return func(dir string, from, to time.Time, skip func(string) bool) ([]Source, []string, []Gap) {
 		n++
 		if fail {
-			return nil, []string{"Security: could not be exported: access denied"}
+			return nil, []string{"Security: could not be exported: access denied"}, nil
 		}
 		var out []Source
 		for _, s := range []struct{ name, src, body string }{
@@ -31,7 +31,7 @@ func fakeExport(fail bool) ExportFunc {
 			os.WriteFile(p, []byte(s.body), 0o644)
 			out = append(out, Source{Name: s.name, Source: s.src, Path: p})
 		}
-		return out, nil
+		return out, nil, nil
 	}
 }
 
@@ -258,13 +258,13 @@ func TestLocaleMetaKeptWithEvtx(t *testing.T) {
 	dir := t.TempDir()
 	pdir := filepath.Join(dir, "pieces")
 	t0 := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
-	exp := func(d string, from, to time.Time, skip func(string) bool) ([]Source, []string) {
+	exp := func(d string, from, to time.Time, skip func(string) bool) ([]Source, []string, []Gap) {
 		ev := filepath.Join(d, "Security.evtx")
 		os.WriteFile(ev, []byte("evtx "+from.Format("1504")), 0o644)
 		os.MkdirAll(filepath.Join(d, MetaDir), 0o755)
 		mta := filepath.Join(d, MetaDir, "Security_1033.MTA")
 		os.WriteFile(mta, []byte("mta "+from.Format("1504")), 0o644)
-		return []Source{{Name: "Security.evtx", Source: "Security", Path: ev}, {Name: MetaDir + "/Security_1033.MTA", Source: "Security", Path: mta}}, nil
+		return []Source{{Name: "Security.evtx", Source: "Security", Path: ev}, {Name: MetaDir + "/Security_1033.MTA", Source: "Security", Path: mta}}, nil, nil
 	}
 	for i := 0; i < 2; i++ {
 		from := t0.Add(time.Duration(i) * 15 * time.Minute)

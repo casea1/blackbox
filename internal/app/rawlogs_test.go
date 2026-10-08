@@ -500,14 +500,14 @@ func TestPackFailingAndLostExport(t *testing.T) {
 	st, _ := store.Open(filepath.Join(base, "data"))
 	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportEvery: "weekly", CollectEvery: 15 * time.Minute}, Loc: time.UTC,
 		Now: func() time.Time { return now }}
-	export := func(dir string, from, to time.Time, skip func(string) bool) ([]archive.Source, []string) {
+	export := func(dir string, from, to time.Time, skip func(string) bool) ([]archive.Source, []string, []archive.Gap) {
 		var out []archive.Source
 		for _, n := range []string{"Security.evtx", "Application.evtx"} {
 			p := filepath.Join(dir, n)
 			os.WriteFile(p, []byte(n+from.Format("1504")), 0o644)
 			out = append(out, archive.Source{Name: n, Source: strings.TrimSuffix(n, ".evtx"), Path: p})
 		}
-		return out, nil
+		return out, nil, nil
 	}
 	for i := 0; i < 2; i++ {
 		from := now.Add(time.Duration(i-2) * time.Hour)
@@ -674,5 +674,55 @@ func TestArchiveLeftOutOfReport(t *testing.T) {
 	}
 	if len(st.State.LeftOut) != 1 {
 		t.Errorf("left out again: %+v", st.State.LeftOut)
+	}
+}
+
+// AR8, AR9: the original logs are exported by position. A record written
+// in the same second as an export, after it, and records stamped while
+// the clock was set back (before the last export's end) are in the next
+// piece; nothing is recorded missing.
+func TestExportByPositionNotTime(t *testing.T) {
+	base := t.TempDir()
+	day := time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC)
+	at := func(h, m, s int) time.Time {
+		return day.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(s)*time.Second)
+	}
+	audit := auditFixture(t, base, at(11, 50, 0))
+	add := func(when time.Time, serial int, what string) {
+		f, _ := os.OpenFile(audit, os.O_APPEND|os.O_WRONLY, 0o644)
+		fmt.Fprintf(f, "type=SYSCALL msg=audit(%d.%03d:%d): %s\n", when.Unix(), when.Nanosecond()/1e6, serial, what)
+		f.Close()
+	}
+	st, _ := store.Open(filepath.Join(base, "data"))
+	now := at(12, 0, 0)
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportEvery: "weekly", CollectEvery: 15 * time.Minute}, Loc: time.UTC,
+		Now: func() time.Time { return now }, LogStates: func() []archive.LogState { return nil }}
+	a.saveLogPiece(st, auditRun(now, 1, 0, at(11, 50, 0)), time.Time{})
+
+	add(at(12, 0, 0).Add(400*time.Millisecond), 2, "same-second") // after the cut, in its second
+	add(at(11, 40, 0), 3, "clock-back-logon")                     // stamped before the last export's end
+	add(at(11, 40, 5), 4, "clock-change")
+	prev := now
+	now = at(12, 15, 0)
+	a.saveLogPiece(st, auditRun(now, 3, 0, at(11, 40, 0)), prev)
+
+	pieces, _ := archive.Pieces(a.piecesDir())
+	if len(pieces) != 2 {
+		t.Fatalf("pieces: %d", len(pieces))
+	}
+	b, _ := os.ReadFile(filepath.Join(pieces[1].Dir, "audit.log"))
+	for _, want := range []string{"same-second", "clock-back-logon", "clock-change"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("the second piece misses %s:\n%s", want, b)
+		}
+	}
+	if strings.Contains(string(b), "rec00") {
+		t.Errorf("exported twice:\n%s", b)
+	}
+	if len(pieces[1].Info.Gaps) != 0 || len(st.State.LogGaps) != 0 {
+		t.Errorf("gaps: %+v %+v", pieces[1].Info.Gaps, st.State.LogGaps)
+	}
+	if m := st.State.ExportMarks[audit]; m.Serial != 4 || m.Offset == 0 {
+		t.Errorf("mark: %+v", m)
 	}
 }

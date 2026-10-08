@@ -480,8 +480,12 @@ func (r *Report) checkArchives() {
 			if r.stamp(g.From) == r.stamp(g.To) {
 				span = "at about " + r.stamp(g.To)
 			}
-			r.Health.Warnings = append(r.Health.Warnings, fmt.Sprintf("%s: the original logs are incomplete: %s had already overwritten its events %s when they were saved. Make the log larger (blackbox check gives the size).",
-				a.Host, g.Source, span))
+			recs := ""
+			if g.Records != "" {
+				recs = " (" + g.Records + ")"
+			}
+			r.Health.Warnings = append(r.Health.Warnings, fmt.Sprintf("%s: the original logs are incomplete: %s had already overwritten its events%s %s when they were saved. Make the log larger (blackbox check gives the size).",
+				a.Host, g.Source, recs, span))
 		}
 	}
 }

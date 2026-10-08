@@ -83,6 +83,11 @@ type State struct {
 	// PackFailing is set while packing the exports fails: status says so
 	// and exits 4, and reports show the reason (AR5).
 	PackFailing *PackFailure `json:"pack_failing,omitempty"`
+	// ExportMarks are where the last export of each log ended (AR8,
+	// AR9): the next export takes everything after it, whatever the
+	// records' times. By log (a Windows channel, a Linux log file, or
+	// "systemd journal").
+	ExportMarks map[string]ExportMark `json:"export_marks,omitempty"`
 	// Clears are the logs cleared since they last had a record exported,
 	// by log (lower case): the gap the clear leaves in the next export is
 	// labelled as the clear, not an overwrite (LC2b).
@@ -568,6 +573,16 @@ type LogGap struct {
 	// Cleared is set when the gap is the log being cleared, not
 	// overwritten (LC2b): who cleared it and when.
 	Cleared *LogClear `json:"cleared,omitempty"`
+	// Records names the records missing, when known (AR8, AR9).
+	Records string `json:"records,omitempty"`
+}
+
+// ExportMark is where the last export of a log ended: a Windows log's
+// last record ID, a Linux log file's position, or the journal's cursor
+// (see Bookmark), and for the audit log the last audit serial.
+type ExportMark struct {
+	Bookmark
+	Serial uint64 `json:"serial,omitempty"`
 }
 
 // LogClear is a log being cleared: when and by whom.

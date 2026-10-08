@@ -170,6 +170,7 @@ func (r *Report) logsPage() *LogsPage {
 			gaps      []string
 			lostFiles []string // exports deleted or unreadable before packing (AR5)
 			clears    []string // the log cleared, by whom and when (LC2b)
+			missing   []string // records missing, by position (AR8, AR9)
 			changed   bool     // an export changed before packing (AR6)
 		}
 		logs := map[string]*agg{}
@@ -224,6 +225,11 @@ func (r *Report) logsPage() *LogsPage {
 				for _, g := range logs {
 					if strings.EqualFold(g.log, gp.Source) {
 						span := gp.From.In(r.Location).Format("2 Jan 15:04") + " – " + gp.To.In(r.Location).Format("2 Jan 15:04")
+						if gp.Records != "" {
+							// Found by position (AR8, AR9).
+							g.missing = append(g.missing, gp.Records+" ("+span+")")
+							continue
+						}
 						if gp.Reason != "" {
 							g.lostFiles = append(g.lostFiles, span)
 							continue
@@ -298,6 +304,10 @@ func (r *Report) logsPage() *LogsPage {
 			}
 			if len(g.gaps) > 0 {
 				parts = append(parts, "Missing "+strings.Join(g.gaps, ", ")+": overwritten before it was saved")
+				lf.NoteBad = true
+			}
+			if len(g.missing) > 0 {
+				parts = append(parts, "Missing "+strings.Join(g.missing, ", ")+": not in the log when it was exported")
 				lf.NoteBad = true
 			}
 			if len(g.clears) > 0 {

@@ -315,10 +315,22 @@ UTC), with that day's logs and an `archive.json` listing each file's
 SHA-256. The zip's own SHA-256 is in the report's `manifest.sha256`, so
 `blackbox verify` checks it with the rest of the report.
 
-**How it works.** At every collection, each computer exports its logs
-written since the last export, while the logs still hold them: with
-`wevtutil epl` on Windows, and by copying the new lines on Linux. A log
-the collection read nothing new from is left out of that export. Once a
+**How it works.** At every collection, each computer exports what its
+logs gained since the last export, while the logs still hold them: with
+`wevtutil epl` on Windows, and by copying the new lines on Linux. Each
+export starts where the last one ended **by position, not by time**
+(AR8, AR9): on Windows after the last record ID exported, on Linux after
+the last byte of each log file (finishing a file rotated since) and the
+journal's cursor. So a record written in the same second as an export,
+and anything stamped while the clock was set back, are in the next one.
+The times in `piece.json` and `archive.json` are for reading only. A log
+the collection read nothing new from is left out of that export. If the
+log no longer holds the records after the last export (it overwrote
+them), they are a gap named by number ("records 172279-172285"); on
+Linux, audit serials that don't follow on ("audit serials 41323-41330
+are not in the audit log") are a gap too. The first export after
+installing or upgrading to 0.22 is still by time; it sets each log's
+position. Once a
 day the exports are packed into one archive: the `.evtx` files of each
 export are kept as they are (named after the export's start time, to
 the second, e.g. `Security_20261005-041503Z.evtx`, when there is more
