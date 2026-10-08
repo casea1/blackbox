@@ -14,10 +14,10 @@ import (
 // names them; "fail" makes every log fail.
 func fakeExport(fail bool) ExportFunc {
 	n := 0
-	return func(dir string, from, to time.Time, skip func(string) bool) ([]Source, []string) {
+	return func(dir string, from, to time.Time, skip func(string) bool) ([]Source, []string, []Gap) {
 		n++
 		if fail {
-			return nil, []string{"Security: could not be exported: access denied"}
+			return nil, []string{"Security: could not be exported: access denied"}, nil
 		}
 		var out []Source
 		for _, s := range []struct{ name, src, body string }{
@@ -31,7 +31,7 @@ func fakeExport(fail bool) ExportFunc {
 			os.WriteFile(p, []byte(s.body), 0o644)
 			out = append(out, Source{Name: s.name, Source: s.src, Path: p})
 		}
-		return out, nil
+		return out, nil, nil
 	}
 }
 

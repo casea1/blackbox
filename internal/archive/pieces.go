@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/casea1/blackbox/internal/store"
 	"io"
 	"os"
 	"path/filepath"
@@ -93,9 +94,35 @@ type Piece struct {
 	Info Info
 }
 
-// ExportFunc exports the logs for [from, to) into dir (see Export); logs
-// skip names are left out.
-type ExportFunc func(dir string, from, to time.Time, skip func(string) bool) ([]Source, []string)
+// ExportFunc exports the logs into dir (see Export), for [from, to) or
+// by position (see ByPosition); logs skip names are left out. It returns
+// the files, notes on logs that could not be exported, and the parts of
+// logs found missing by position (AR8, AR9).
+type ExportFunc func(dir string, from, to time.Time, skip func(string) bool) ([]Source, []string, []Gap)
+
+// Positions is where each log's last export ended (Marks), and, once an
+// export by position has run, where this one ends (Next): only logs
+// exported without error are in Next, so a log that failed is exported
+// from the same place next time.
+type Positions struct {
+	Marks map[string]store.ExportMark
+	Next  map[string]store.ExportMark
+}
+
+// ByPosition exports each log from where its last export ended, whatever
+// the records' times (AR8, AR9): a record stamped in the same second as
+// the last export, or while the clock was set back, is in the next
+// piece. A log with no mark yet (the first export, or the first after an
+// upgrade) is exported for [from, to) by time, and gets a mark at its
+// end.
+func ByPosition(p *Positions) ExportFunc {
+	if p.Next == nil {
+		p.Next = map[string]store.ExportMark{}
+	}
+	return func(dir string, from, to time.Time, skip func(string) bool) ([]Source, []string, []Gap) {
+		return exportFrom(dir, from, to, skip, p)
+	}
+}
 
 // SavePiece exports the logs for info's period into a new folder under
 // dir, numbered after the pieces already there. Logs skip names had
@@ -121,7 +148,8 @@ func SavePiece(dir string, info Info, export ExportFunc, skip func(string) bool)
 	if err := os.MkdirAll(pdir, 0o750); err != nil {
 		return Piece{}, err
 	}
-	sources, notes := export(pdir, info.From, info.To, skip)
+	sources, notes, gaps := export(pdir, info.From, info.To, skip)
+	info.Gaps = append(info.Gaps, gaps...)
 	failed := 0
 	for _, n := range notes {
 		if strings.Contains(n, "could not be exported") {
@@ -163,8 +191,9 @@ func SavePiece(dir string, info Info, export ExportFunc, skip func(string) bool)
 	return Piece{Dir: pdir, Info: info}, nil
 }
 
-func export0(dir string, from, to time.Time, skip func(string) bool) ([]Source, []string) {
-	return export(dir, from, to, skip)
+func export0(dir string, from, to time.Time, skip func(string) bool) ([]Source, []string, []Gap) {
+	s, n := export(dir, from, to, skip)
+	return s, n, nil
 }
 
 func pieceSeq(dir string) int {

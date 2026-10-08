@@ -11,7 +11,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/casea1/blackbox/internal/store"
 )
@@ -184,9 +186,17 @@ func ReadAll(path string, fn func(string) error) error {
 // ReadJournal reads systemd journal entries after cursor (all entries when
 // cursor is empty) as syslog-format lines, and returns the new cursor.
 func ReadJournal(cursor string, fn func(string) error) (string, error) {
+	return ReadJournalSince(cursor, time.Time{}, fn)
+}
+
+// ReadJournalSince is ReadJournal; with no cursor, it starts at since
+// (when set) instead of the oldest entry.
+func ReadJournalSince(cursor string, since time.Time, fn func(string) error) (string, error) {
 	args := []string{"--no-pager", "--quiet", "--output=short-iso-precise", "--show-cursor"}
 	if cursor != "" {
 		args = append(args, "--after-cursor="+cursor)
+	} else if !since.IsZero() {
+		args = append(args, "--since=@"+strconv.FormatInt(since.Unix(), 10))
 	}
 	cmd := exec.Command("journalctl", args...)
 	out, err := cmd.StdoutPipe()

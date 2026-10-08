@@ -63,6 +63,9 @@ type App struct {
 	// LogStates reads how far back each log reaches and whether it is full
 	// (nil: archive.LogStates); tests replace it.
 	LogStates func() []archive.LogState
+	// Export exports the original logs for a piece (nil: by position,
+	// archive.ByPosition); tests replace it.
+	Export archive.ExportFunc
 	// Inventory reads this computer's hardware and accounts (nil:
 	// inventory.Collect); tests replace it.
 	Inventory func() *inventory.Inventory
@@ -252,6 +255,9 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 		}
 		for _, g := range archive.GapsIn(states, from, now) {
 			k := strings.ToLower(g.Source)
+			if _, ok := st.State.ExportMarks[g.Source]; ok && runtime.GOOS == "windows" {
+				continue // its gaps are found by record ID (AR9)
+			}
 			if c, ok := clears[k]; ok && !c.At.After(g.To) {
 				g.Cleared = clearedText(c)
 				delete(st.State.Clears, k)
@@ -274,10 +280,48 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 	skip := func(src string) bool { return caughtUp && known[src] && !fresh[src] }
 	info := archive.Info{Host: host, OS: runtime.GOOS, From: from, To: now, Created: now, Notes: notes, Gaps: gaps,
 		Logs: archive.Coverage(states, from, now, lost)}
-	if _, err := archive.SavePiece(a.piecesDir(), info, nil, skip); err != nil {
+	// Each log from where its last export ended, whatever the records'
+	// times (AR8, AR9). A gap found by position after a clear is the
+	// clear (LC2b).
+	timeGap := map[string]bool{}
+	for _, g := range gaps {
+		timeGap[strings.ToLower(g.Source)] = true
+	}
+	pos := &archive.Positions{Marks: st.State.ExportMarks}
+	byPos := archive.ByPosition(pos)
+	export := a.Export
+	if export == nil {
+		export = func(dir string, from, to time.Time, skip func(string) bool) ([]archive.Source, []string, []archive.Gap) {
+			s, n, all := byPos(dir, from, to, skip)
+			// One gap per log: one found by time above stands.
+			var g []archive.Gap
+			for _, x := range all {
+				if !timeGap[strings.ToLower(x.Source)] || x.Reason != "" {
+					g = append(g, x)
+				}
+			}
+			for i := range g {
+				k := strings.ToLower(g[i].Source)
+				if c, ok := clears[k]; ok && g[i].Reason == "" && !c.At.After(g[i].To) {
+					g[i].Cleared = clearedText(c)
+					delete(st.State.Clears, k)
+				}
+			}
+			return s, n, g
+		}
+	}
+	piece, err := archive.SavePiece(a.piecesDir(), info, export, skip)
+	if err != nil {
 		a.logf("exporting the original logs: %v; will try again next run", err)
 		return
 	}
+	if st.State.ExportMarks == nil {
+		st.State.ExportMarks = map[string]store.ExportMark{}
+	}
+	for k, m := range pos.Next {
+		st.State.ExportMarks[k] = m
+	}
+	gaps = piece.Info.Gaps
 	var kept []store.LogGap
 	for _, g := range st.State.LogGaps {
 		if now.Sub(g.Noted) < logGapsKept {
@@ -291,8 +335,13 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 			kept = append(kept, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: now, Cleared: &c})
 			continue
 		}
-		a.logf("ORIGINAL LOGS INCOMPLETE: %s had already overwritten its events from %s to %s when it was saved", g.Source, g.From.In(a.loc()).Format("2006-01-02 15:04"), g.To.In(a.loc()).Format("2006-01-02 15:04"))
-		kept = append(kept, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: now})
+		if g.Reason != "" {
+			a.logf("ORIGINAL LOGS INCOMPLETE: %s", g.Reason)
+			kept = append(kept, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: now, Reason: g.Reason})
+			continue
+		}
+		a.logf("ORIGINAL LOGS INCOMPLETE: %s had already overwritten its events from %s to %s when it was saved%s", g.Source, g.From.In(a.loc()).Format("2006-01-02 15:04"), g.To.In(a.loc()).Format("2006-01-02 15:04"), recordsNote(g.Records))
+		kept = append(kept, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: now, Records: g.Records})
 	}
 	st.State.LogGaps = kept
 	st.State.ArchivedUntil = now
@@ -333,6 +382,13 @@ func (a *App) noteClears(st *store.Store, run *store.Run, states []archive.LogSt
 		out[k] = c
 	}
 	return out
+}
+
+func recordsNote(r string) string {
+	if r == "" {
+		return ""
+	}
+	return " (" + r + ")"
 }
 
 // clearedText is "by claude at 2026-10-07 16:24Z".

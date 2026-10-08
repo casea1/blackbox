@@ -18,6 +18,9 @@ type Gap struct {
 	// Cleared is set when the log was cleared, not overwritten (LC2b):
 	// "by claude at 2026-10-07 16:24Z".
 	Cleared string `json:"cleared,omitempty"`
+	// Records names the records missing, when known by position (AR8,
+	// AR9): "records 172279-172285", "audit serials 41323-41330".
+	Records string `json:"records,omitempty"`
 }
 
 // LogState is how far back a log reaches now, and whether it is full and

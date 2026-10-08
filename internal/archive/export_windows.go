@@ -1,6 +1,7 @@
 package archive
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -66,4 +67,50 @@ func LogStates() []LogState {
 		out = append(out, LogState{Source: ch, Oldest: h.Oldest, Wraps: wraps})
 	}
 	return out
+}
+
+// exportFrom is export by position (see ByPosition): each log's records
+// after the last record ID exported, up to its newest now, whatever their
+// times (see recordQuery).
+func exportFrom(tmp string, from, to time.Time, skip func(string) bool, p *Positions) ([]Source, []string, []Gap) {
+	var sources []Source
+	var notes []string
+	var gaps []Gap
+	for _, ch := range winevt.Channels {
+		if skip != nil && skip(ch) {
+			continue
+		}
+		oldest, newest, err := winevt.Edges(ch)
+		if err != nil {
+			if errors.Is(err, winevt.ErrChannelNotFound) {
+				notes = append(notes, ch+": not on this computer")
+			} else {
+				notes = append(notes, fmt.Sprintf("%s: could not be exported: %v", ch, err))
+			}
+			continue
+		}
+		var oldestID, newestID uint64
+		var oldestAt time.Time
+		if oldest != nil && newest != nil {
+			oldestID, newestID, oldestAt = oldest.RecordID, newest.RecordID, oldest.Time
+		}
+		m, have := p.Marks[ch]
+		q := recordQuery(ch, m, have, oldestID, newestID, oldestAt, from, to)
+		notes = append(notes, q.notes...)
+		gaps = append(gaps, q.gaps...)
+		if q.query == "" {
+			p.Next[ch] = q.next
+			continue
+		}
+		name := SafeName(ch) + ".evtx"
+		path := filepath.Join(tmp, name)
+		out, err := hidden.Command(wevtutil(), "epl", ch, path, q.query, "/ow:true").CombinedOutput()
+		if err != nil {
+			notes = append(notes, fmt.Sprintf("%s: could not be exported: %v %s", ch, err, strings.TrimSpace(string(out))))
+			continue
+		}
+		sources = append(sources, Source{Name: name, Source: ch, Path: path})
+		p.Next[ch] = q.next
+	}
+	return sources, notes, gaps
 }
