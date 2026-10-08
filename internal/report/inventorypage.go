@@ -68,7 +68,7 @@ func (r *Report) inventoryPage() *InventoryPage {
 			row.Drives = append(row.Drives, InvDrive{Model: d.Model, Serial: d.Serial, Size: driveSize(d.Size), Interface: d.Interface, Media: d.Media})
 		}
 		for _, a := range inv.Accounts {
-			ia := InvAccount{Name: a.Name, Key: personKey(a.Name), ID: a.ID, Kind: a.Kind, Admin: a.Admin, Disabled: !a.Enabled, Status: "Enabled", lastLogon: a.LastLogon}
+			ia := InvAccount{Name: a.Name, Key: r.pkey(a.Name), ID: a.ID, Kind: a.Kind, Admin: a.Admin, Disabled: !a.Enabled, Status: "Enabled", lastLogon: a.LastLogon}
 			if !a.Enabled {
 				ia.Status = "Disabled"
 			}

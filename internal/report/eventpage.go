@@ -506,7 +506,7 @@ func (r *Report) fillPages(pages []*EventPage) {
 			item := TopItem{Label: x.k, N: x.n, Pct: x.n * 100 / max(1, tl[0].n), Flagged: flaggedTop[x.k]}
 			switch p.ID {
 			case "privileged", "logons":
-				item.Href = searchLink("page", p.ID, "user", personKey(x.k))
+				item.Href = searchLink("page", p.ID, "user", r.pkey(x.k))
 			case "integrity", "powershell", "other":
 				item.Href = searchLink("page", p.ID, "host", x.k)
 			case "failed":
