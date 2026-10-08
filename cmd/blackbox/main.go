@@ -304,6 +304,9 @@ environment variable (so it is not shown in the process list).
 			ans.ShareInbox = true
 		}
 		ans.InboxWriters = writers
+		// A role named on the command line replaces the kept one: --inbox
+		// on a former sender makes a collector, not a sender that ignores it.
+		ans = flagRole(ans, *sendTo, *inbox)
 	}
 	ans.Role = install.RoleOf(ans.SendTo, ans.Inbox)
 	ans = install.ForRole(ans)
@@ -1085,4 +1088,18 @@ func parseWhen(s string, loc *time.Location) (time.Time, bool, error) {
 		return t, false, fmt.Errorf("%q is not a date like 2026-09-01 or 2026-09-01 08:00", s)
 	}
 	return t, true, nil
+}
+
+// flagRole drops the kept setting of the other role when only one of
+// --send-to and --inbox is given (a path, not "none").
+func flagRole(ans install.Answers, sendTo, inbox string) install.Answers {
+	setSend := sendTo != "" && sendTo != "none"
+	setInbox := inbox != "" && inbox != "none"
+	switch {
+	case setInbox && !setSend:
+		ans.SendTo, ans.ShareUser, ans.SharePassword = "", "", ""
+	case setSend && !setInbox:
+		ans.Inbox, ans.ShareInbox, ans.InboxWriters, ans.ShareWriters = "", false, nil, nil
+	}
+	return ans
 }
