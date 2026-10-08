@@ -572,6 +572,11 @@ func (r *Report) healthPage() *HealthPage {
 			Explain: f.Text(r.stamp),
 			Fix:     "make the archive folder writable again (blackbox status shows the reason at every run); nothing is lost while the exports are kept."})
 	}
+	for _, l := range r.LeftOut {
+		hp.Gaps = append(hp.Gaps, GapCard{Title: "Original logs not in the report", Level: "bad", Systems: []string{l.Host},
+			Explain: l.Text(r.stamp),
+			Fix:     "check the file set aside (blackbox status names it): a damaged disk or someone changing Blackbox's folder. Keep it with the report if it is sound."})
+	}
 	for _, a := range r.Archives {
 		var lost, changed []string
 		for _, g := range a.Gaps {

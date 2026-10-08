@@ -86,6 +86,14 @@ func (a *App) Status(w io.Writer) error {
 		attention = append(attention, "the original logs are not being archived")
 		p("ORIGINAL LOGS NOT ARCHIVED", "since %s: %s. The exports are kept and packing is tried again at every run.", stampLocal(f.Since, a.loc()), strings.TrimRight(f.Reason, ". "))
 	}
+	for _, l := range s.LeftOut {
+		if now.Sub(l.Noted) >= logGapsKept {
+			continue
+		}
+		attention = append(attention, "original logs were left out of a report")
+		p("ORIGINAL LOGS NOT IN REPORT "+l.Report+":", "%s's logs for %s to %s: %s. The archive was set aside in %s; its events are in the report, the original copy of them only in that file.",
+			l.Host, stampLocal(l.From, a.loc()), stampLocal(l.To, a.loc()), strings.TrimRight(l.Reason, ". "), l.SetAside)
+	}
 	losses := lostSince(st, s.LastWindowEnd, now, a.Cfg.CollectEvery)
 	// Overwritten parts, one line per log (LOG1c), with the same advice
 	// as its "Events lost" line.

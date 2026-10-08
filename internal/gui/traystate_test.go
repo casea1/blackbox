@@ -272,3 +272,21 @@ func TestPackFailingNotice(t *testing.T) {
 		t.Errorf("notified twice: %+v", ns)
 	}
 }
+
+// AR7: original logs left out of a scheduled report are an item,
+// notified once.
+func TestLeftOutNotice(t *testing.T) {
+	h := healthy()
+	h.LeftOut = []store.LeftOutLogs{{Report: "2026-10-07_0000_W11", Host: "WIN11", Reason: "Security.evtx does not match its recorded SHA-256", Noted: trayNow}}
+	v := classify(h, nil, trayNow)
+	if v.State != stateLook || len(v.Items) != 1 || v.Items[0] != "Original logs of WIN11 not in report 2026-10-07_0000_W11" {
+		t.Errorf("view: %+v", v)
+	}
+	ns, m := notices(trayMemory{Seen: true}, h, v, "0.21.0", trayNow)
+	if len(ns) != 1 || !ns[0].Warn || !strings.Contains(ns[0].Text, "WIN11 in 2026-10-07_0000_W11") {
+		t.Fatalf("notices: %+v", ns)
+	}
+	if ns, _ = notices(m, h, v, "0.21.0", trayNow); len(ns) != 0 {
+		t.Errorf("notified twice: %+v", ns)
+	}
+}

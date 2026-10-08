@@ -87,6 +87,10 @@ type State struct {
 	// by log (lower case): the gap the clear leaves in the next export is
 	// labelled as the clear, not an overwrite (LC2b).
 	Clears map[string]LogClear `json:"clears,omitempty"`
+	// LeftOut are daily archives of original logs that failed their check
+	// at a scheduled report and were set aside, not put in it (AR7):
+	// status says so, and exits 4, for logGapsKept.
+	LeftOut []LeftOutLogs `json:"left_out,omitempty"`
 
 	// LAN: sending to a collector, receiving from other systems, and the
 	// systems seen (see lan.go).
@@ -571,6 +575,18 @@ type LogClear struct {
 	Channel string    `json:"channel"`
 	At      time.Time `json:"at"`
 	By      string    `json:"by,omitempty"`
+}
+
+// LeftOutLogs is a daily archive of original logs left out of a
+// scheduled report because it failed its check (AR7).
+type LeftOutLogs struct {
+	Report   string    `json:"report"` // the report's folder name
+	Host     string    `json:"host"`
+	From     time.Time `json:"from"`
+	To       time.Time `json:"to"`
+	Reason   string    `json:"reason"`
+	SetAside string    `json:"set_aside"` // where the archive was moved
+	Noted    time.Time `json:"noted"`
 }
 
 // PackFailure is set while the exported original logs cannot be packed

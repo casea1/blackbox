@@ -5,6 +5,9 @@ package archive
 import (
 	"archive/zip"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -155,10 +158,76 @@ func TestBundleCombinesDays(t *testing.T) {
 	if got["20260928-0000Z_20260929-0000Z/Security.evtx"] != "pretend evtx" {
 		t.Error("log content changed in the bundle")
 	}
-	// A damaged daily archive stops the bundle rather than being included.
+	// A damaged daily archive is left out, with the reason, and does not
+	// hold back the other (AR7).
 	os.WriteFile(list[0].Path, []byte("damaged"), 0o644)
-	if _, err := Bundle(dst, list); err == nil {
-		t.Error("damaged archive bundled")
+	b, err = Bundle(dst, list)
+	if err != nil || len(b.LeftOut) != 1 || b.LeftOut[0].Path != list[0].Path || !strings.Contains(b.LeftOut[0].Reason, "not a readable zip") || len(b.SHA256) != 64 {
+		t.Fatalf("one bad archive among good: %+v %v", b, err)
+	}
+	got = readZip(t, dst)
+	if _, ok := got["20260929-0000Z_20260930-0000Z/Security.evtx"]; !ok || len(got) != 2 {
+		t.Errorf("the good archive is not bundled alone: %v", got)
+	}
+	// None good: no bundle at all.
+	os.Remove(dst)
+	os.WriteFile(list[1].Path, []byte("damaged"), 0o644)
+	b, err = Bundle(dst, list)
+	if err != nil || len(b.LeftOut) != 2 || b.SHA256 != "" {
+		t.Fatalf("all bad: %+v %v", b, err)
+	}
+	if _, err := os.Stat(dst); err == nil {
+		t.Error("a bundle was written with nothing in it")
+	}
+}
+
+// AR7: two exports started in the same minute were packed under one name
+// before 0.21. Such an archive verifies (its files are matched to the
+// list in order), and is repaired when it is bundled: the second file is
+// renamed, its contents and hash unchanged. Write refuses two files under
+// one name.
+func TestSharedNamesRepaired(t *testing.T) {
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "a.evtx"), filepath.Join(dir, "b.evtx")
+	os.WriteFile(a, []byte("first export"), 0o644)
+	os.WriteFile(b, []byte("second export"), 0o644)
+	from, to := time.Date(2026, 10, 6, 13, 0, 0, 0, time.UTC), time.Date(2026, 10, 7, 13, 0, 0, 0, time.UTC)
+	path := filepath.Join(dir, FileName("WIN11", from, to))
+	same := "Security_20261007-1317Z.evtx"
+	if _, err := Write(path, Info{Host: "WIN11", From: from, To: to, Created: to}, []Source{{Name: same, Source: "Security", Path: a}, {Name: same, Source: "Security", Path: b}}); err == nil {
+		t.Fatal("Write took two files under one name")
+	}
+	// As 0.20 wrote it.
+	sum := func(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
+	info := Info{Kind: kind, Host: "WIN11", From: from, To: to, Created: to, Files: []FileInfo{
+		{Name: same, Source: "Security", Bytes: 12, SHA256: sum("first export")},
+		{Name: same, Source: "Security", Bytes: 13, SHA256: sum("second export")}}}
+	f, _ := os.Create(path)
+	zw := zip.NewWriter(f)
+	for _, c := range []string{"first export", "second export"} {
+		w, _ := zw.Create(same)
+		w.Write([]byte(c))
+	}
+	w, _ := zw.Create(InfoName)
+	json.NewEncoder(w).Encode(info)
+	zw.Close()
+	f.Close()
+	if _, err := Verify(path); err != nil {
+		t.Fatalf("an archive with two files under one name does not verify: %v", err)
+	}
+	dst := filepath.Join(dir, "logs-WIN11.zip")
+	bu, err := Bundle(dst, []Stored{{Host: "WIN11", From: from, To: to, Path: path}})
+	if err != nil || len(bu.LeftOut) != 0 || len(bu.SHA256) != 64 {
+		t.Fatalf("bundle: %+v %v", bu, err)
+	}
+	got := readZip(t, dst)
+	folder := "20261006-1300Z_20261007-1300Z/"
+	if got[folder+same] != "first export" || got[folder+"Security_20261007-1317Z-2.evtx"] != "second export" {
+		t.Errorf("both exports are not in the bundle under their own names: %v", got)
+	}
+	fixed, err := Verify(path)
+	if err != nil || SharedNames(fixed) || fixed.Files[1].SHA256 != sum("second export") || !strings.Contains(strings.Join(fixed.Notes, " "), "renamed") {
+		t.Errorf("repaired archive: %+v %v", fixed, err)
 	}
 }
 

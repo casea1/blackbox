@@ -147,6 +147,15 @@ func Write(path string, info Info, sources []Source) (Info, error) {
 }
 
 func write(path string, info *Info, sources []Source) error {
+	// Two files under one name would leave only one readable, and the
+	// archive would fail its own check (AR7).
+	seen := map[string]bool{InfoName: true}
+	for _, s := range sources {
+		if seen[s.Name] {
+			return fmt.Errorf("two files named %s in one archive", s.Name)
+		}
+		seen[s.Name] = true
+	}
 	part := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".partial")
 	f, err := os.OpenFile(part, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o640)
 	if err != nil {
@@ -210,6 +219,9 @@ func addFile(zw *zip.Writer, s Source) (FileInfo, error) {
 
 // Verify opens an archive and checks every file against its recorded
 // hash, so a damaged or altered archive is caught before it is filed.
+// Archives made before 0.21 could hold two files under one name (two
+// exports started in the same minute, AR7): they are matched to the list
+// in order, so such an archive still verifies (see Repair).
 func Verify(path string) (Info, error) {
 	var info Info
 	zr, err := zip.OpenReader(path)
@@ -217,26 +229,28 @@ func Verify(path string) (Info, error) {
 		return info, fmt.Errorf("not a readable zip file: %w", err)
 	}
 	defer zr.Close()
-	files := map[string]*zip.File{}
+	files := map[string][]*zip.File{}
 	for _, f := range zr.File {
-		files[f.Name] = f
+		files[f.Name] = append(files[f.Name], f)
 	}
-	desc, ok := files[InfoName]
-	if !ok {
+	desc := files[InfoName]
+	if len(desc) != 1 {
 		return info, errors.New("it has no " + InfoName)
 	}
-	if err := readJSON(desc, &info); err != nil {
+	if err := readJSON(desc[0], &info); err != nil {
 		return info, fmt.Errorf("%s: %w", InfoName, err)
 	}
 	if info.Kind != kind || info.Host == "" || !info.From.Before(info.To) {
 		return info, errors.New(InfoName + " does not describe a Blackbox archive")
 	}
+	used := map[string]int{}
 	for _, fi := range info.Files {
-		f, ok := files[fi.Name]
-		if !ok {
+		i := used[fi.Name]
+		used[fi.Name]++
+		if i >= len(files[fi.Name]) {
 			return info, fmt.Errorf("%s is listed but missing", fi.Name)
 		}
-		sum, err := hashZipFile(f)
+		sum, err := hashZipFile(files[fi.Name][i])
 		if err != nil {
 			return info, fmt.Errorf("%s: %w", fi.Name, err)
 		}
@@ -244,10 +258,123 @@ func Verify(path string) (Info, error) {
 			return info, fmt.Errorf("%s does not match its recorded SHA-256 (damaged or altered)", fi.Name)
 		}
 	}
-	if len(files) != len(info.Files)+1 {
+	if len(zr.File) != len(info.Files)+1 {
 		return info, errors.New("it holds files that are not listed in " + InfoName)
 	}
 	return info, nil
+}
+
+// SharedNames says whether an archive lists two files under one name, as
+// archives made before 0.21 could (AR7).
+func SharedNames(info Info) bool {
+	seen := map[string]bool{}
+	for _, f := range info.Files {
+		if seen[f.Name] {
+			return true
+		}
+		seen[f.Name] = true
+	}
+	return false
+}
+
+// uniqueName returns name, or name-2, name-3 … before its extension,
+// whichever is not yet taken.
+func uniqueName(name string, taken map[string]bool) string {
+	n := name
+	for i := 2; taken[n]; i++ {
+		n = fmt.Sprintf("%s-%d%s", strings.TrimSuffix(name, filepath.Ext(name)), i, filepath.Ext(name))
+	}
+	taken[n] = true
+	return n
+}
+
+// Repair rewrites a verified archive that holds two files under one name
+// (AR7), the second and later renamed name-2, name-3 …, with the same
+// contents, hashes and description and a note saying so. Nothing is
+// changed unless every file reads back with its recorded hash.
+func Repair(path string) (Info, error) {
+	info, err := Verify(path)
+	if err != nil || !SharedNames(info) {
+		return info, err
+	}
+	tmp, err := os.MkdirTemp(filepath.Dir(path), ".repair-")
+	if err != nil {
+		return info, err
+	}
+	defer os.RemoveAll(tmp)
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		return info, err
+	}
+	files := map[string][]*zip.File{}
+	for _, f := range zr.File {
+		files[f.Name] = append(files[f.Name], f)
+	}
+	used := map[string]int{}
+	taken := map[string]bool{}
+	var sources []Source
+	var renamed []string
+	for k, fi := range info.Files {
+		f := files[fi.Name][used[fi.Name]]
+		used[fi.Name]++
+		name := uniqueName(fi.Name, taken)
+		if name != fi.Name {
+			renamed = append(renamed, fi.Name+" (the "+ordinal(used[fi.Name])+" one) as "+name)
+		}
+		out := filepath.Join(tmp, fmt.Sprintf("%06d", k))
+		if err := extract(f, out); err != nil {
+			zr.Close()
+			return info, fmt.Errorf("%s: %w", fi.Name, err)
+		}
+		sources = append(sources, Source{Name: name, Source: fi.Source, Path: out, Changed: fi.Changed})
+	}
+	zr.Close()
+	fixed := info
+	fixed.Notes = append(append([]string(nil), info.Notes...),
+		"two exports started in the same minute had been packed under one name; renamed "+strings.Join(renamed, ", ")+" (contents and SHA-256 unchanged)")
+	next := filepath.Join(tmp, "repaired.zip")
+	fixed, err = Write(next, fixed, sources)
+	if err != nil {
+		return info, err
+	}
+	for i, fi := range fixed.Files {
+		if fi.SHA256 != info.Files[i].SHA256 {
+			return info, fmt.Errorf("%s did not read back with its recorded SHA-256; the archive was left as it was", info.Files[i].Name)
+		}
+	}
+	if err := os.Rename(next, path); err != nil {
+		return info, err
+	}
+	return fixed, nil
+}
+
+func ordinal(n int) string {
+	switch n {
+	case 1:
+		return "first"
+	case 2:
+		return "second"
+	case 3:
+		return "third"
+	}
+	return fmt.Sprintf("%dth", n)
+}
+
+func extract(f *zip.File, dst string) error {
+	r, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, r); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 func readJSON(f *zip.File, v any) error {
@@ -385,12 +512,25 @@ type Bundled struct {
 	Notes    []string
 	// Changed are files changed after they were exported (AR6).
 	Changed []FileInfo
+	// LeftOut are the daily archives that failed their check and are not
+	// in the bundle (AR7). With none left in, no bundle is written and
+	// SHA256 is empty.
+	LeftOut []LeftOut
+}
+
+// LeftOut is a daily archive left out of a bundle, and why.
+type LeftOut struct {
+	Path     string
+	From, To time.Time
+	Reason   string
 }
 
 // Bundle combines one computer's daily archives into a single zip at dst,
 // each day's logs (and its archive.json) in a folder named for its period,
 // e.g. 20260929-1520Z_20260930-1520Z/Security.evtx. Every archive is
-// verified first.
+// verified first; one that fails is left out, with the reason, and does
+// not hold back the others (AR7). One holding two files under one name
+// is repaired first (see Repair).
 func Bundle(dst string, list []Stored) (Bundled, error) {
 	var b Bundled
 	part := filepath.Join(filepath.Dir(dst), "."+filepath.Base(dst)+".partial")
@@ -405,10 +545,15 @@ func Bundle(dst string, list []Stored) (Bundled, error) {
 	}
 	zw := zip.NewWriter(f)
 	var covers [][]LogCover
+	folders := map[string]bool{}
 	for _, s := range list {
 		info, err := Verify(s.Path)
+		if err == nil && SharedNames(info) {
+			info, err = Repair(s.Path)
+		}
 		if err != nil {
-			return fail(fmt.Errorf("%s: %w", filepath.Base(s.Path), err))
+			b.LeftOut = append(b.LeftOut, LeftOut{Path: s.Path, From: s.From, To: s.To, Reason: err.Error()})
+			continue
 		}
 		b.Gaps = append(b.Gaps, info.Gaps...)
 		covers = append(covers, info.Logs)
@@ -424,10 +569,15 @@ func Bundle(dst string, list []Stored) (Bundled, error) {
 		if s.To.After(b.To) {
 			b.To = s.To
 		}
-		folder := s.From.UTC().Format(stampFormat) + "_" + s.To.UTC().Format(stampFormat) + "/"
+		folder := uniqueName(s.From.UTC().Format(stampFormat)+"_"+s.To.UTC().Format(stampFormat), folders) + "/"
 		if err := copyEntries(zw, s.Path, folder); err != nil {
 			return fail(fmt.Errorf("%s: %w", filepath.Base(s.Path), err))
 		}
+	}
+	if len(covers) == 0 {
+		f.Close()
+		os.Remove(part)
+		return b, nil
 	}
 	if err := zw.Close(); err != nil {
 		return fail(err)

@@ -244,6 +244,7 @@ func Pack(path, host, osName string, pieces []Piece, created time.Time) (Info, e
 	}
 	defer os.RemoveAll(tmp)
 	var sources []Source
+	names := map[string]bool{}
 	joined := map[string]*os.File{}
 	var covers [][]LogCover
 	seenNote := map[string]bool{}
@@ -279,11 +280,13 @@ func Pack(path, host, osName string, pieces []Piece, created time.Time) (Info, e
 					f.Name, p.Info.From.UTC().Format(time.RFC3339), p.Info.To.UTC().Format(time.RFC3339)))
 			}
 			if strings.HasSuffix(strings.ToLower(f.Name), ".evtx") {
+				// Named to the second, and never twice: two runs in one
+				// minute make two pieces (AR7).
 				name := f.Name
 				if len(pieces) > 1 {
-					name = strings.TrimSuffix(f.Name, filepath.Ext(f.Name)) + "_" + p.Info.From.UTC().Format(stampFormat) + filepath.Ext(f.Name)
+					name = strings.TrimSuffix(f.Name, filepath.Ext(f.Name)) + "_" + p.Info.From.UTC().Format(pieceStamp) + filepath.Ext(f.Name)
 				}
-				sources = append(sources, Source{Name: name, Source: f.Source, Path: src, Changed: changed})
+				sources = append(sources, Source{Name: uniqueName(name, names), Source: f.Source, Path: src, Changed: changed})
 				continue
 			}
 			out := joined[f.Name]
@@ -294,6 +297,7 @@ func Pack(path, host, osName string, pieces []Piece, created time.Time) (Info, e
 				}
 				defer out.Close()
 				joined[f.Name] = out
+				names[f.Name] = true
 				sources = append(sources, Source{Name: f.Name, Source: f.Source, Path: out.Name()})
 			}
 			if changed {
@@ -326,6 +330,9 @@ func Pack(path, host, osName string, pieces []Piece, created time.Time) (Info, e
 	}
 	return info, nil
 }
+
+// pieceStamp names a piece's .evtx files in an archive by its start.
+const pieceStamp = "20060102-150405Z"
 
 func appendFile(w io.Writer, src string) error {
 	in, err := os.Open(src)
