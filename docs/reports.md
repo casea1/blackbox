@@ -132,22 +132,33 @@ deleted account from its primary group ("None" or "Domain Users") is not
 shown as a separate change.
 
 **Repeats are one row.** The console host Windows starts for every
-console program run with administrator rights (`conhost.exe 0xffffffff
--ForceV1`) is not a row of its own: the program that started it says
-"Also started: N console windows" in its details. One started by a
-program that is not a row (sshd, for each command in an SSH session) is
-counted with that person's logon on that computer, or left out. Windows
-records each SSH sign-in as two logons (4624) at the same second, not
-always linked to each other: they are one row, with the second logon ID
-in its details ("Also logon ID"), so Logon activity counts sign-ins. One
-log clear is one row too: the command that cleared it (`wevtutil cl`,
-`Clear-EventLog`) is folded into the log's own record of the clear when
-they match (same computer and person, the command names that log, within
-a minute), its command line under "Cleared with". Identical records (the
-same system, person, action and text within a minute) are one row marked
-**×N**, with the time of each in its details ("Recorded: 7 times: …").
-Failed logons are never folded: each is an attempt. Every count in the
-report (the sidebar, the tiles, People, Trends) counts rows.
+console program run with administrator rights
+(`C:\Windows\System32\conhost.exe 0xffffffff -ForceV1`) is not a row of
+its own: the program that started it says "Also started: N console
+windows" in its details. One started by sshd (for each command in an SSH
+session) is counted with that person's logon on that computer, or left
+out. Only that program, by its full path, with only those arguments, is
+folded: a `conhost.exe` anywhere else, one with other arguments or no
+command line recorded, or one started by any other program that is not a
+row, stays a row. Windows records each SSH sign-in as two logons (4624)
+at the same second, not always linked to each other: they are one row,
+with the second logon ID in its details ("Also logon ID"), so Logon
+activity counts sign-ins; two logons from different addresses are two
+rows. One log clear is one row too: the command that cleared it
+(`wevtutil cl`, `Clear-EventLog`) is folded into the log's own record of
+the clear when they match (same computer and person, the command names
+that log, within a minute), its command line under "Cleared with". One
+audit policy change is one row: the `auditpol /set`, `/clear` or
+`/remove` command is folded into the change it made (4719, or 4912) when
+the account matches and they are within a few seconds of each other, its
+command line under "Changed with"; switching auditing off and on again is
+two rows. Identical records (the same system, person, action, address
+and text within a minute) are one row marked **×N**, with the time of
+each in its details ("Recorded: 7 times: …"). Failed logons and log
+clears are never folded: each is an attempt, and each clear is one
+action, so two clears a minute apart are two rows and the detection says
+"2 logs cleared". Every count in the report (the sidebar, the tiles,
+People, Trends) counts rows.
 
 **Blackbox's own writes.** The Event Log service writing the original-log
 pieces during a Blackbox run is not a row, also in a manual report made

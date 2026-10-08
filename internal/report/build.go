@@ -329,6 +329,7 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	events = sshSources(events)
 	events = r.dedupe(events)
 	events = foldClearCommands(events)
+	events = foldPolicyCommands(events)
 	own := runs
 	if opt.OwnRuns != nil {
 		own = opt.OwnRuns
