@@ -515,13 +515,18 @@ func (r *Report) healthPage() *HealthPage {
 			row.Scap = r.scapOpen(h)
 		}
 
-		checks, match := 0, 0
+		// Blackbox's advice is counted on its own, not as a STIG gap (COMP2).
+		checks, match, advice := 0, 0, 0
 		for _, l := range row.Table {
-			if l.Class != "na" {
+			switch {
+			case l.Advice && l.Class != "na" && l.Class != "ok":
+				advice++
+			case l.Advice:
+			case l.Class != "na":
 				checks++
-			}
-			if l.Class == "ok" {
-				match++
+				if l.Class == "ok" {
+					match++
+				}
 			}
 		}
 		hold := "—"
@@ -534,6 +539,9 @@ func (r *Report) healthPage() *HealthPage {
 		}
 		row.Facts = []Fact{{Label: "Checks", Value: commas(checks)}, {Label: "Matching", Value: commas(match)},
 			{Label: "Gaps", Value: commas(checks - match), Bad: checks > match}, {Label: "Log holds", Value: hold}, {Label: "Last check", Value: last}}
+		if advice > 0 {
+			row.Facts = append(row.Facts[:3:3], append([]Fact{{Label: "Blackbox's advice", Value: commas(advice)}}, row.Facts[3:]...)...)
+		}
 		if sc, ok := r.scapGlance(s.Name); ok {
 			// The SCAP score up front: on a one-computer report this view
 			// is all Audit health shows.

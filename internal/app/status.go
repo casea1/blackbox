@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -211,6 +212,13 @@ func (a *App) Status(w io.Writer) error {
 		if a.Cfg.ShareUser != "" {
 			p("Share account:", "%s", a.Cfg.ShareUser)
 		}
+		if snd := s.Send; snd != nil && !snd.LastDelivered.IsZero() {
+			if snd.Folder != "" {
+				p("Inbox folder:", "%s (only this computer's account can write there)", snd.Folder)
+			} else {
+				p("Inbox folder:", "the collector's shared inbox folder, where every sender can write. Ask the collector's administrator for a folder of its own (blackbox inbox add); the shared folder stops working in the next release.")
+			}
+		}
 		waiting := lan.Queued(st)
 		oldest := ""
 		since := a.waitingSince(st)
@@ -274,7 +282,9 @@ func (a *App) Status(w io.Writer) error {
 		}
 		waiting := 0
 		if list, err := filepath.Glob(filepath.Join(a.Cfg.Inbox, "*.bbx")); err == nil {
-			waiting = len(list)
+			own, _ := filepath.Glob(filepath.Join(a.Cfg.Inbox, "*", "*.bbx")) // senders' own folders (SEC1)
+			own = slices.DeleteFunc(own, func(p string) bool { return filepath.Base(filepath.Dir(p)) == "rejected" })
+			waiting = len(list) + len(own)
 		}
 		// A shared inbox the firewall keeps closed (N2): reported, never changed.
 		if runtime.GOOS == "windows" && install.InboxShared() {
@@ -304,8 +314,21 @@ func (a *App) Status(w io.Writer) error {
 		if len(bad) > 0 {
 			p("", "%s", unreadableText(bad))
 		}
-		if rej, _ := filepath.Glob(filepath.Join(a.Cfg.Inbox, "rejected", "*")); len(rej) > 0 {
-			p("", "%d file%s set aside in %s (see blackbox.log)", len(rej), map[bool]string{true: "s"}[len(rej) != 1], filepath.Join(a.Cfg.Inbox, "rejected"))
+		// Files set aside (SEC2): their data is in no report until they
+		// are sent again.
+		if rej := lan.Rejected(a.Cfg.Inbox); len(rej) > 0 {
+			attention = append(attention, "files in the inbox were set aside")
+			p("REJECTED:", "%d file%s set aside in %s; their data is not in the reports. The reason is in the .why.txt next to each:",
+				len(rej), map[bool]string{true: "s"}[len(rej) != 1], filepath.Join(a.Cfg.Inbox, "rejected"))
+			for _, r := range rej {
+				p("", "  %s", r)
+			}
+		}
+		// SEC1: senders still writing into the shared inbox folder.
+		if shared := sharedSenders(st, now); len(shared) > 0 {
+			p("SHARED FOLDER:", "%s still deliver%s into the inbox itself, where every sender can write. Give each its own folder:",
+				strings.Join(shared, ", "), map[bool]string{true: "s"}[len(shared) == 1])
+			p("", "blackbox inbox add NAME ACCOUNT on this computer, then upgrade the sender (see docs/lan.md). The shared folder stops working in the next release.")
 		}
 	}
 	if a.Cfg.Inbox != "" {
@@ -525,4 +548,17 @@ func unreadableText(bad []string) string {
 		return fmt.Sprintf("1 file in the inbox can't be read (%s): %s", strings.TrimSuffix(why, ")"), name)
 	}
 	return fmt.Sprintf("%d files in the inbox can't be read: %s", len(bad), strings.Join(bad, ", "))
+}
+
+// sharedSenders are the senders that delivered into the inbox itself (not
+// their own folder) in the last 30 days (SEC1).
+func sharedSenders(st *store.Store, now time.Time) []string {
+	var out []string
+	for _, snd := range st.State.Senders {
+		if snd.Folder == "" && snd.LastReceived.After(now.AddDate(0, 0, -30)) {
+			out = append(out, snd.Host)
+		}
+	}
+	sort.Strings(out)
+	return out
 }

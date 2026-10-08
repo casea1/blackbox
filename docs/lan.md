@@ -281,6 +281,80 @@ the route there:
 - A later option for domain-joined senders is SMB with Kerberos
   (`sec=krb5`) and a machine keytab, which needs no NTLM.
 
+## Each sender's own folder
+
+The inbox is a trust boundary: whatever is in it goes into the
+collector's reports as that computer's evidence. From 0.23 each sender
+delivers into a folder of its own, which only its account can write to.
+The collector accepts from a folder only what is from that folder's
+computer.
+
+On the collector, as an administrator or root, make one folder per
+sending computer, each for the account that computer delivers with:
+
+```
+blackbox inbox add DC01 CORP\DC01$ --host DC01
+blackbox inbox add ubu-ws12 bbsend-ubu12 --host ubu-ws12
+blackbox inbox                      # list them
+```
+
+- **Windows:** the folder's permissions let the account create and write
+  files, but not delete or rename them, change their permissions, or open
+  another sender's folder. Administrators and SYSTEM keep full control.
+  The account is added to **Blackbox Senders**, which gives it the share.
+- **Linux (SFTP):** one directory per account, owned by root and the
+  account's group (mode 1730). The account can create files there but not
+  list the directory, and can't touch anyone else's files.
+- Without `--host`, the folder takes the computer of the first file
+  delivered into it, and keeps it.
+
+Senders find their folder themselves from their next run: it is the one
+whose `BLACKBOX-SENDER.txt` they can read, preferring the one named after
+the computer. `blackbox status` on a sender names its folder.
+
+**What the collector checks** (each file it can't accept is moved to
+`inbox\rejected` with a `NAME.why.txt` note saying why and which account
+wrote it; `blackbox status` lists them and exits 4, the next report says
+so, and the rest are still imported):
+
+- a batch, log archive or SCAP result in a sender's folder must be from
+  that folder's computer, and its sender ID must not belong to another
+  folder;
+- a file in the inbox itself (the shared folder) is refused when it claims
+  to be from a computer that has its own folder;
+- a batch whose records can't be read (not an event, a bad time, a record
+  of no known type) is set aside, and its number stays missing until it
+  is sent again with `blackbox send --resend`;
+- a batch file over 256 MB is refused before it is read, and an archive
+  whose computer name is `.` or `..` is refused;
+- a SCAP result must match the hash in its file name.
+
+**What it raises as High** (one row in the next report, with the account
+that wrote the file):
+
+- **Two different batches with one number** from a computer: both are
+  kept. A batch is "already imported" only when it is the same batch.
+- **Two computers using one sender ID** (a computer cloned from another,
+  with its data folder): both are kept. Run `blackbox send --new-id` on
+  one of them; its waiting batches are renumbered under the new ID.
+- **Two different original-log archives** for one computer and period:
+  both are filed (the second as `…-2.zip`) and go into the report.
+- **A former name that is another computer**: a sender saying it used to
+  be called the name of a computer that still reports here is not merged
+  with it. A former name is taken only when the same sender used it
+  before, or after `blackbox systems rename OLD NEW` on the collector.
+
+A sender's "first batch for this collector" (sent after it moved from
+another collector) is taken only when it is close to the next number
+expected; a jump is recorded as missing batches, and a gap already
+recorded is never erased by it.
+
+**The shared folder.** Senders of collectors set up before 0.23 deliver
+into the inbox itself, which every sender can write to. That still works
+in 0.23, and `blackbox status` on the collector lists the senders that do
+it ("SHARED FOLDER"). It stops working in the next release: give each one
+its own folder, then upgrade it.
+
 ## Day to day
 
 **Reviewing.** Open the collector's reports as usual. Start with the
@@ -415,7 +489,8 @@ and in `summary.json`:
 | A delivery never arrived (for example, deleted from the inbox) | Which batches from which computer are missing, and the `blackbox send --resend` command to run on that computer |
 | A computer's clock is ahead of the collector's | The computer and by how much. Event times from it may be wrong |
 | Events arrived after the report they belong to | Included in the next report, marked **Late** |
-| A delivery is damaged or altered | It is set aside in `inbox\rejected` and logged. The gap it leaves is reported |
+| A delivery is damaged, altered, or not from the folder's computer | It is set aside in `inbox\rejected` with a `.why.txt` note, `blackbox status` lists it and exits 4, and the report says so. The gap it leaves is reported |
+| Two different files claim to be the same batch or archive, or two computers share a sender ID | A High row: both are kept (see [Each sender's own folder](#each-senders-own-folder)) |
 
 ## Troubleshooting
 
@@ -439,15 +514,20 @@ This section is for reviewers.
   JSON lines with a SHA-256 checksum and a closing record, so a damaged or
   cut-short file is detected. It then copies waiting batches, oldest
   first, into the inbox:
-  - under a temporary name first, then renamed, so the collector never
-    reads half a file
+  - into its own folder in the inbox, written in place (it may not rename
+    or delete files there); the collector leaves a file that is not
+    complete yet for 10 minutes. Into the shared inbox folder (collectors
+    set up before 0.23), under a temporary name first, then renamed
+  - a file already there under the next name counts as delivered only if
+    it is the same; otherwise the batch goes under a new name (`…-2.bbx`)
   - only into a folder that holds the collector's `BLACKBOX-INBOX.txt`
     marker, so a share that is not mounted (an empty local folder) is
     never mistaken for the collector
 - **Import.** Each time the collector collects, it imports every complete
-  batch in each sender's order. It records each batch number and skips
-  one it already has, so a batch delivered twice counts once. It then
-  deletes the file from the inbox.
+  batch in each sender's order. It records each batch's number and hash,
+  and skips one it already has, so a batch delivered twice counts once; a
+  different batch under a number it has is kept and raised. It then
+  deletes the file from the inbox, and logs which account wrote it.
 - **Crash safety.**
   - Before appending a batch, the collector notes its data files' sizes.
     If it stops part way, the next run cuts the files back and imports
@@ -458,8 +538,10 @@ This section is for reviewers.
   collected when it reached the collector, so it lands in exactly one
   report. If it arrives late, it goes in the next report, marked Late.
 - **Identity.** Each sender has a random ID created when it first sends.
-  A computer that is reinstalled or renamed starts a new sequence instead
-  of looking like a gap.
+  A computer that is reinstalled starts a new sequence instead of looking
+  like a gap. A computer cloned with its data folder keeps the ID: the
+  collector notices two computers using it, and `blackbox send --new-id`
+  gives one a new ID.
 
 **The "Blackbox Senders" group is kept when Blackbox is uninstalled.** A
 sender's open connection to the share carries the group's identity, so

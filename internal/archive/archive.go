@@ -89,6 +89,13 @@ func SafeName(s string) string {
 	return s
 }
 
+// UsableHost reports whether host makes a usable folder name: not empty,
+// and not "." or ".." once made safe (SEC3a).
+func UsableHost(host string) bool {
+	n := SafeName(host)
+	return strings.TrimSpace(host) != "" && strings.Trim(n, ".") != "" && !strings.ContainsAny(n, `/\`)
+}
+
 // FileName is an archive's name: HOST_FROM_TO.zip, times in UTC.
 func FileName(host string, from, to time.Time) string {
 	return fmt.Sprintf("%s_%s_%s.zip", SafeName(host), from.UTC().Format(stampFormat), to.UTC().Format(stampFormat))
@@ -100,8 +107,14 @@ func ParseFileName(name string) (host string, from, to time.Time, ok bool) {
 	if len(parts) < 3 || !strings.HasSuffix(name, ".zip") {
 		return "", from, to, false
 	}
+	// A second, different archive for the same period is filed as
+	// …_TO-2.zip (SEC1).
+	last := parts[len(parts)-1]
+	if i := strings.LastIndex(last, "Z-"); i >= 0 {
+		last = last[:i+1]
+	}
 	f, err1 := time.Parse(stampFormat, parts[len(parts)-2])
-	t, err2 := time.Parse(stampFormat, parts[len(parts)-1])
+	t, err2 := time.Parse(stampFormat, last)
 	if err1 != nil || err2 != nil {
 		return "", from, to, false
 	}
@@ -435,30 +448,47 @@ func List(dir string) ([]Stored, error) {
 	return out, nil
 }
 
-// File moves a verified archive into dir/HOST/, named by its contents. An
-// archive already filed is a duplicate and is removed.
-func File(src, dir string, info Info) (string, error) {
+// File moves a verified archive into dir/HOST/, named by its contents. The
+// same archive filed already is a duplicate, and is removed. A different
+// one for the same period is never thrown away unread (SEC1): it is filed
+// next to it as …-2.zip, and clash is the one filed first.
+func File(src, dir string, info Info) (dest, clash string, err error) {
+	if !UsableHost(info.Host) {
+		return "", "", fmt.Errorf("%q is not a usable computer name", info.Host)
+	}
 	hostDir := filepath.Join(dir, SafeName(info.Host))
 	if err := os.MkdirAll(hostDir, 0o750); err != nil {
-		return "", err
+		return "", "", err
 	}
-	dest := filepath.Join(hostDir, FileName(info.Host, info.From, info.To))
-	if _, err := os.Stat(dest); err == nil {
-		return dest, os.Remove(src)
+	name := FileName(info.Host, info.From, info.To)
+	dest = filepath.Join(hostDir, name)
+	for n := 2; ; n++ {
+		if _, err := os.Stat(dest); err != nil {
+			break
+		}
+		a, err1 := FileSHA256(src)
+		b, err2 := FileSHA256(dest)
+		if err1 == nil && err2 == nil && a == b {
+			return dest, "", os.Remove(src)
+		}
+		if clash == "" {
+			clash = dest
+		}
+		dest = filepath.Join(hostDir, strings.TrimSuffix(name, ".zip")+fmt.Sprintf("-%d.zip", n))
 	}
 	if err := os.Rename(src, dest); err == nil {
-		return dest, nil
+		return dest, clash, nil
 	}
 	// A different drive: copy, then remove the original.
 	part := filepath.Join(hostDir, "."+filepath.Base(dest)+".partial")
 	if err := copyFile(src, part); err != nil {
 		os.Remove(part)
-		return "", err
+		return "", "", err
 	}
 	if err := os.Rename(part, dest); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return dest, os.Remove(src)
+	return dest, clash, os.Remove(src)
 }
 
 func copyFile(src, dst string) error {
