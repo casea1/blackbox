@@ -164,7 +164,7 @@ func TestDetectionsUIR1(t *testing.T) {
 	for _, f := range v.Facts {
 		facts = append(facts, f.Label+"="+f.Value+"|"+f.Sub)
 	}
-	if got := strings.Join(facts, " "); got != "System=SRV-DC02|Windows Server 2025 · server Person=adm-jlee|administrator on SRV-DC02 When=7 Oct 14:22:05|EDT (UTC−4) Record=Security 1102|record "+commas(int(r.rows[rowIndex(r.Findings[v.Index].RowID)].RecordID)) {
+	if got := strings.Join(facts, " "); got != "System=SRV-DC02|Windows Server 2025 Standard · server Person=adm-jlee|administrator on SRV-DC02 When=7 Oct 14:22:05|EDT (UTC−4) Record=Security 1102|record "+commas(int(r.rows[rowIndex(r.Findings[v.Index].RowID)].RecordID)) {
 		t.Errorf("facts: %s", got)
 	}
 	if !strings.HasPrefix(v.Why, "Clearing a log removes the record of everything before it. The original logs in this report (logs-SRV-DC02.zip) keep a copy up to the last collection") {

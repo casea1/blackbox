@@ -52,8 +52,25 @@ func joinOr(l []string) string {
 	return strings.Join(l[:len(l)-1], ", ") + " or " + l[len(l)-1]
 }
 
+// osLabel is a system's operating system in words: the name its
+// inventory reports ("Ubuntu 26.04.1 LTS", "Windows 11 Enterprise");
+// without an inventory, the OS of the STIG it was compared with
+// ("Windows 11"); otherwise "Windows" or "Linux". Never the settings
+// check's baseline when that is Blackbox's advice (OS1).
 func osLabel(s SystemRow) string {
-	if s.Checks != nil && s.Checks.Baseline != "" {
+	if s.Checks != nil && s.Checks.Inventory != nil {
+		if o := cleanInvOS(s.Checks.Inventory.OS); o != "" {
+			return o
+		}
+	}
+	return baseOS(s)
+}
+
+// baseOS is the OS of the STIG a system was compared with ("Windows 11",
+// "Ubuntu 24.04", "Alma 8"), or "Windows"/"Linux" when it has none: what
+// STIG text and the OS families of a setting are about.
+func baseOS(s SystemRow) string {
+	if s.Checks != nil && !strings.Contains(s.Checks.Baseline, "advice") {
 		b := s.Checks.Baseline
 		if i := strings.Index(b, " STIG"); i > 0 {
 			b = b[:i]
@@ -62,9 +79,22 @@ func osLabel(s SystemRow) string {
 			}
 			return b
 		}
-		return b
 	}
 	return s.OSName()
+}
+
+// cleanInvOS is an inventory's OS name for reading: "Microsoft Windows 11
+// Pro 10.0.26100" → "Windows 11 Pro", "AlmaLinux 8.10 (Cerulean
+// Leopard)" → "AlmaLinux 8.10", "Ubuntu 26.04.1 LTS" unchanged (OS1).
+func cleanInvOS(os string) string {
+	o := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(os), "Microsoft "))
+	if i := strings.LastIndex(o, " ("); i > 0 && strings.HasSuffix(o, ")") {
+		o = o[:i]
+	}
+	if f := strings.Fields(o); len(f) > 1 && f[0] == "Windows" && strings.Count(f[len(f)-1], ".") >= 2 && strings.Trim(f[len(f)-1], "0123456789.") == "" {
+		o = strings.Join(f[:len(f)-1], " ") // a Windows build number
+	}
+	return o
 }
 
 // isServer reports a Windows Server, an Alma/RHEL computer, or a Linux

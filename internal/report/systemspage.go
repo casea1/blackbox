@@ -449,6 +449,9 @@ func sortNatural(l []*SystemView) {
 // listOS is a system's OS on the list: "Server 2025", "Windows 11",
 // "Ubuntu 24.04".
 func listOS(s SystemRow) string {
+	if s.Checks != nil && s.Checks.Inventory != nil && s.Checks.Inventory.OS != "" {
+		return shortInvOS(s.Checks.Inventory.OS) // the inventory's OS, short (OS1)
+	}
 	if l := osLabel(s); strings.HasPrefix(l, "Windows Server") {
 		return strings.TrimPrefix(l, "Windows ")
 	}
@@ -716,6 +719,8 @@ func (r *Report) sysChecks(s SystemRow, cx *checkCtx, got, want int) []SysCheck 
 	case s.VM:
 		on, _, _ := r.coverage(s)
 		reporting.Title = fmt.Sprintf("on %d%% of the period · %s while on", on, plural(len(s.runTimes), "collection"))
+	case (len(s.runTimes) == 0 || s.LastRun.IsZero()) && r.deliveredText(s) != "":
+		reporting.Title = r.deliveredText(s) // its delivery arrived, though no run is on record yet (UI22)
 	case len(s.runTimes) == 0 || s.LastRun.IsZero():
 		reporting.Level, reporting.Title = "", "no collection in this period" // or a report from saved logs
 	default:
@@ -1224,6 +1229,8 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 	case s.VM:
 		lines = append(lines, CheckLine{Level: "ok", Icon: "clock-alert", Title: "Reporting",
 			What: fmt.Sprintf("On %d%% of the period; collected whenever it was on (%s)", on, plural(len(s.runTimes), "run"))})
+	case len(s.runTimes) == 0 && r.deliveredText(s) != "":
+		lines = append(lines, CheckLine{Level: "ok", Icon: "clock-alert", Title: "Reporting", What: capitalize(r.deliveredText(s))})
 	default:
 		lv := "ok"
 		if s.Status == "warn" && r.WindowEnd.Sub(s.LastRun) > silentAfter {
@@ -1352,4 +1359,19 @@ func joinAnd(l []string) string {
 		return l[0]
 	}
 	return strings.Join(l[:len(l)-1], ", ") + " and " + l[len(l)-1]
+}
+
+// deliveredText says that a sender's delivery arrived this period ("first
+// delivery received 8 Oct 05:48"), or is "" when none did. A sender whose
+// first batch has just arrived reports, even before a collection run of
+// its own is on record (UI22).
+func (r *Report) deliveredText(s SystemRow) string {
+	t := s.LastReceived
+	if t.IsZero() || t.Before(r.WindowStart) || !r.WindowEnd.IsZero() && t.After(r.WindowEnd.Add(5*time.Minute)) {
+		return ""
+	}
+	if s.Delivery != nil && s.Delivery.New {
+		return "first delivery received " + r.shortStamp(t)
+	}
+	return "delivery received " + r.shortStamp(t)
 }
