@@ -83,6 +83,10 @@ type State struct {
 	// PackFailing is set while packing the exports fails: status says so
 	// and exits 4, and reports show the reason (AR5).
 	PackFailing *PackFailure `json:"pack_failing,omitempty"`
+	// Clears are the logs cleared since they last had a record exported,
+	// by log (lower case): the gap the clear leaves in the next export is
+	// labelled as the clear, not an overwrite (LC2b).
+	Clears map[string]LogClear `json:"clears,omitempty"`
 	// LeftOut are daily archives of original logs that failed their check
 	// at a scheduled report and were set aside, not put in it (AR7):
 	// status says so, and exits 4, for logGapsKept.
@@ -142,6 +146,9 @@ type ChannelRun struct {
 	// a 1102 for Security, was read). The records it skipped are not
 	// lost to rollover (LC2).
 	Cleared bool `json:"cleared,omitempty"`
+	// ClearedAt and ClearedBy are the clear's time and who did it.
+	ClearedAt time.Time `json:"cleared_at,omitzero"`
+	ClearedBy string    `json:"cleared_by,omitempty"`
 }
 
 // Run is one collection run on one host.
@@ -558,6 +565,16 @@ type LogGap struct {
 	// Reason is set when the export was lost or unreadable before it
 	// was packed, rather than overwritten in the log (AR5).
 	Reason string `json:"reason,omitempty"`
+	// Cleared is set when the gap is the log being cleared, not
+	// overwritten (LC2b): who cleared it and when.
+	Cleared *LogClear `json:"cleared,omitempty"`
+}
+
+// LogClear is a log being cleared: when and by whom.
+type LogClear struct {
+	Channel string    `json:"channel"`
+	At      time.Time `json:"at"`
+	By      string    `json:"by,omitempty"`
 }
 
 // LeftOutLogs is a daily archive of original logs left out of a

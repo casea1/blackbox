@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/casea1/blackbox/internal/event"
 	"github.com/casea1/blackbox/internal/store"
 )
 
@@ -15,9 +16,10 @@ func TestClearedNotLost(t *testing.T) {
 		{Channel: "Security", Gap: &store.Gap{Lost: 50, From: at.Add(-time.Hour), To: at}},
 		{Channel: "System"},
 	}}
-	ClearedNotLost(run, map[string]bool{"microsoft-windows-powershell/operational": true}, nil)
+	clear := &event.Event{Time: at.Add(-time.Minute), User: "claude", Action: "log_cleared"}
+	ClearedNotLost(run, map[string]*event.Event{"microsoft-windows-powershell/operational": clear}, nil)
 	ps, sec := run.Channels[0], run.Channels[1]
-	if ps.Gap != nil || !ps.Cleared {
+	if ps.Gap != nil || !ps.Cleared || ps.ClearedBy != "claude" || !ps.ClearedAt.Equal(clear.Time) {
 		t.Errorf("cleared PowerShell log: %+v", ps)
 	}
 	if sec.Gap == nil || sec.Cleared {

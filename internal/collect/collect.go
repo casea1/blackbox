@@ -95,7 +95,7 @@ func Windows(st *store.Store, opt Options) (*store.Run, error) {
 	tr.MapDevicePath = winevt.DevicePathMapper()
 
 	run := &store.Run{Time: start, Host: host, OS: runtime.GOOS, Version: opt.Version}
-	clears := map[string]bool{}
+	clears := map[string]*event.Event{}
 	for _, ch := range winevt.Channels {
 		cr := collectChannel(st, tr, host, ch, start, opt, clears)
 		run.Channels = append(run.Channels, cr)
@@ -113,7 +113,7 @@ func Windows(st *store.Store, opt Options) (*store.Run, error) {
 	return run, st.Save()
 }
 
-func collectChannel(st *store.Store, tr *winevt.Translator, host, ch string, now time.Time, opt Options, clears map[string]bool) store.ChannelRun {
+func collectChannel(st *store.Store, tr *winevt.Translator, host, ch string, now time.Time, opt Options, clears map[string]*event.Event) store.ChannelRun {
 	cr := store.ChannelRun{Channel: ch, EventCounts: map[int]int{}}
 	if ls, err := winevt.GetLogSettings(ch); err == nil {
 		cr.MaxSizeBytes = ls.MaxSize
@@ -171,7 +171,7 @@ func collectChannel(st *store.Store, tr *winevt.Translator, host, ch string, now
 		cr.LastRecord = r.RecordID
 		if e := tr.Translate(r); e != nil {
 			if e.Action == "log_cleared" {
-				clears[strings.ToLower(e.Target)] = true
+				clears[strings.ToLower(e.Target)] = e
 			}
 			e.Collected = now
 			OnThisComputer(e, host)
@@ -199,14 +199,15 @@ func collectChannel(st *store.Store, tr *winevt.Translator, host, ch string, now
 // but they were cleared, not overwritten (LC2). Its gap is dropped (the
 // clear is already a High row) and it is marked cleared, so no rollover
 // loss is counted and no size advice given. clears are the logs a clear
-// event (System 104, Security 1102) named in this collection.
-func ClearedNotLost(run *store.Run, clears map[string]bool, logf func(string, ...any)) {
+// event (System 104, Security 1102) named in this collection, by log.
+func ClearedNotLost(run *store.Run, clears map[string]*event.Event, logf func(string, ...any)) {
 	for i := range run.Channels {
 		c := &run.Channels[i]
-		if !clears[strings.ToLower(c.Channel)] {
+		e := clears[strings.ToLower(c.Channel)]
+		if e == nil {
 			continue
 		}
-		c.Cleared = true
+		c.Cleared, c.ClearedAt, c.ClearedBy = true, e.Time, e.User
 		if c.Gap != nil {
 			if logf != nil {
 				logf("%s: was cleared; the %d records before the clear are not counted as overwritten", c.Channel, c.Gap.Lost)

@@ -194,6 +194,11 @@ func (r *Report) dedupe(in []*event.Event) []*event.Event {
 			if e.Priority > kept.Priority {
 				out[s.idx], kept, e = e, e, kept
 			}
+			// Files of one report: the row names them all, or says the
+			// report went when its folder did (LEDGER3).
+			if strings.HasPrefix(e.DedupeKey, "bbreport|") && kept.Fields != nil {
+				mergeReportFiles(kept, e)
+			}
 			// One service, recorded under its service name and its
 			// display name: show both.
 			if strings.HasPrefix(e.DedupeKey, "svc|") && e.Target != "" && !strings.EqualFold(e.Target, kept.Target) {
@@ -1202,4 +1207,33 @@ func dropWindowsModules(in []*event.Event) []*event.Event {
 		out = append(out, e)
 	}
 	return out
+}
+
+// mergeReportFiles adds e's report files to kept's, and says them again.
+func mergeReportFiles(kept, e *event.Event) {
+	have := strings.Split(kept.Fields[event.ReportFilesFlag], "\n")
+	seen := map[string]bool{}
+	for _, f := range have {
+		seen[f] = true
+	}
+	for _, f := range strings.Split(e.Fields[event.ReportFilesFlag], "\n") {
+		if !seen[f] {
+			seen[f] = true
+			have = append(have, f)
+		}
+	}
+	kept.Fields[event.ReportFilesFlag] = strings.Join(have, "\n")
+	verb := "changed"
+	if strings.HasPrefix(kept.DedupeKey, "bbreport|deleted|") {
+		verb = "deleted"
+	}
+	who := kept.User
+	if who == "" {
+		who = "an unknown account"
+	}
+	prog := filepath.Base(strings.ReplaceAll(kept.Process, "\\", "/"))
+	if kept.Process == "" {
+		prog = ""
+	}
+	kept.Summary = event.ReportFilesSummary(who, verb, kept.Target, prog, have)
 }
