@@ -57,30 +57,22 @@ func TestOverviewOnce(t *testing.T) {
 	r, h := uxReport(t)
 	o := r.overview(nil)
 	var labels []string
-	for _, k := range o.KPIs {
+	for _, k := range o.Strip {
 		labels = append(labels, k.Label)
 	}
-	if strings.Join(labels, ",") != "Systems reporting,Detections,Events collected,Audit health" {
-		t.Errorf("tiles: %v", labels)
+	if strings.Join(labels, ",") != "Detections,Systems reporting,Events,Audit settings" {
+		t.Errorf("number strip: %v", labels)
 	}
-	for _, c := range o.Cards {
-		if c.Value == "0" || c.Label == "Logs cleared" {
-			t.Errorf("counter shown: %+v", c)
-		}
-	}
-	if !strings.HasPrefix(o.Quiet, "No new admins, policy changes, lockouts") {
-		t.Errorf("quiet: %q", o.Quiet)
-	}
-	for _, p := range o.Problems {
+	for _, p := range o.Attention {
 		if p.Level == "ok" {
 			t.Errorf("a fine check listed as a problem: %+v", p)
 		}
 	}
+	if strings.Contains(h, "No new admins") || strings.Contains(h, `class="kpis"`) || strings.Contains(h, `class="hbar"`) {
+		t.Error("the Overview still has the tiles, the counters or the health bar (UI-R1)")
+	}
 	if strings.Contains(h, `class="alertbar">`) || strings.Contains(h, `class="sys2"`) {
 		t.Error("the Overview still has the alert bar or system tiles")
-	}
-	if !strings.Contains(h, ">This report</div>") {
-		t.Error("headline tiles have no scope")
 	}
 	if n := r.metrics()[MPrivileged]; n != 1 {
 		t.Errorf("privileged actions %d, want 1 (people only)", n)

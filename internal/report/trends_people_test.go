@@ -109,10 +109,6 @@ func TestTrendsNotEnoughHistory(t *testing.T) {
 	if c := r.whatChanged(); c != nil {
 		t.Errorf("what changed with no complete week: %+v", c)
 	}
-	o := r.overview(nil)
-	if o.HistoryN != 0 || o.Trends[2].Chart != "" || !strings.Contains(o.Trends[2].Note, "120 so far") || !strings.Contains(o.TrendSpan, "2.5 of 7 days so far") || strings.Contains(o.Trends[2].Note, "avg") {
-		t.Errorf("overview: %d %+v", o.HistoryN, o.Trends[2])
-	}
 	if tp := r.trendsPage(); !tp.NotEnough || tp.Cards[3].Note != notEnoughHistory || tp.Cards[3].Chart != "" {
 		t.Errorf("trends page: %+v", tp.Cards[3])
 	}
@@ -121,7 +117,9 @@ func TestTrendsNotEnoughHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-	if strings.Count(string(html), "Not enough history yet: trends start after 2 full weeks") < 3 {
+	// The Trends page and each person's page say so (the Overview no
+	// longer has trends, UI-R1).
+	if strings.Count(string(html), "Not enough history yet: trends start after 2 full weeks") < 2 {
 		t.Error("the report does not say there is not enough history")
 	}
 }
@@ -182,7 +180,9 @@ func TestPeopleTrendsAndWhatChanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-	for _, want := range []string{"What changed", "Over time", "Privileged actions by person, by week", "tempuser: 4 privileged actions"} {
+	// "What changed" left the Overview (UI-R1); Trends shows the biggest
+	// changes.
+	for _, want := range []string{"Over time", "Privileged actions by person, by week"} {
 		if !strings.Contains(string(html), want) {
 			t.Errorf("report lacks %q", want)
 		}

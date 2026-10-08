@@ -33,6 +33,7 @@ type pageData struct {
 	Pages       []*EventPage
 	Overview    *Overview
 	Detections  []DetectionView
+	DetPage     *DetectionsPage
 	SystemsPage *SystemsPage
 	PeoplePage  *PeoplePage
 	HealthPage  *HealthPage
@@ -217,19 +218,9 @@ func funcs(loc *time.Location) template.FuncMap {
 			return fmt.Sprintf("%s active on %s", plural(n, "account"), plural(len(p.Hosts), "system"))
 		},
 		"detectionsCrumb": func(p pageData) string {
-			high, med := 0, 0
-			for _, d := range p.Detections {
-				if d.Severity == "high" {
-					high++
-				} else {
-					med++
-				}
-			}
+			// High and medium are counted on the page's severity filter (UI-R1).
 			n := len(p.Detections)
 			s := fmt.Sprintf("%s %s", commas(n), map[bool]string{true: "detection", false: "detections"}[n == 1])
-			if n > 0 {
-				s += fmt.Sprintf(" · %d high, %d medium", high, med)
-			}
 			return s
 		},
 		"sevCount": func(ds []DetectionView, sev string) int {
@@ -482,8 +473,9 @@ func (r *Report) WriteHTML(w io.Writer, pages []*EventPage) error {
 	if err != nil {
 		return err
 	}
+	dp := r.detectionsPage()
 	return t.ExecuteTemplate(w, "layout", pageData{Report: r, Pages: pages, Overview: overview,
-		Detections: r.detectionViews(), SystemsPage: r.systemsPage(), PeoplePage: people, HealthPage: health, TrendsPage: r.trendsPage(),
+		Detections: dp.Views, DetPage: dp, SystemsPage: r.systemsPage(), PeoplePage: people, HealthPage: health, TrendsPage: r.trendsPage(),
 		LogsPage: r.logsPage(), Inventory: inv, Verify: r.verification(), Card: r.reportCard(), Print: r.printOut(overview, health), Meta: template.JS(b)})
 }
 

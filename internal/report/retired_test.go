@@ -45,13 +45,13 @@ func TestRetiredSystem(t *testing.T) {
 		t.Errorf("original logs missing: %v", r.NoArchive)
 	}
 	o := r.overview(nil)
-	for _, k := range o.KPIs {
+	for _, k := range o.Strip {
 		if k.Label == "Systems reporting" && k.Value != "1 / 1" {
 			t.Errorf("systems reporting %q", k.Value)
 		}
 	}
-	if o.Alert != "" {
-		t.Errorf("alert: %s %s", o.Alert, o.AlertDetail)
+	if strings.Contains(o.Review, "not reporting") {
+		t.Errorf("review: %s %s", o.Review, o.ReviewDetail)
 	}
 	for _, c := range o.Checks {
 		if strings.Contains(c.Who, "WS-07") || c.Title == "Original logs missing" {

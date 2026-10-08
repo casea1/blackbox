@@ -411,7 +411,7 @@ jobs:
           systemctl is-enabled blackbox-shutdown.service
           # The sandboxed service (no network of its own) mounts the share and delivers.
           sudo systemctl start blackbox.service || { sudo journalctl -u blackbox.service -u var-lib-blackbox-collector.mount --no-pager | tail -40; exit 1; }
-          sudo /usr/local/bin/blackbox status
+          scripts/ci-status.sh /usr/local/bin/blackbox status
           sudo sh -c 'ls /srv/inbox/*.bbx' || { sudo journalctl -u blackbox.service -u var-lib-blackbox-collector.mount --no-pager | tail -40; exit 1; }
           # The original logs came too.
           sudo sh -c 'ls /srv/inbox/archive_*.zip' || { echo "no log archive delivered"; exit 1; }
@@ -420,7 +420,7 @@ jobs:
           sudo ./blackbox report --preview --config col.conf
           if sudo sh -c 'ls /srv/inbox/*.bbx /srv/inbox/*.zip' 2>/dev/null; then echo "batches or archives not imported"; exit 1; fi
           sudo sh -c 'ls /tmp/col/archives/*/*.zip' || { echo "log archive not kept for the collector's next report"; exit 1; }
-          sudo ./blackbox status --config col.conf
+          scripts/ci-status.sh ./blackbox status --config col.conf
           sudo ./blackbox uninstall
           sudo test ! -e /etc/systemd/system/var-lib-blackbox-collector.mount
           sudo test ! -e /etc/blackbox/share.cred
