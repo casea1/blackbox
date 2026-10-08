@@ -460,7 +460,7 @@ func (r *Report) healthPage() *HealthPage {
 					key, stig = key+"|advice", ""
 				}
 				addGap(key, GapCard{Title: res.Item, STIG: stig, Explain: explain, Fix: res.Fix, Level: lv, Advice: adv, Affects: res.Affects}, s.Name)
-				addSTIG(key, osLabel(s), stig)
+				addSTIG(key, baseOS(s), stig)
 				c := gapCards[key]
 				if fam := osFamily(s); !slices.Contains(c.os, fam) {
 					c.os = append(c.os, fam)
@@ -656,7 +656,7 @@ const settingsShown = 8
 // osFamily is a system's operating system without its version: Windows,
 // Ubuntu, RHEL.
 func osFamily(s SystemRow) string {
-	l := osLabel(s)
+	l := baseOS(s)
 	if f, _, ok := strings.Cut(l, " "); ok {
 		return f
 	}

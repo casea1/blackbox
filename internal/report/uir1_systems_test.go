@@ -37,7 +37,7 @@ func TestSystemsUIR1(t *testing.T) {
 	}
 	dc := by["SRV-DC02"]
 	if dc.Level != "bad" || dc.Chip != "Problem: Security log cleared" || dc.Group != "Servers" || dc.OS != "Server 2025" ||
-		dc.Line != "Windows Server 2025 · server · Dell PowerEdge R650" {
+		dc.Line != "Windows Server 2025 Standard · server · Dell PowerEdge R650" {
 		t.Errorf("SRV-DC02: %q %q %q", dc.Level, dc.Chip, dc.Line)
 	}
 	if c := dc.Cells[1]; c.Label != "Logs intact" || c.Level != "bad" || c.Title != "Security log cleared at 14:22 by adm-jlee" {
