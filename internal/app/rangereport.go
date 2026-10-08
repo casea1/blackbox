@@ -120,8 +120,8 @@ func (a *App) reportRange(st *store.Store, from, to time.Time) (string, error) {
 		ExcludeUsers: a.Cfg.ExcludeUsers, ExcludeProcesses: a.Cfg.ExcludeProcesses,
 		KnownDevices: st.State.KnownDevices, CheckSets: sets,
 		Context: contextEvents(all, events, from), Baseline: st.State.Baseline, BaselineHosts: st.State.BaselineHosts,
-		WorkingHours: a.Cfg.WorkingHours,
-		Systems:      systemsFor(st, from, a.Cfg.Inbox != ""), Collector: a.Cfg.Inbox != "",
+		WorkingHours: a.Cfg.WorkingHours, PeopleAliases: a.Cfg.PeopleAliases,
+		Systems: systemsFor(st, from, a.Cfg.Inbox != ""), Collector: a.Cfg.Inbox != "",
 	})
 	if len(r.Hosts) == 0 {
 		r.Hosts = []string{host}

@@ -25,16 +25,23 @@ func TestDeliveryInReport(t *testing.T) {
 	}
 	all := Build(nil, []*store.Run{run("WS-01"), run("COL")}, opts(signed("WS-01", &Delivery{Signed: true, KeyFP: fp, Since: since}), signed("COL", nil)))
 	sp := all.systemsPage()
-	got := ""
+	got, level := "", "x"
 	for _, g := range sp.Groups {
 		for _, v := range g.Systems {
 			if v.Name == "WS-01" {
-				got = v.Delivery
+				got, level = v.Delivery, v.DelivLevel
 			}
 		}
 	}
-	if got != "signed · key SHA256:ab12cd34… since 8 Oct" {
-		t.Errorf("system page: %q", got)
+	if got != "Delivery: signed · key SHA256:ab12cd34… since 8 Oct" || level != "" {
+		t.Errorf("system page: %q %q", got, level)
+	}
+	var html strings.Builder
+	if err := all.WriteHTML(&html, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html.String(), `<div class="sysdeliv ">Delivery: signed · key SHA256:ab12cd34… since 8 Oct</div>`) {
+		t.Error("the one-system page lacks its Delivery line")
 	}
 	if l, ok := all.deliveryVerifyLine(); !ok || l.Text != "All deliveries were signed by their computer's key" {
 		t.Errorf("Verified: %+v %v", l, ok)
@@ -57,6 +64,33 @@ func TestDeliveryInReport(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("Needs attention lacks %q:\n%s", want, text)
 		}
+	}
+	// On the redesigned pages: Overview's Needs attention names the
+	// systems, and each one's page shows its line in the problem's colour.
+	attn := map[string]AttnLine{}
+	for _, l := range mixed.overview(nil).Attention {
+		attn[l.Title] = l
+	}
+	for title, want := range map[string]string{
+		"Senders waiting for a decision": "bad|WS-01, WS-04",
+		"New senders":                    "warn|WS-02",
+		"Unsigned senders":               "warn|ubu-ws-03",
+	} {
+		if l := attn[title]; l.Level+"|"+l.Count != want || l.Reason == "" || !strings.HasPrefix(l.Href, "#systems") {
+			t.Errorf("Needs attention %q: %+v", title, l)
+		}
+	}
+	if h := attn["New senders"].Href; h != "#systems/WS-02" {
+		t.Errorf("one new sender links to %q", h)
+	}
+	levels := map[string]string{}
+	for _, g := range mixed.systemsPage().Groups {
+		for _, v := range g.Systems {
+			levels[v.Name] = v.DelivLevel
+		}
+	}
+	if levels["WS-01"] != "bad" || levels["WS-04"] != "bad" || levels["WS-02"] != "" || levels["ubu-ws-03"] != "warn" {
+		t.Errorf("Delivery line levels: %v", levels)
 	}
 	if l, _ := mixed.deliveryVerifyLine(); !strings.Contains(l.File, "not signed: ubu-ws-03") || l.Bad {
 		t.Errorf("Verified: %+v", l)

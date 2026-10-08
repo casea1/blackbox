@@ -246,7 +246,7 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 		res.Batches++
 		res.Records += n
 	}
-	res.Rejected = append(res.Rejected, orphanSigs(inbox, now)...)
+	removeOrphanSigs(inbox, now, logf)
 	for _, r := range res.Rejected {
 		logf("inbox: %s", r)
 	}
@@ -274,29 +274,33 @@ func noteSigned(st *store.Store, id string, pub []byte, now time.Time) {
 	st.Save()
 }
 
-// orphanSigs sets aside a signature file whose archive or SCAP result
-// never came (a sender stopped between the two), once it has waited
-// settle.
-func orphanSigs(inbox string, now time.Time) []string {
+// removeOrphanSigs removes a signature file whose archive or SCAP result
+// is not in the inbox, once it has waited settle, and logs it. Such a file
+// is left when a sender stopped between the two (it delivers the file
+// again under a new name, with a new signature), and by a 0.23 collector,
+// which imports the file and leaves its signature: senders are upgraded
+// before the collector (DESIGN1). A signature alone holds nothing to
+// import, so it is not set aside as a refused delivery.
+func removeOrphanSigs(inbox string, now time.Time, logf func(string, ...any)) {
 	entries, err := os.ReadDir(inbox)
 	if err != nil {
-		return nil
+		return
 	}
-	var out []string
 	for _, e := range entries {
 		n := e.Name()
 		if e.IsDir() || !strings.HasSuffix(n, sigExt) {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(inbox, strings.TrimSuffix(n, sigExt))); err == nil {
+		if _, err := os.Lstat(filepath.Join(inbox, strings.TrimSuffix(n, sigExt))); err == nil {
 			continue
 		}
 		if fi, err := e.Info(); err != nil || writing(fi, now) {
 			continue
 		}
-		out = append(out, reject(inbox, inbox, "", n, "a signature file whose archive or SCAP result never arrived", now))
+		if err := os.Remove(filepath.Join(inbox, n)); err == nil {
+			logf("inbox: removed %s, a signature whose archive or SCAP result is not in the inbox (already imported, or delivered again under another name)", n)
+		}
 	}
-	return out
 }
 
 // writing reports whether a file that can't be read whole may still be
@@ -367,15 +371,12 @@ func importArchive(st *store.Store, dir, name string, dirs Dirs, now time.Time) 
 	return st.Save()
 }
 
-// parseInboxName reads HOST_ID_SEQ_RANDOM.bbx (0.24, DESIGN1), and
-// HOST_ID_SEQ.bbx or HOST_ID_SEQ-N.bbx from earlier senders.
+// parseInboxName reads HOST_ID_SEQ-RANDOM.bbx (0.24, DESIGN1), and
+// HOST_ID_SEQ.bbx or HOST_ID_SEQ-N.bbx from earlier senders: what follows
+// the first dash in the last part is not the sequence number.
 func parseInboxName(n string) (id string, seq uint64, ok bool) {
 	parts := strings.Split(strings.TrimSuffix(n, batchExt), "_")
-	switch len(parts) {
-	case 3:
-	case 4:
-		parts = parts[:3] // the random part
-	default:
+	if len(parts) != 3 {
 		return "", 0, false
 	}
 	last, _, _ := strings.Cut(parts[2], "-")
@@ -419,6 +420,11 @@ func MigrateSenderFolders(st *store.Store, inbox string, logf func(string, ...an
 			if f.IsDir() || fn == legacyMarker {
 				continue
 			}
+			if strings.HasSuffix(fn, sigExt) {
+				if _, err := os.Lstat(filepath.Join(dir, strings.TrimSuffix(fn, sigExt))); err == nil {
+					continue // moved with its file, below
+				}
+			}
 			to := migratedName(fn)
 			for i := 0; i < dropTries; i++ {
 				if _, err := os.Lstat(filepath.Join(inbox, to)); err != nil {
@@ -429,6 +435,13 @@ func MigrateSenderFolders(st *store.Store, inbox string, logf func(string, ...an
 			if err := os.Rename(filepath.Join(dir, fn), filepath.Join(inbox, to)); err != nil {
 				logf("inbox: cannot move %s out of the 0.23 sender folder %s yet: %v", fn, n, err)
 				continue
+			}
+			// A 0.24 sender delivering into its 0.23 folder (it was upgraded
+			// first) put the file's signature next to it: it goes along.
+			if _, err := os.Lstat(filepath.Join(dir, fn+sigExt)); err == nil {
+				if err := os.Rename(filepath.Join(dir, fn+sigExt), filepath.Join(inbox, to+sigExt)); err != nil {
+					logf("inbox: cannot move %s out of the 0.23 sender folder %s yet: %v", fn+sigExt, n, err)
+				}
 			}
 			moved++
 			logf("inbox: moved %s out of the 0.23 sender folder %s, as %s", fn, n, to)
@@ -449,18 +462,18 @@ func MigrateSenderFolders(st *store.Store, inbox string, logf func(string, ...an
 }
 
 // migratedName is a file's name once moved out of a 0.23 sender folder: a
-// random part is added, so it can't clash with a file in the inbox.
+// random part is added (after a dash, as a 0.24 sender names its files),
+// so it can't clash with a file in the inbox.
 func migratedName(n string) string {
+	if f, ok := strings.CutSuffix(n, sigExt); ok {
+		return migratedName(f) + sigExt
+	}
 	for _, ext := range []string{scapExt, batchExt, archiveExt} {
 		if strings.HasSuffix(n, ext) {
-			base := strings.TrimSuffix(n, ext)
-			if parts := strings.Split(base, "_"); ext == batchExt && len(parts) == 4 {
-				base = strings.Join(parts[:3], "_") // a 0.24 sender's: a new random part
-			}
-			return base + "_" + randomPart() + ext
+			return strings.TrimSuffix(n, ext) + "-" + randomPart() + ext
 		}
 	}
-	return n + "_" + randomPart()
+	return n + "-" + randomPart()
 }
 
 // rejectedDir is where unusable files are set aside, in the inbox.

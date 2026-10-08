@@ -56,7 +56,7 @@ func TestLayoutFixes(t *testing.T) {
 		t.Errorf("the Overview still draws system tiles")
 	}
 	for _, want := range []string{`<th title="Removable storage">USB</th>`, `<th title="Log size and space settings">Log size</th>`,
-		`data-scrollcue`, `class="morecue"`, `class="stig gaps"`, `<details class="gapd"><summary>`, "Log size and space settings"} {
+		`data-scrollcue`, `class="morecue"`, `data-hpane="settings"`, "Log size and space settings"} {
 		if !strings.Contains(h, want) {
 			t.Errorf("report lacks %q", want)
 		}
@@ -64,8 +64,8 @@ func TestLayoutFixes(t *testing.T) {
 	if strings.Contains(h, "Logs too small") || strings.Contains(h, `grid-template-columns:1.45fr 1fr`) {
 		t.Error("old health layout")
 	}
-	if i, j := strings.Index(h, `id="h-matrix"`), strings.Index(h, `id="h-gaps"`); i < 0 || j < i {
-		t.Error("Gaps should follow the grid")
+	if i, j := strings.Index(h, `id="hp-settings"`), strings.Index(h, `id="h-matrix"`); i < 0 || j < i {
+		t.Error("the grid should be on the By system tab, after Settings to fix")
 	}
 }
 
@@ -74,7 +74,7 @@ func TestLayoutFixes(t *testing.T) {
 func TestManualLogsPage(t *testing.T) {
 	r := build(t, Options{Interim: true})
 	lp := r.logsPage()
-	if !lp.Manual || len(lp.Stats) != 0 || !strings.Contains(lp.Waiting, "they stay where Blackbox keeps them, and the next scheduled report holds them") {
+	if !lp.Manual || len(lp.Cards) != 0 || !strings.Contains(lp.Waiting, "they stay where Blackbox keeps them, and the next scheduled report holds them") {
 		t.Errorf("no waiting info: %+v", lp)
 	}
 	r = build(t, Options{Interim: true, Waiting: &WaitingLogs{Dir: `D:\BlackboxLogs`, From: time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC),
@@ -83,7 +83,7 @@ func TestManualLogsPage(t *testing.T) {
 		t.Errorf("waiting: %s", w)
 	}
 	// A scheduled report keeps its page.
-	if lp := build(t, Options{ArchivesKept: true}).logsPage(); lp.Manual || len(lp.Stats) != 4 {
+	if lp := build(t, Options{ArchivesKept: true}).logsPage(); lp.Manual || len(lp.Cards) != 4 {
 		t.Errorf("scheduled: %+v", lp)
 	}
 }
@@ -163,23 +163,31 @@ func TestScapOSFirst(t *testing.T) {
 }
 
 // Audit health: systems that match on every check are folded under a
-// button, and a bar links to each section, so Antivirus and SCAP are in
-// reach without scrolling past every system.
-func TestHealthFoldAndJump(t *testing.T) {
+// button on the By system tab; the tabs count what each holds (UI-R1).
+func TestHealthFoldAndTabs(t *testing.T) {
 	ok, bad := Cell{Class: "ok"}, Cell{Class: "bad"}
 	hp := &HealthPage{Groups: []HealthGroup{{Title: "Workstations", Rows: []*HealthRow{
 		{Name: "WS-05", Cells: []Cell{ok, bad}}, {Name: "WS-01", Cells: []Cell{ok, {Class: "na"}}}, {Name: "WS-02", Cells: []Cell{ok, ok}}}}},
-		Gaps: []GapCard{{}}, AV: []AVRow{{Level: "bad"}, {Level: "ok"}}, Scap: &ScapView{Main: []ScapRow{{Cat: [4]int{0, 2}}}, Missing: []string{"WS-09"}}}
+		Gaps: []GapCard{{Level: "bad", Systems: []string{"WS-05"}}}, AV: []AVRow{{Level: "bad"}, {Level: "ok"}}, Scap: &ScapView{Main: []ScapRow{{Cat: [4]int{0, 2}}}, Missing: []string{"WS-09"}}}
 	hp.fold()
 	if len(hp.Attention) != 1 || len(hp.Attention[0].Rows) != 1 || hp.Attention[0].Rows[0].Name != "WS-05" || hp.PassingN != 2 {
 		t.Errorf("fold: %+v %d", hp.Attention, hp.PassingN)
 	}
-	var jump []string
-	for _, j := range hp.Jump {
-		jump = append(jump, j.Label+": "+j.Note+" #"+j.Target)
+	hp.cards(&Report{}, 3, 2, 0, 0)
+	var tabs, cards []string
+	for _, tb := range hp.Tabs {
+		tabs = append(tabs, tb.Label+" "+tb.Count+" "+tb.Level)
 	}
-	if strings.Join(jump, "\n") != "Audit settings by system: 1 of 3 need attention #h-matrix\nGaps: 1 #h-gaps\nAntivirus: 1 out of date #h-av\nSTIG compliance (SCAP): 2 open CAT I · 1 not scanned #h-scap" {
-		t.Errorf("jump:\n%s", strings.Join(jump, "\n"))
+	for _, c := range hp.Cards {
+		cards = append(cards, c.Label+": "+c.Value+" · "+c.Note+" #"+c.Tab)
+	}
+	if got := strings.Join(tabs, "\n"); got != "Settings to fix 1 bad\nBy system 3 \nSCAP 2 CAT I bad\nAntivirus 1 bad\nLog sizes 0 " {
+		t.Errorf("tabs:\n%s", got)
+	}
+	if got := strings.Join(cards, "\n"); got != "Audit settings match the STIG: 2 / 3 · 1 setting to fix on 1 system #settings\n"+
+		"SCAP (latest scans): — · 2 open CAT I on 1 system · 1 not scanned in 30 days #scap\nAntivirus: 1 / 2 · current · 1 out of date #av\n"+
+		"Logs: 0 · no log overwrote events · checked at 0 collections #logs" {
+		t.Errorf("cards:\n%s", got)
 	}
 	r := build(t, Options{Collector: true})
 	var b bytes.Buffer
@@ -187,13 +195,13 @@ func TestHealthFoldAndJump(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := b.String()
-	for _, want := range []string{"Audit settings by system", `class="jump"`, `data-scroll="h-matrix"`, `data-scroll="h-gaps"`} {
+	for _, want := range []string{"Audit settings by system", `role="tablist"`, `data-htab="settings"`, `data-htab="systems"`, `id="h-matrix"`, `data-hpane="logs"`} {
 		if !strings.Contains(h, want) {
 			t.Errorf("report lacks %q", want)
 		}
 	}
-	if strings.Contains(h, "Every system, every check") {
-		t.Error("old heading")
+	if strings.Contains(h, "Every system, every check") || strings.Contains(h, `class="jump"`) {
+		t.Error("old heading or section bar")
 	}
 
 	// The SCAP table names unscanned systems in one line, with the count.
@@ -207,21 +215,22 @@ func TestHealthFoldAndJump(t *testing.T) {
 	}
 }
 
-// UI13: the section bar counts antivirus not checked ("None found · Not
-// checked"), never "all current".
-func TestJumpCountsAVNotChecked(t *testing.T) {
-	hp := &HealthPage{AV: []AVRow{{Level: "ok"}, {Level: "warn", Status: "Not checked"}}}
-	hp.fold()
-	for _, j := range hp.Jump {
-		if j.Target == "h-av" && (j.Note != "1 not checked" || j.Level != "warn") {
-			t.Errorf("antivirus: %+v", j)
+// UI13: the Antivirus card counts antivirus not checked ("None found ·
+// Not checked"), never "current".
+func TestCardCountsAVNotChecked(t *testing.T) {
+	av := func(hp *HealthPage) HealthCard {
+		hp.cards(&Report{}, 2, 2, 0, 0)
+		for _, c := range hp.Cards {
+			if c.Tab == "av" {
+				return c
+			}
 		}
+		return HealthCard{}
 	}
-	hp = &HealthPage{AV: []AVRow{{Level: "bad"}, {Level: "warn"}, {Level: "ok"}}}
-	hp.fold()
-	for _, j := range hp.Jump {
-		if j.Target == "h-av" && (j.Note != "1 out of date · 1 not checked" || j.Level != "bad") {
-			t.Errorf("antivirus: %+v", j)
-		}
+	if c := av(&HealthPage{AV: []AVRow{{Level: "ok"}, {Level: "warn", Status: "Not checked"}}}); c.Note != "current · 1 not checked" || c.Level != "warn" || c.Value != "1 / 2" {
+		t.Errorf("antivirus: %+v", c)
+	}
+	if c := av(&HealthPage{AV: []AVRow{{Level: "bad"}, {Level: "warn"}, {Level: "ok"}}}); c.Note != "current · 1 out of date · 1 not checked" || c.Level != "bad" {
+		t.Errorf("antivirus: %+v", c)
 	}
 }

@@ -403,6 +403,7 @@ func cmdConfig(args []string) error {
 		fmt.Printf("  retention_days     %d%s\n", cfg.RetentionDays, map[bool]string{true: "   (keep forever)"}[cfg.RetentionDays == 0])
 		fmt.Printf("  exclude_users      %s\n", strings.Join(cfg.ExcludeUsers, ", "))
 		fmt.Printf("  exclude_processes  %s\n", strings.Join(cfg.ExcludeProcesses, ", "))
+		fmt.Printf("  people_aliases     %s\n", config.FormatPeopleAliases(cfg.PeopleAliases))
 		fmt.Printf("\n  role               %s\n", cfg.Role())
 		fmt.Printf("  send_to            %s\n", cfg.SendTo)
 		fmt.Printf("  share_user         %s\n", cfg.ShareUser)
@@ -481,7 +482,7 @@ func cmdConfig(args []string) error {
 	}
 	// "none" clears a setting that can be empty (L5).
 	if strings.EqualFold(value, "none") && (key == "send_to" || key == "inbox" || key == "share_user" ||
-		key == "exclude_users" || key == "exclude_processes" || key == "working_hours") {
+		key == "exclude_users" || key == "exclude_processes" || key == "working_hours" || key == "people_aliases") {
 		value = ""
 	}
 	if err := config.SetValue(path, key, value); err != nil {

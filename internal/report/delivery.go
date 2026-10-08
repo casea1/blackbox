@@ -51,6 +51,32 @@ func (d *Delivery) Text(loc *time.Location) string {
 	return s
 }
 
+// Level is how the system page shows the line: bad when its deliveries
+// wait for a decision or its key is on another computer too, warn when
+// it delivers unsigned, "" when all is well.
+func (d *Delivery) Level() string {
+	switch {
+	case d == nil:
+		return ""
+	case d.Held || d.NewKeyFP != "" || d.SharedWith != "":
+		return "bad"
+	case !d.Signed:
+		return "warn"
+	}
+	return ""
+}
+
+// deliveryHosts are the systems (not retired) whose delivery is as is.
+func (r *Report) deliveryHosts(is func(*Delivery) bool) []string {
+	var out []string
+	for _, s := range r.Systems {
+		if s.Delivery != nil && s.Removed.IsZero() && is(s.Delivery) {
+			out = append(out, s.Name)
+		}
+	}
+	return out
+}
+
 func shortFP(fp string) string {
 	if len(fp) <= 15 {
 		return fp

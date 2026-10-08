@@ -42,7 +42,7 @@ func TestIndexMissingReports(t *testing.T) {
 	if !strings.Contains(h, "Missing: deleted or moved") || strings.Contains(h, "2026-10-07_CI/report.html") {
 		t.Error("the missing scheduled report is not shown as missing")
 	}
-	if !strings.Contains(h, `href="2026-09-30_CI/report.html">Open the latest report`) {
+	if !strings.Contains(h, `href="2026-09-30_CI/report.html">Open →`) {
 		t.Error("the latest report should be the newest one still there")
 	}
 }
@@ -63,14 +63,14 @@ func TestReportShowsMissingReports(t *testing.T) {
 	if !found {
 		t.Errorf("overview: %+v", r.overview(nil).Checks)
 	}
-	hp := r.healthPage()
+	// UI-R1: on Original logs, not Audit health.
 	ok := false
-	for _, g := range hp.Gaps {
-		if g.Title == "Earlier reports missing or changed" && strings.Contains(g.Explain, "2026-09-30_CI") && strings.Contains(g.Fix, "blackbox reports accept") {
+	for _, f := range r.logsPage().Failing {
+		if strings.Contains(f, "Earlier reports missing or changed") && strings.Contains(f, "2026-09-30_CI") && strings.Contains(f, "blackbox reports accept") {
 			ok = true
 		}
 	}
 	if !ok {
-		t.Errorf("gaps: %+v", hp.Gaps)
+		t.Errorf("original logs: %q", r.logsPage().Failing)
 	}
 }

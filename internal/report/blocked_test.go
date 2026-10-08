@@ -32,13 +32,23 @@ func TestBlockedCollectionInAuditHealth(t *testing.T) {
 		t.Errorf("warnings: %q", r.Health.Warnings)
 	}
 	hp := r.healthPage()
-	var card *GapCard
-	for i := range hp.Gaps {
-		if hp.Gaps[i].Title == "Collection was blocked" {
-			card = &hp.Gaps[i]
+	// UI-R1: not a settings gap; the system's own Reporting line tells it.
+	var line *SettingLine
+	for _, g := range hp.Groups {
+		for _, row := range g.Rows {
+			for i := range row.Table {
+				if row.Name == "ubu1" && row.Table[i].Check == "Reporting" {
+					line = &row.Table[i]
+				}
+			}
 		}
 	}
-	if card == nil || card.Level != "bad" || len(card.Systems) != 1 || card.Systems[0] != "ubu1" || !strings.Contains(card.Explain, "3 runs refused (PID 31025)") {
-		t.Fatalf("gap card = %+v (gaps %+v)", card, hp.Gaps)
+	if line == nil || line.Class != "bad" || !strings.Contains(line.Note, "3 runs refused because another Blackbox run held its lock (PID 31025)") {
+		t.Fatalf("reporting line = %+v", line)
+	}
+	for _, g := range hp.Gaps {
+		if g.Title == "Collection was blocked" {
+			t.Error("a blocked collection listed as a setting to fix")
+		}
 	}
 }

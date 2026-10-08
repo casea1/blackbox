@@ -226,7 +226,7 @@ func TestForgedDeliveries(t *testing.T) {
 		Events: [][]byte{[]byte(`{"host":"DC01","summary":"forged"}`)}}
 	plain, _ := b.Bytes()
 	signed, _ := SignBatch(plain, evil, t0)
-	os.WriteFile(filepath.Join(in, "DC01_"+dc.State.Send.ID+"_0000000002_aaaaaaaaaaaa.bbx"), signed, 0o640)
+	os.WriteFile(filepath.Join(in, "DC01_"+dc.State.Send.ID+"_0000000002-aaaaaaaaaaaa.bbx"), signed, 0o640)
 	// A real signature moved onto other content.
 	dk, _ := LoadKey(dc.Dir)
 	b2 := &Batch{Header: Header{Sender: "DC01", SenderID: dc.State.Send.ID, Seq: 3, Created: t0},
@@ -243,16 +243,16 @@ func TestForgedDeliveries(t *testing.T) {
 		return t[i : i+bytes.IndexByte(t[i+7:], '"')+8]
 	}
 	s2 = bytes.Replace(mustGunzip(t, s4), sigOf(s4), sigOf(s2), 1)
-	os.WriteFile(filepath.Join(in, "DC01_"+dc.State.Send.ID+"_0000000004_bbbbbbbbbbbb.bbx"), gzipBytes(t, string(s2)), 0o640)
+	os.WriteFile(filepath.Join(in, "DC01_"+dc.State.Send.ID+"_0000000004-bbbbbbbbbbbb.bbx"), gzipBytes(t, string(s2)), 0o640)
 	// An archive for DC01 signed by the attacker's key.
 	src := fakeArchive(t, t.TempDir(), "a.zip", "DC01", t0, t0.Add(time.Hour), "forged")
-	name := "archive_x_DC01_a_cccccccccccc.zip"
+	name := "archive_x_DC01_a-cccccccccccc.zip"
 	data, _ := os.ReadFile(src)
 	os.WriteFile(filepath.Join(in, name), data, 0o640)
 	sig, _ := makeSig(evil, filepath.Join(in, name), "archive", "DC01", "x", archiveWhat(t0, t0.Add(time.Hour)), t0)
 	os.WriteFile(filepath.Join(in, name+sigExt), sig, 0o640)
 	// The same archive, unsigned (DC01 signs).
-	os.WriteFile(filepath.Join(in, "archive_y_DC01_a_dddddddddddd.zip"), data, 0o640)
+	os.WriteFile(filepath.Join(in, "archive_y_DC01_a-dddddddddddd.zip"), data, 0o640)
 
 	res, _ := Import(col, in, Dirs{Archives: arch}, t0.Add(time.Hour), t.Logf)
 	if res.Batches != 0 || res.Archives != 0 || len(res.Held) != 2 || len(res.Rejected) != 2 {

@@ -112,7 +112,10 @@ func TestPageHeaderUIR1(t *testing.T) {
 		t.Fatalf("%d page headers", len(heads))
 	}
 	for _, hd := range heads {
-		if !strings.Contains(hd, `<div class="crumb">Daily report · 7 Oct 00:00 – 8 Oct 00:00 EDT`) || !strings.Contains(hd, `data-open="export"`) {
+		// One system (design 05): "Systems › Servers › NAME", then the
+		// period and zone.
+		one := strings.Contains(hd, `<div class="crumb"><a class="link" href="#systems">Systems</a> › `) && strings.Contains(hd, "· 7 Oct 00:00 – 8 Oct 00:00 EDT</span>")
+		if !one && !strings.Contains(hd, `<div class="crumb">Daily report · 7 Oct 00:00 – 8 Oct 00:00 EDT`) || !strings.Contains(hd, `data-open="export"`) {
 			t.Errorf("header: %s", hd)
 		}
 		for _, bad := range []string{"verified", "../index.html", "calendar-range", "generated"} {
@@ -122,7 +125,7 @@ func TestPageHeaderUIR1(t *testing.T) {
 		}
 	}
 	det := between2(h, `<section class="view" data-view="detections">`, "</h1>")
-	if !strings.Contains(det, " · "+commas(len(r.Findings))+" detections · ") {
+	if !strings.Contains(det, " · "+commas(len(r.Findings))+" detections</div>") {
 		t.Errorf("detections crumb: %s", det)
 	}
 	if !strings.Contains(between2(h, `<section class="view" data-view="detections">`, `</div></div>`), `data-act="pagecsv">Export CSV`) {

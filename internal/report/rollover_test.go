@@ -47,18 +47,18 @@ func TestPowerShellLossNamedAndApart(t *testing.T) {
 	}
 
 	hp := r.healthPage()
-	var card *GapCard
-	for i := range hp.Gaps {
-		switch hp.Gaps[i].Title {
-		case "Events lost to log rollover":
-			t.Errorf("audit-record card for a PowerShell log loss: %+v", hp.Gaps[i])
-		case "Other logs overwrote events":
-			card = &hp.Gaps[i]
-		}
+	// UI-R1: on the Log sizes tab, a warning, not the audit record.
+	if len(hp.Losses) != 1 || hp.LostCritical {
+		t.Fatalf("losses: %+v", hp.Losses)
 	}
-	if card == nil || card.Level != "warn" || !strings.Contains(card.Explain, "PowerShell log on WIN11-TEST: 447 events overwritten") ||
-		!strings.Contains(card.Explain, "no export has them") || strings.Contains(card.Explain, "collect_every") {
-		t.Errorf("gap card: %+v", card)
+	if l := hp.Losses[0]; l.Level != "warn" || l.Host != "WIN11-TEST" || l.Log != "PowerShell log" || l.Lost != "447" ||
+		!strings.Contains(l.Advice, "too small for how fast it is written") || strings.Contains(l.Advice, "collect_every") || !strings.Contains(hp.LossNote, "no export has them") {
+		t.Errorf("loss: %+v", l)
+	}
+	for _, c := range hp.Cards {
+		if c.Tab == "logs" && (c.Value != "1" || c.Level != "warn" || c.Note != "system overwrote events (PowerShell log) · 0 Security/audit lost") {
+			t.Errorf("logs card: %+v", c)
+		}
 	}
 	seen := false
 	for _, s := range r.systemsPage().Groups {

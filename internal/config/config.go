@@ -32,6 +32,11 @@ type Config struct {
 	CollectEvery     time.Duration
 	WorkingHours     WorkingHours // when administrator activity is expected
 
+	// PeopleAliases merges account names spelled differently on different
+	// systems into one person on the report's People page: other
+	// spelling → the name shown, both lower case (see ParsePeopleAliases).
+	PeopleAliases map[string]string
+
 	// LAN. SendTo is the collector's inbox this system sends its data to
 	// (a folder, or a share: \\server\share on Windows, //server/share on
 	// Linux). Inbox is the folder this system, as a collector, receives
@@ -240,6 +245,12 @@ func (c *Config) set(k, v string) error {
 			return err
 		}
 		c.WorkingHours = w
+	case "people_aliases":
+		m, err := ParsePeopleAliases(v)
+		if err != nil {
+			return err
+		}
+		c.PeopleAliases = m
 	case "data_dir":
 		if v != "" {
 			c.DataDir = v
@@ -401,7 +412,7 @@ func RawValues(path string) map[string]string {
 }
 
 // Settable lists the settings `blackbox config set` may change.
-var Settable = []string{"site_name", "report_every", "report_at", "report_dir", "archive_dir", "retention_days", "exclude_users", "exclude_processes", "working_hours", "send_to", "inbox", "share_user", "keep_sent_days", "new_senders", "require_signed", "scap_results", "scap_max_age_days"}
+var Settable = []string{"site_name", "report_every", "report_at", "report_dir", "archive_dir", "retention_days", "exclude_users", "exclude_processes", "working_hours", "people_aliases", "send_to", "inbox", "share_user", "keep_sent_days", "new_senders", "require_signed", "scap_results", "scap_max_age_days"}
 
 // SetValue changes one user-settable setting in the config file (see
 // Settable), keeping its comments and line endings.
@@ -629,7 +640,7 @@ var keyIntro = func() map[string][]string {
 	}
 	lan := block("# LAN:")
 	return map[string][]string{"send_to": lan, "inbox": lan, "share_user": lan, "report_at": block("# When each report period"),
-		"archive_dir": block("# Folder where the original logs")}
+		"archive_dir": block("# Folder where the original logs"), "people_aliases": block("# People: with local accounts")}
 }()
 
 // Template is the commented config written by `blackbox install`.
@@ -724,6 +735,13 @@ exclude_processes =
 #   working_hours = Mon-Fri 06:00-18:00
 #   working_hours = Daily 07:00-19:00
 working_hours =
+
+# People: with local accounts, the same person's account can be spelled
+# differently on different systems. List the spellings to show them as
+# one person on the People page ("name=other,other"; groups separated by
+# ";"). Accounts with the same name are always shown as one. Example:
+#   people_aliases = jlee=j.lee,jlee2; mchen=m.chen
+people_aliases =
 
 # SCAP scan results (DISA SCC or OpenSCAP XCCDF/ARF files) to show each
 # computer's STIG compliance in the report. Blackbox only reads them; it

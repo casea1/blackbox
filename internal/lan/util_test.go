@@ -30,7 +30,7 @@ func gzipBytes(t *testing.T, s string) []byte {
 // random part its name has (DESIGN1).
 func delivered(t *testing.T, in, host, id string, seq uint64) string {
 	t.Helper()
-	got, _ := filepath.Glob(filepath.Join(in, strings.TrimSuffix(InboxName(host, id, seq), batchExt)+"_*"+batchExt))
+	got, _ := filepath.Glob(filepath.Join(in, strings.TrimSuffix(InboxName(host, id, seq), batchExt)+"-*"+batchExt))
 	if len(got) != 1 {
 		t.Fatalf("batch %d in the inbox: %v", seq, got)
 	}

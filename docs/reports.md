@@ -9,7 +9,7 @@ choose:
   the logs and remembers where it stopped, so the copy stays small.
   Collecting often keeps ahead of a busy log, but Blackbox cannot stop a
   full log from overwriting events: it detects and reports any loss
-  (Audit health shows it as "Events lost to log rollover").
+  (Audit health's **Log sizes** tab lists each log that overwrote events).
 - **Watching between reports (AU-5).** Auditing stopped, a log cleared or
   events lost are seen at the next collection and shown by `blackbox
   status` (which exits 4 when something needs attention) and in the next
@@ -166,8 +166,8 @@ and text within a minute) are one row marked **×N**, with the time of
 each in its details ("Recorded: 7 times: …"). Failed logons and log
 clears are never folded: each is an attempt, and each clear is one
 action, so two clears a minute apart are two rows and the detection says
-"2 logs cleared". Every count in the report (the sidebar, the tiles,
-People, Trends) counts rows.
+"2 logs cleared". Every count in the report (the sidebar, the Overview's
+numbers, People, Trends) counts rows.
 
 **Blackbox's own writes.** The Event Log service writing the original-log
 pieces during a Blackbox run is not a row, also in a manual report made
@@ -177,10 +177,8 @@ Blackbox's runs from an hour before its earliest event.
 **Audit integrity kinds.** Each row has its kind: Log cleared, Audit
 policy changed, Logging stopped (the event log or audit service stopping,
 a full log, dropped records), Blackbox (its install, upgrade, settings and
-files), Firewall, Clock, Startup and shutdown, or Other. The **Logging
-stopped** tile counts only stops of Medium severity or above: the event
-log service stopping as Windows shuts down, or auditd as a restart ends,
-is not counted.
+files), Firewall, Clock, Startup and shutdown, or Other; the page's
+**Kind** field counts show how many of each.
 
 **Linux sign-ins and restarts.** One SSH sign-in or sign-out is one row,
 even when it is recorded twice (two audit login records, or the same
@@ -228,7 +226,7 @@ remounts are not; network shares (`nfs`, `cifs`, `sshfs`) are Low,
 **Auditing off at collection (Linux).** Each collection checks that the
 audit service is running (`systemctl is-active auditd`) and that kernel
 auditing is on (`auditctl -s`). If not, the computer is red: "Auditing
-off" on Systems, an "Auditing is off" row in Audit health's Gaps table, a line in
+off" on Systems, a note on Logs intact in the system's settings on Audit health, a line in
 `blackbox status` (also in a collector's list of systems) and a red
 status icon with a notification.
 
@@ -312,7 +310,7 @@ activity only. Failed logons against an excluded account, changes to it,
 log clears and audit changes by it, and anything of Medium severity or
 above are always shown. An entry with a domain (`CORP\svc_backup`)
 matches that account only; one without matches the local account. The
-Overview and Audit health say how many events were left out, and by whom.
+Overview, and a note under Audit health's Settings to fix, say what was left out.
 
 ## Original logs
 
@@ -333,6 +331,27 @@ is in the next scheduled report's folder (AR10).
 | Windows | `Security.evtx`, `System.evtx`, and the USB, Defender, device and PowerShell (`Microsoft-Windows-PowerShell-Operational.evtx`, every script block, not only the ones reported) logs, as `.evtx` files | Event Viewer (Open Saved Log), or `Get-WinEvent -Path`. Each `.evtx` has its message text next to it (`LocaleMetaData`, from `wevtutil al`), so its events read the same on a computer without the programs that wrote them |
 | Linux | `audit.log`: the audit records, in their original format | `ausearch -if audit.log`, or `aureport -if audit.log` |
 | Linux | `syslog`/`messages` and `auth.log`/`secure`: the lines for the period (or `journal.log` from the systemd journal when there are no log files) | Any text editor |
+
+**The Original logs page** (UI-R1) has four cards: **Original logs in
+this report** (zips against systems, e.g. 28 / 30, "2 systems sent nothing
+(see Systems)", and any set aside), **Complete**, **With a gap** ("1 log
+cleared · 3 PowerShell overwrites") and **Checked** (✓ when every zip
+matches the SHA-256 recorded when it was made). Below, one table of every
+system, grouped Servers / Workstations, gaps and missing first, with an
+**All / Gaps and missing** switch: the system (click it for what is in its
+zip, log by log, with each file's hash), a status (**Complete**, **Gap**,
+**Missing**, **Set aside**, **Hash mismatch**), a short note ("PowerShell
+log overwrote 415 events 12:40", "Security log cleared 14:22; nothing
+lost", "nothing received since 6 Oct 04:00"; the whole of it on hover),
+what is inside ("3 .evtx · 3 pieces"), the size and the file. Warnings that
+logs could not be archived, were set aside (AR7), were never put in a report
+(RET1), or that earlier reports are missing or changed are at the top. The
+**Giving these to an assessor** box says, in three steps, how to check
+them without Blackbox: `sha256sum -c manifest.sha256` (Linux) or `blackbox
+verify <folder>`; open a `.evtx` in Event Viewer or read `audit.log` with
+`ausearch -if`; each zip's `archive.json` lists every file with its hash,
+and any gap with its reason. The report folder's `README.txt` starts with
+the same three steps.
 
 Inside, there is a folder for each day, named for the time it covers (in
 UTC), with that day's logs and an `archive.json` listing each file's
@@ -375,8 +394,7 @@ Original logs page shows the same, e.g. "Covers from 5 Oct 04:08; 94,565
 events were overwritten before they could be exported". If a full log
 had already overwritten part of the period since the last export, that
 part is recorded as missing: the page shows "Missing <from> – <to>:
-overwritten before it was saved" for that log, Audit health has a
-warning, `summary.json` lists it under the archive's `gaps` (and the
+overwritten before it was saved" for that log and marks the system **Gap**, `summary.json` lists it under the archive's `gaps` (and the
 coverage under `logs`), and `blackbox status` says **LOGS INCOMPLETE**
 for 14 days and exits with code 4. For another log, such as the
 PowerShell log, the line is "Logs incomplete" and does not change the
@@ -406,7 +424,7 @@ hashed when they are written (`piece.json`). When they are packed, a file
 that has been deleted or can't be read is left out and the rest are still
 packed: `archive.json` records it under `gaps` with its log, its period
 and the reason (e.g. "Application.evtx, exported for … was missing when
-the logs were packed"), and the Original logs page, Audit health and
+the logs were packed"), and the Original logs page and
 `blackbox status` (**LOGS INCOMPLETE**) say so. Its events are still in
 the reports; only the original copy of that part is gone. A file whose
 hash no longer matches is packed as it was found, marked `changed` in
@@ -422,7 +440,7 @@ If packing fails altogether (the archive folder can't be written, for
 example), the exports are kept and packing is tried again at every run.
 Until it works, `blackbox status` says **ORIGINAL LOGS NOT ARCHIVED
 since <time>: <reason>** and exits with code 4, the status icon notifies
-once, and reports say so on Original logs and in Audit health.
+once, and reports say so at the top of Original logs and on the Overview.
 
 **An archive that fails its check.** Every daily archive is checked
 against the hashes in its `archive.json` before it goes into a
@@ -434,7 +452,7 @@ moved to a `set-aside` folder next to it (e.g.
 computer>'s logs for <from> to <to>: <reason>** with where the file is,
 and exits with code 4; the status icon notifies once. The report says so
 on the Overview ("Original logs not in this report", never "Original
-logs archived"), on Original logs and in Audit health, and a manual
+logs archived") and on Original logs (a warning at the top and a **Set aside** line in its table), and a manual
 report made afterwards says so too. The events are in the report; the
 original copy of that period is only in the file set aside. Archives
 written before 0.21 could hold two `.evtx` files under one name (two
@@ -488,9 +506,8 @@ delivered to a collector) are never deleted under `retention_days`:
 they may be the only copy. Once one is older than `retention_days`,
 `blackbox status` says **ORIGINAL LOGS NEVER REPORTED: <computer>:
 original logs from <from> to <to> have waited <N> days and were never
-put in a report** and exits with code 4, and the report says so in
-Audit health (a warning and an "Original logs never put in a report"
-card) and on Original logs.
+put in a report** and exits with code 4, and the report says so in a
+warning at the top of Original logs.
 
 Expect a few MB a day per Windows computer (much less for Linux),
 compressed. It depends on how busy the Security log is.
@@ -513,8 +530,8 @@ compressed. It depends on how busy the Security log is.
   source **Blackbox**, event ID 101, a warning, on Windows; syslog/the
   journal with the ident `blackbox` on Linux, `journalctl -t blackbox`), so
   a copy exists outside Blackbox's folder, the next report
-  has "Earlier reports missing or changed" on the Overview and in Audit
-  health's gaps, and All reports lists it as "Missing: deleted or moved".
+  has "Earlier reports missing or changed" on the Overview and at the top
+  of Original logs, and All reports lists it as "Missing: deleted or moved".
   Every run checks that each file the manifest lists is there, at the
   size it was written with, and that no file was added anywhere in the
   folder (the record keeps how many files it had); once a day every file
@@ -590,25 +607,27 @@ older than `scap_max_age_days` (30 by default) is marked **Stale**, and
 the computers with no scan are named in one **No scan found** line. The
 open-rules CSV still lists every benchmark.
 
-**Where the score is.** Besides the table: the bar at the top of Audit
-health ("lowest score 40% · 1 open CAT I"); each system's own Audit
-health view, as **SCAP score** next to its checks (on a one-computer
-report, that view is the whole of Audit health); and each system's
-health list on the Systems page (**STIG compliance (SCAP)**, or **Open
-CAT I findings (SCAP)** when it has them). Each uses the system's
-operating-system scan.
+**Where the score is.** Besides the table (Audit health's **SCAP** tab):
+the **SCAP** card at the top of Audit health ("lowest · 4 open CAT I on 4
+systems"); each system's own Audit health view, as **SCAP score** next to
+its checks (on a one-computer report, that view is the whole of Audit
+health); and on the Systems page, the **SCAP** square in each row and the
+**SCAP** fact and check line on the system's own page. Each uses the
+system's operating-system scan.
 
 - CAT comes from each rule's severity: high is CAT I, medium CAT II, low
   CAT III. Open means `fail` or `error`, as STIG Viewer and SCC count
   them.
-- **Overview:** open CAT I findings are a red line in the checklist;
-  computers with no scan, or a stale one, are amber.
+- **Overview:** open CAT I findings are a red **CAT I findings** line
+  under Needs attention; computers with no scan, or a stale one, are an
+  amber line.
 - **Open rules:** each open CAT I, II or III count in the table opens
   that computer's open rules on Audit health, CAT I first, then by STIG
   ID, with each rule's title, Vuln ID and rule ID. Each computer's
   settings list also has a **STIG compliance (SCAP)** line (score and open
   counts; a gap when CAT I findings are open) linking to the same list.
-- **Systems:** each computer's header adds "SCAP 94% · 1 CAT I".
+- **Systems:** a system's page has its SCAP score and open CAT I among
+  its six facts ("94% · 1 CAT I").
 - **Report folder:** each result shown is copied into `scap/` and listed
   in `manifest.sha256`, so the report proves which scan it showed.
   `scap-open-rules.csv` lists every open rule (computer, benchmark, CAT,
@@ -618,7 +637,7 @@ operating-system scan.
 
 ## Inventory
 
-The **Inventory** page (under Audit) lists what each system is, read with
+The **Inventory** page (under More) lists what each system is, read with
 its daily settings check by Blackbox 0.13 or later. Setup also keeps the
 check it shows, with the inventory, at every install and upgrade (UX10b),
 so an upgrade's settings and inventory are in `status` (**Settings
@@ -637,25 +656,35 @@ checked**) and the next report at once, not after the next daily check:
   with a key or through sudo; one whose shell refuses logons, or that has
   expired, is disabled. Nothing about passwords is read or kept.
 
-The page has three tabs, each with a filter box:
+The page (UI-R1) has the systems on the left, grouped **Servers** and
+**Workstations**, each with its operating system, and the one selected on
+the right. **Find a system or serial** finds a system by its name or by a
+drive's serial number. A link to `#inventory/WS-07` opens that system.
 
-- **Systems**: one row per system (make, model and serial, operating
-  system, processor and memory, how many drives and accounts, how many
-  administrators). Click a row, or press Enter on it, to open that
-  system's drives (with serial numbers) and accounts right under it;
-  several can be open at once, and **Expand all** opens every one. A link
-  to `#inventory/WS-07` opens that system.
-- **Drives**: every drive on every system, with its serial number.
-- **Accounts**: every account on every system, with **Administrators** and
-  **Enabled** filters, so all administrator accounts on the network are in
-  one list. Click an account to search its events.
+- **The system:** its name; operating system, role and make and model;
+  serial number, memory, and accounts ("63 (9 administrators, 12 used this
+  period)"), then processor, BIOS, domain and when it was read.
+- **Drives:** model, type ("NVMe · SSD", "SATA · HDD", "USB ·
+  removable"), size, **serial number** and a note: "internal"; for a
+  removable drive in the inventory, "connected at the settings check"; and
+  for a removable drive seen only in the USB events, "seen 7 Oct 10:18",
+  with "not connected now" when the settings check after that did not
+  find it. The serial of a drive seen in the events comes from the event
+  (its "Serial number" detail).
+- **Accounts:** five shown (administrators first, then the most recently
+  used): name, the last digits of its SID or its UID, admin or user,
+  disabled, and when it was last used (its last logon, or its latest event
+  in this report). "N more · Show all" lists the rest. The accounts are in
+  `data/inventory-accounts.js`, read when the page opens, so a network of
+  thousands of accounts keeps the page light; the file is in the manifest
+  like the event data. Click an account to search its events.
 
-The four tiles at the top open their tab (Administrators opens Accounts
-filtered to administrators). **Export > Inventory as CSV** saves every
-system, drive and account, one per line. Systems with no inventory yet
-are named under the table with the reason: it has sent nothing since a
-given time, it runs a Blackbox from before 0.13, or it has sent no
-settings check yet.
+**Export CSV** saves one row per drive (system, model, type, size, serial
+number, note) and one row per account (system, name, kind and rights,
+SID or UID, status and last use), with the time each system was read.
+Systems with no inventory yet are listed with the reason (on the right,
+and under the page): it has sent nothing since a given time, it runs a
+Blackbox from before 0.13, or it has sent no settings check yet.
 
 How it is read: on Windows, one PowerShell query of CIM
 (`Win32_ComputerSystem`, `Win32_BIOS`, `Win32_DiskDrive`,
@@ -705,42 +734,72 @@ when it sends through a VirtualBox shared folder (`/media/sf_…` or
 `\\VBOXSVR\…`); data relayed through another computer does not make it
 one. A VM that sends over the network shows as a workstation.
 
-The **Audit health** page shows every system against every STIG audit
-check (logon, account management, policy change, privilege use, process
-creation, removable storage, PowerShell logging, log size, reporting, logs
-intact), the gaps with how to fix them, and each system's own settings
-table. Blackbox only reports audit settings; it never changes them.
-The grid takes the page's full width, with short headings and the System
+The **Audit health** page (UI-R1) is about settings: what each system's
+audit settings, SCAP scans, antivirus and log sizes are. Blackbox only
+reports them; it never changes them. Missing systems and cleared logs are
+not repeated here: they are on the Overview, Systems and Detections.
+
+- **Four cards:** **Audit settings match the STIG** (systems matching,
+  e.g. 8 / 30, with a green/amber bar and "159 settings to fix on 22
+  systems"), **SCAP (latest scans)** (the lowest score, open CAT I and on
+  how many systems, and how many were not scanned within
+  `scap_max_age_days`), **Antivirus** (systems with current definitions,
+  e.g. 25 / 30) and **Logs** (systems whose logs overwrote events, and how
+  many events the Security or audit log lost). Each card opens its tab.
+- **Tabs:** Settings to fix (n) · By system (N) · SCAP (n CAT I) ·
+  Antivirus (n) · Log sizes (n). A link can open one: `#health/@systems`,
+  `@scap`, `@av`, `@logs`.
+- **Settings to fix** (the first tab): one row per setting, the setting on
+  most systems first. Each row has a dot (red: a STIG gap; amber: a
+  warning or Blackbox's advice), the setting with its operating systems
+  and "without it the report misses: Failed Logons", its STIG IDs (each OS
+  its own, e.g. "WN25-AU-000005 · WN11-AU-000005"; the full list with
+  each ID's OS is in the open row), or "Blackbox's advice", and "9
+  systems". Click a row for the systems (each opens its own settings),
+  what it is set to against what is required, and how to fix it, with
+  "One GPO on the OU fixes all 9" for a Group Policy setting. The first 8
+  are shown, then "16 more settings, each on 1–8 systems · Show all 24".
+  What your settings leave out of the report is a note under the list.
+- **By system:** the grid of every system against every group of checks
+  (logon, account management, policy change, privilege use, process
+  creation, removable storage, PowerShell logging, antivirus, log size,
+  reporting, logs intact), grouped Servers / Workstations, then the
+  Security-log events Blackbox does not translate. Click a system for its
+  own settings table, which also says when a collection was blocked or
+  auditing was off.
+- **SCAP** and **Antivirus:** the tables below.
+- **Log sizes:** each log that filled up and overwrote events before
+  Blackbox read them, by system: how many, when, and what to do (collect
+  more often, or make the log larger). Log size *settings* below the STIG
+  are on Settings to fix.
+
+The grid takes the tab's full width, with short headings and the System
 column always in view; a key under the grid gives each short heading's
 full name ("Accounts: Account management"), so nothing needs hovering
 (UI19). On a narrow screen the grid scrolls sideways and says **more →**
-until its last column is in view; at 768 pixels the page itself, the
-STIG compliance table included, needs no sideways scrolling.
+until its last column is in view; on a phone the cards stack and each
+setting's STIG ID goes under its name.
 
 The report is checked with axe-core for the accessibility rules on
-names and structure (UI19): every filter list (Search, and the filters
+names and structure (UI19): every filter (Search, and the filters
 on each event page) has a name; each chart is an image named for what it
-shows, the activity heatmap a named group (its hours are links), and
-icons are hidden from screen readers; Inventory's rows open with a
-button; each menu has its own name; headings never skip a level; and on
-the narrow icon menu each page's name is still read out.
+shows, and icons are hidden from screen readers; each menu has its own
+name; headings never skip a level; and in a narrow window the **Menu**
+button says whether the page list is open.
 Systems that match on every check are folded under **Show the N systems
-that match on every check**, so the sections below stay in reach; a bar
-at the top of the page links to each section (the grid, Gaps, Antivirus,
-STIG compliance, other Security-log events) with what needs attention.
-In the **Antivirus** table, systems with current definitions are folded
-the same way. The gaps follow below the grid as a table, one row per gap (its STIG ID, the systems and the result; a gap systems share under different STIGs lists each one's IDs with its OS, e.g. "WN25-AU-000070, WN25-AU-000080 (Windows Server 2025) · WN11-AU-000010, WN11-AU-000005 (Windows 11)", and the CSV gives each system its own); click a gap for what it means and how to fix it. **Log size and space settings** counts the
-systems whose logs are smaller than the STIG asks, or, on Linux, whose
-auditd space and disk actions differ from it.
+that match on every check**. In the **Antivirus** table, systems with
+current definitions are folded the same way. The CSV of Audit health (Export
+CSV) has every system's every check, one row each, and Export's **Audit
+settings to fix** every failing setting on every system with how to fix it.
 
-**Systems matching STIG** counts only checks that cite a STIG rule ID.
+**Audit settings match the STIG** counts only checks that cite a STIG rule ID.
 A check with no STIG ID (for example Windows Time, the USB logs,
 Defender real-time protection, the other logs' sizes, and on Windows 11
 File System auditing, which the STIG dropped in V2R8) is **Blackbox's
-advice**: its gap row says "Advice" with "Blackbox's advice" in the STIG
+advice**: its row on Settings to fix has an amber dot and "Blackbox's advice" in the STIG
 ID column, its text says "Blackbox recommends …", never "the STIG
-requires …", it shows as a warning (!) in the grid, and the
-**Blackbox's advice** card counts these on their own. The overview's
+requires …", it shows as a warning (!) in the grid, and it does not count
+against **Audit settings match the STIG**. The overview's
 Audit health figure counts the same way. On Linux the IDs come from the
 STIG for the distribution (UBTU-24, UBTU-22, ALMA-09, RHEL-09, and RHEL-08
 for AlmaLinux 8; see linux.md).
@@ -757,12 +816,12 @@ than 30 days ago, or protection turned off, show as a gap. It is read once
 a day with `Get-MpComputerStatus`.
 
 **Where to find the definitions date.** Audit health has an **Antivirus**
-table (linked from the bar at the top), one row per system, out-of-date ones first: the antivirus, the
+tab, one row per system, out-of-date ones first: the antivirus, the
 date its definitions were made, how old they are, the version, real-time
 protection (or the ClamAV service), and the result. The Overview's
-checklist has an **Antivirus definitions** line with the oldest date and
-any system that is out of date; each system's health list on the Systems
-page has its own date. All three link to the table (`#health/@av`).
+Needs attention has an **Antivirus out of date** line with the systems
+that are; each system's page on Systems has an Antivirus check line with
+its own date. Both link to the tab (`#health/@av`).
 
 On Linux the same column shows **ClamAV**: the daily database version and
 when it was built (from `clamscan --version`), and whether its scanner
@@ -791,17 +850,89 @@ sidebar is a bar with a **Menu** button that opens the same list.
 
 Every page has **one header**: a breadcrumb line (the report, its period
 and the time zone the page's times are in, then what the page holds,
-e.g. "Daily report · 7 Oct 00:00 – 8 Oct 00:00 EDT · 12 detections · 7
-high, 5 medium"), the title, and only the page's own buttons on the right:
-**Export**, and **Export CSV** on Detections. Search has the same kinds as
-chips, with their counts, and a timeline with times of day for a short
-period.
+e.g. "Daily report · 7 Oct 00:00 – 8 Oct 00:00 EDT · 12 detections"), the title, and only the page's own buttons on the right:
+**Export**, and **Export CSV** on Detections, Search and each event page.
+
+**Search** (UI-R1) is one box that searches every field of every event
+(the summary, system, person, account, address, event ID, action, log,
+program, command, outcome and kind), with dropdowns beside it: **Kind**
+(all, or one kind of event), **Person**, **System** (grouped Servers and
+Workstations), **Servers / workstations**, **Severity** (any, high,
+medium, high or medium, low or info) and **When** (this period, outside
+working hours, or one day). **Common searches ▾** is a menu of eight
+ready-made searches (everything one person did, USB devices on servers,
+admin work after hours, failed logons by source, changes to admin
+groups, logs cleared or audit changed, PowerShell that downloads, Remote
+Desktop logons). On the left, **field counts** for the results shown
+(System, Event, Severity), each with a bar: click a value to show only
+it, click it again to clear it, Alt-click to leave it out (a "Not …"
+chip, with ×, says so). On the right, a count line ("317 events · 14
+systems · 2 high"), **events per hour** across the period (click a bar
+for that hour), then the results, newest first: Time, System, Person,
+Event, Details, ID and Severity, high rows tinted red. **Group by ▾**
+(system, person or event) groups the rows, biggest group first, and
+**Show 50 more** adds the next 50, so a large report stays quick. The
+search runs in the browser over the report's data files; nothing leaves
+the computer.
+
+The page's link keeps the search (`#search?user=jlee&sev=high`), so it
+can be bookmarked or sent, and other pages link to Search the same way.
+The link's parameters, all optional: `page` (the kind of event, an event
+page's name such as `privileged`), `user` (a person), `host` (a system),
+`role` (`server`, `workstation` or `vm`; `host=@server` also works),
+`sev` (`high`, `medium`, `hm` for high or medium, `li` for low or info),
+`when` (a day `20261007`, an hour `2026100714`, `@after` for outside
+working hours, or `@slot:D-H`, a weekday hour), `at` and
+`span` (a time in Unix seconds and the seconds either side of it:
+"±10 min"), `text`, `event` (an action, e.g. `log_cleared`), `sub` (an
+event page's kind, e.g. `Admin logon`), `flag` (e.g. `New device`), `not`
+(`field:value` to leave out, may repeat), `group` (`host`, `user`,
+`event` or `sub`), `sort` (`src` for by source address; `sort=host` groups
+by system) and `preset` (a common search's name). `#search/<text>`
+searches for the text.
+
+**Events by kind.** Each event page (Privileged activity, Audit
+integrity, Logon activity, …) is Search with its **Kind** preset, shown as
+a chip: the same box ("Search within privileged activity…"), filters,
+field counts (Person, System and the page's own kind, e.g. Admin logon or
+sudo / run as admin), events per hour and results. The results are High
+and Medium first, then newest, with the columns Time, System, Person,
+Command or action (the command when there is one) and Severity. The ×
+on the Kind chip opens Search with the same filters for every kind of
+event. The breadcrumb says what the page holds ("admin rights, sudo and
+root commands").
+
+**The event panel** opens from any row (Search, an event page, an event
+on Detections or a system's page) at the right of the page: a breadcrumb
+("Search › event · Security 4688"), the event in plain words, its
+severity and "part of the detection … →" when it is in one. Then **When**
+(local time and UTC, to the millisecond), **System** (with its OS),
+**Person** (`HOST\account`, and "administrator" or "standard user" from
+the system's inventory), the address it came **From**, **Program**,
+**Command**, **Started by** (the program that started it and the logon
+session it came from, e.g. "cmd.exe (from a Remote Desktop session from
+WS-ADM-01)"), **Outcome**, and the **Original record**: the file in the
+system's original-log zip that holds it and its record number
+(`logs-SRV-DC02.zip › Security.evtx, record 884,212`), for an assessor to
+find it in Event Viewer or with `ausearch`. **Around it on <system>** lists
+the four events before and after it on that system (click one to open
+it). **Context** gives **Seen before** (whether earlier scheduled reports
+saw the event's person on its system, or else its USB device, service or
+source address: "never on SRV-DC02 in 84 reports", "on SRV-DC01 in all 84
+earlier reports"; left out when no earlier report kept what it saw), the
+ATT&CK technique its action stands for, where
+the mapping is clear (a log cleared is T1070.001 on Windows, T1070.002 on
+Linux; a program run has none), and, for a command, how many other
+systems ran it this period. Then **Everything <person> did**, **±10 min on
+<system>** (Search around it), **Copy for a ticket** (the event as plain
+text, its time with the zone, for a ticket or an email) and **Raw
+record ▾**, the event's original fields.
 
 **Export** opens a menu in two parts. **This page** is what the page shown
-holds, as CSV: "Detections shown (12)" (only the severity chosen), the
+holds, as CSV: "Detections shown (12)" (only those the filters show), the
 rows an event page or Search shows, Systems, every audit setting on Audit
 health, Inventory's systems, drives and accounts, the original-log zips. A
-page with nothing to list (the Overview, People, Trends) has no This page
+page with nothing to list (the Overview) has no This page
 part. **Whole report** has the printable **Summary** (print it or save it
 as PDF), **All events (n)** (`events.zip`), **Systems and drives** (each
 system with its make, model and serial number, one row per drive with the
@@ -821,28 +952,88 @@ the title says so in red ("This report's original logs do not match",
 failing check comes first with the file to blame, and the report card's
 line turns red. Then: "Check it yourself: `blackbox verify`".
 
-- **Overview.** Four headline numbers for this report (systems
-  reporting, detections, events, and systems whose audit settings match
-  the STIG), the activity counters that are not zero (the rest are named
-  in one line), **Health** with each problem once and a line for what is
-  fine, and **Detections**. The trends below it, which count every
-  report by calendar week, appear once there are two full weeks.
+- **Overview** (UI-R1). One line says what **needs review** ("Needs
+  review: 7 high detections, 2 systems not reporting"; also audit events
+  lost, or original logs not archived; medium detections only when there
+  is nothing else), with the most serious facts in a sentence or two: the
+  two worst high detections (logs cleared or auditing changed first, then
+  new access) and the systems that sent nothing. When there is nothing, it
+  says **Nothing needs review** in green. Under it, **one row of numbers**:
+  Detections (high · medium), Systems reporting (n / N, how many silent),
+  Events (privileged · logons) and Audit settings (systems matching the
+  STIG, settings to fix); each opens its page.
+  **Detections** lists up to eight, high first then newest, one line each:
+  the title, a short reason, the system and the time. A line opens that
+  detection on Detections; "All 12 detections (4 more medium) →" opens
+  the page. **Needs attention** has one line per kind of problem (not
+  reporting, logs cleared, CAT I findings, audit settings, events
+  overwritten, antivirus, original logs missing, …), with a short reason
+  and the systems (named when one or two, else counted); a line opens the
+  page with the detail. Then one "Fine: …" line for what is fine, with how
+  many systems are reporting normally.
+  **Activity this period** is the events per hour (per day over more than
+  eight days), Windows and Linux stacked in two colours, with a red dot on
+  each hour that has a detection. Clicking a bar opens Search for that
+  hour (`when=2026100714`), or that day for a per-day bar.
+  **Systems at a glance** lists only the systems with a red check, grouped
+  Servers / Workstations, with six squares (Reporting, Logs intact,
+  Settings, Antivirus, Original logs, SCAP; green ok, amber warning, red
+  problem, grey no data; each opens its detail) and the events; then "23
+  more systems with no problems (20 with warnings, 3 all OK)" and a link
+  to all of them on the Systems page. The trends and "what changed" are on
+  Trends.
+- **Systems** (UI-R1). One table of every system, grouped **Servers** and
+  **Workstations**, worst first, with a filter bar: **Find a system**,
+  **All / Problems / Warnings / OK** with their counts, **OS** and
+  **Role**. Each row: a status dot and the name, the OS, six squares
+  (green ok, amber warning, red problem, grey no data) for **Reporting**
+  (collections received against those expected), **Logs intact** (none
+  cleared, nothing overwritten), **Settings** (audit settings to fix),
+  **Antivirus**, **Orig. logs** (its zip in this report) and **SCAP**,
+  then its events, detections and when it was last seen. A square links to
+  where the detail is (the Overview's Systems at a glance shows the same
+  squares); a row opens the system.
+- **One system** (`#systems/NAME`): "Systems › Servers › NAME", **Search
+  this system** and **Prev / Next** through the list. Its problem in one
+  chip, then what it is (OS · role · make and model · the collector it
+  sends to, when known). Six facts: events, detections, last collection
+  and how often it collects (read from its collections), audit settings
+  to fix of those checked, SCAP score and open CAT I, and the size of its
+  original logs. The **collection strip** has one cell for each
+  collection expected in the period (24 for an hourly system over a
+  day; a long period puts several in one cell): green when it came, grey
+  when it was missed, amber when events were overwritten before they were
+  collected, and a red mark where a log was cleared. Then the six
+  **Checks** in one line each (problems first, with **Audit health →**),
+  **Detections** on it, its **Activity** per hour with a red dot on each
+  hour with a detection, **Who was active** (the busiest accounts, what
+  they are and their events) and **Events by kind** (noting a kind well
+  above the typical system on the network).
+- **Detections** (UI-R1). A **filter bar**: All / High / Medium with
+  counts, System, Person, and Servers / workstations. On the left, the
+  detections grouped **High · n** and **Medium · n**, newest first in each,
+  one line each with the system and time. On the right, the one chosen:
+  its title and severity, **one plain sentence** of what happened, **four
+  facts** (System with its OS and role, Person with what the account is
+  there, When with the time zone, Record: the log, event ID and record
+  number), and one line on **why it matters** and what the original logs
+  in this report still hold of it. **What happened** lists the events ten
+  minutes either side on that system for that person, the detection's own
+  events marked in red; a row opens the event. **Open in Search (±10 min)**
+  opens Search on the same events (that system and person, `at` and
+  `span`), and **Everything <person> did** opens Search for the person. **Related this period**
+  lists the other detections with the same person or system. Export CSV
+  saves the detections the filters show.
 - **Each fact once.** The Systems page gives a system's audit settings
   to fix as a count that links to Audit health, which lists them. A
   system that sent nothing says so once.
-- **Columns that say nothing are hidden.** Severity when no row is High
-  or Medium; a Kind, Session or From that is the same on every row. With
-  a Person column, the summary leaves out the person's name (the event's
-  panel keeps it).
-- **Short and empty periods.** A page with no events is one line. A
-  period of a day or less is charted by hour, and "Above normal" is shown
-  only when there are at least three days with events to compare. "Not
-  enough history" is said once, and trend tiles appear once there is
+- **Short and empty periods.** A page with no events is one line.
+  "Not enough history" is said once, and trend charts appear once there is
   history.
 - **A manual report** says so in a banner on the Overview, and in a
   "Manual" chip by the title on every other page.
 - **On a phone** (390 pixels wide) the page never scrolls sideways: the
-  Overview's tiles wrap their text instead of cutting it, and the manual
+  Overview's numbers wrap their notes instead of cutting them, and the manual
   banner puts its label above its text (UI20).
 - **SSH logons on Windows** show the address they came from: the 4624
   Windows writes for an OpenSSH sign-in has none, so Blackbox reads the
@@ -850,6 +1041,63 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
   "Accepted … from <address>" line to the logon.
 - **Privileged actions** count people's actions, as Trends' "by person"
   table does; actions by service accounts are listed but not counted.
+
+### People
+
+![People: a person](testing/2026-10-02-v0.10.1/shots/ui/uir1-final-people-after-1440.png)
+
+**People** lists every account that did something this period. With local
+accounts (no domain) the same person has a separate account on each
+system: accounts with the same name are **one row** ("jlee" on 9 systems),
+whatever system or domain prefix the logs give them. A different spelling
+("j.lee") is a different row unless the `people_aliases` setting names it
+([configuration](configuration.md)): `blackbox config set people_aliases
+"jlee=j.lee,jlee2"`.
+
+- **The list** has "Find a person or account" (it also finds the
+  spellings people_aliases merges) and **All / Detections / Admins** with
+  their counts, then three groups: **Administrators** (an administrator in
+  a system's inventory, or someone who used administrator rights),
+  **Users**, and **Shared and service accounts** (root, Administrator and
+  service accounts). Each name has one line ("admin on 9 systems", "3
+  systems", "built-in, Linux · on 15 systems") and a badge with its
+  detections. People with a detection come first; after ten in a group the
+  rest are folded ("+293 more administrators with no detections · Show").
+  The footnote says how many other local accounts on the systems were not
+  used this period, with a link to Inventory.
+- **A person** has a summary line ("Local account on 9 systems ·
+  administrator on all 9 · used on 5 this period") and a detection chip;
+  six facts (systems used, of those with the account; logons, with how many
+  by Remote Desktop and SSH; failed logons; privileged actions; after
+  hours; detections); **Where and when**, one lane per system they used
+  across the period, with their sessions as bars and a red mark at each
+  detection (six lanes, the rest in one "… N more" lane); **Notable
+  actions**, the high and medium ones, one line each, and "all N in
+  Search →"; and **Accounts named jlee**, one row per system's account
+  (`SRV-DC02\jlee`) with its rights, logons this period and when it was
+  last used, then "+ 4 systems where jlee exists but wasn't used" (from the
+  inventory) and a note that these are separate accounts shown as one
+  person. A spelling merged by people_aliases is marked on its row. Below:
+  the detections involving them and **Over time**.
+- **Sessions** come from logon and logoff events: a logon opens one, the
+  logoff with the same logon ID (or the next logoff) closes it, and a
+  session with no logoff in the period ends at the last thing done in it.
+  Activity outside any session (sudo with no logon in the period, a
+  scheduled job) is a short bar, events within 20 minutes joined.
+- **A shared or built-in account** (root, Administrator, a service account)
+  is labelled "Shared built-in account · a separate account on each of 15
+  Linux systems · not one person". **Who acted as root** splits what was
+  done as it: by the person who ran sudo, su or pkexec (Linux) or RunAs
+  (Windows), each with systems and count, since Blackbox lists those
+  actions under that person; **Jobs and services**, actions by the account
+  itself with no person behind them; and **Direct logon** (console, SSH or
+  Remote Desktop as the account itself). A box says plainly whether anyone
+  logged on as it directly ("No one logged on as root directly", or in red
+  "Administrator logged on directly once on WS-LAB-01 (1 console): the
+  person is not recorded"), and how many attempts to log on as it failed.
+  Then its six facts and the Where and when lanes.
+- **Export CSV** gives one row per person per system's account: person,
+  kind, account, rights, logons this period, last used, detections.
 
 ## Output files
 
@@ -909,16 +1157,35 @@ every event a detection points to, is always listed. All of them are in
 the original logs. Tables draw only the rows on screen, so a page with
 hundreds of thousands of events still scrolls smoothly.
 
-The folder of reports has an `index.html`, **All reports**: detections per
-calendar week (manual reports not included, and nothing drawn until 2
-full weeks), and each report with its period, systems, events,
-detections and whether its audit trail is complete. A period of one whole
-day is one date ("5 Oct 2026"); one that starts or ends during a day shows
-the times ("5 Oct 00:00 – 06:44"). Numbers have thousands separators
-everywhere ("95,229 events lost"). The
-newest is marked **Latest**; click a row to open it. In a report, the
-**All reports** button at the top of every page (and in the menu) opens
-it. The date range next to it only shows the report's period.
+The folder of reports has an `index.html`, **All reports**. Its sidebar
+links into the latest report's pages and shows its card. At the top, four
+cards:
+
+- **Latest report**: its day, its High and Medium detections, **Open →**.
+- **Next report**: when the next scheduled report is due, and what each
+  covers ("daily · each covers the day before").
+- **Reports checked**: what the report ledger found, "1 changed" in red or
+  "All 40 OK" in green, then "39 OK · 1 accepted as deleted · checked
+  daily".
+- **In this folder**: how many reports ("40 daily, 1 manual") and the size
+  of the folder.
+
+Then one table of every report, newest first, grouped by month. **Report**
+is its day ("Wed 7 Oct"; a manual report shows its times, "Wed 7 Oct
+00:00 – 14:40"), with a **Latest** or **Manual** chip. **Notes** say what
+is wrong ("1 log cleared · 2 silent · 261 events lost", "logs-WS-04.zip
+missing") and, for a manual report, why it was made when that was given.
+Then **Systems** (reporting of all, "28/30"), **Events**, **High**,
+**Medium**, **Original logs** (the size of its log zips) and **Check**,
+from the ledger: **✓ OK**, **Changed** (hover for what changed) or
+**Accepted** (accepted with `blackbox reports accept`). A scheduled report
+that is gone keeps its row ("Missing: deleted or moved"). Filters show
+**All**, **Scheduled**, **Manual**, **With high** or **Problems** (an
+incomplete audit trail, or changed or missing); under All, the newest 20
+show and "22 older reports · Show older" opens the rest. **Export list
+CSV** saves the table. Click a row to open its report. In a report, **All
+reports →** on the sidebar's report card opens it. Detections by week are
+on Trends.
 
 **Trends.** Each scheduled report keeps its counts day by day in
 `summary.json` (`days`), and later reports add them up by **calendar
@@ -940,17 +1207,53 @@ split between them.
 - Charts are labelled with the weeks' dates, and say how many weeks they
   show (up to 13).
 
-The Overview's **What changed** panel lists the biggest moves: a
-network-wide count (failed logons, privileged actions, …) up or down by
-25% or more on the average week, a system with more detections than
-usual, and a person with more privileged actions than usual or with
-privileged actions for the first time. The Trends page charts the
-network's counts and has detections per system and privileged actions per
-person, by week. On the People page, each person's **Over time** panel
-compares this week's privileged actions, after-hours actions, logons,
-failed logons and detections with their own average week. The list of
-reports has **Detections per week** by the same calendar weeks, without
-manual reports, from 2 complete weeks on.
+The **Trends** page shows **4, 8 or 12 weeks** (8 at first), this week
+included; the switch is at the top, with **Export CSV** (every measure,
+one row per week of the range shown) and **Monthly summary (PDF)**, the
+page at 4 weeks, printed (save it as PDF).
+
+- **Six small charts**, one bar per week: detections, failed logons,
+  privileged actions by people, systems matching the STIG, events lost to
+  rollover and after-hours admin actions. Each shows this week's number
+  and **usual N**, the median of the complete earlier weeks. This week's
+  bar is **red** when it is worse than usual, **green** when better and
+  **blue** otherwise; "this week · 3 of 7 days" under it, and a week not
+  yet over is compared with the usual week by the same point (a change
+  under 25%, or of fewer than 3, is no change). Systems matching the STIG
+  is the state at the week's last report.
+- **Biggest changes this week**: up to six lines, the largest moves
+  against each one's usual week, with a short why: the network's totals
+  (these six and high-severity events, USB events, account changes,
+  systems reporting), each system's detections ("Security log cleared")
+  and failed logons ("SSH guessing from 203.0.113.50 on 7 Oct"), each
+  person's privileged and after-hours actions and the systems they used
+  ("first time on SRV-DC01"). Red is much worse, orange worse, green
+  better.
+- **Detections by system, by week**: darker red for more. Only systems
+  with a detection in the range are listed; "23 others had none · All 30"
+  shows the rest.
+- **New this week**, never seen in the earlier weeks of the range: a new
+  **administrator** (account and system), a new **account**, a new
+  **logon path** (person → system, and how: Remote Desktop, SSH,
+  Console), a new **source address** (and what it did: "412 SSH failures
+  on ubu-web01"), a new **service** and a new **USB device**. Each
+  scheduled report keeps the sets these are compared with in
+  `summary.json` (`seen`: administrators and accounts of each system
+  from its inventory and the events, who used which system and how, the
+  addresses events came from, services installed, USB devices), and the
+  next reports read them back like the day counts. Reports made before
+  these were kept have none, so the list starts the week after.
+
+The same sets let an event say whether its person was on its system
+before: the event panel's **Seen before**, "never on SRV-DC02 in 84
+reports". People are keyed as on the People page (with
+`people_aliases`), in this report and the earlier ones.
+
+The Overview's old **What changed** panel is gone: Trends' **Biggest
+changes this week** lists those moves now. On the People page, each person's
+**Over time** panel compares this week's privileged actions, after-hours
+actions, logons, failed logons and detections with their own average
+week.
 
 Reports made before 0.16 did not keep counts by day. A report from then
 whose whole period lies in one calendar week (a daily report) still
@@ -958,10 +1261,7 @@ counts; one that spans two weeks (a weekly report ending mid-week) can't
 be split and is left out, except for its detections, which carry their
 times.
 
-**Clicking through.** The boxes at the top of each event page filter the
-table below them: for example **Accounts locked out** shows only the
-lockouts, **New devices** only the devices seen for the first time, and the
-first box shows everything again. Boxes about another page open it. On a
-person's page, each hour of **When they were active** can be clicked: a
-red hour shows only the detections in that hour; any other hour opens
-Search with that person's events in that hour of the week.
+**Clicking through.** On an event page or Search, a value in the field
+counts or a bar of the chart filters the results. On a person's page,
+each system's name in **Where and when** opens Search with that person's
+events on that system, and each red mark opens its detection.

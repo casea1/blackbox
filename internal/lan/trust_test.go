@@ -113,16 +113,16 @@ func TestPartialFileWaitsThenRefused(t *testing.T) {
 		Events: [][]byte{[]byte(`{"host":"WS-09","summary":"x"}`)}}
 	data, _ := b.Bytes()
 	for _, cut := range []int{0, 5, len(data) / 2, len(data) * 3 / 4} {
-		p := filepath.Join(in, fmt.Sprintf("WS-09_w9_0000000001_%012d.bbx", cut))
+		p := filepath.Join(in, fmt.Sprintf("WS-09_w9_0000000001-%012d.bbx", cut))
 		os.WriteFile(p, data[:cut], 0o640)
 		os.Chtimes(p, t0, t0)
 	}
 	arch := fakeArchive(t, t.TempDir(), "a.zip", "WS-09", t0, t0.Add(time.Hour), "logs")
 	zip, _ := os.ReadFile(arch)
-	pa := filepath.Join(in, "archive_w9_WS-09_x_0123456789ab.zip")
+	pa := filepath.Join(in, "archive_w9_WS-09_x-0123456789ab.zip")
 	os.WriteFile(pa, zip[:len(zip)/2], 0o640)
 	os.Chtimes(pa, t0, t0)
-	ps := filepath.Join(in, "scap_w9_0123456789abcdef_0123456789ab.xml.gz")
+	ps := filepath.Join(in, "scap_w9_0123456789abcdef-0123456789ab.xml.gz")
 	gz := gzipBytes(t, "<x/>")
 	os.WriteFile(ps, gz[:len(gz)-4], 0o640)
 	os.Chtimes(ps, t0, t0)
@@ -310,7 +310,7 @@ func TestFirstSeqWindow(t *testing.T) {
 }
 
 // DESIGN1: the sender never looks in the inbox. Each delivery has a
-// name of its own (HOST_SENDERID_SEQ_RANDOM.bbx), made only if no file has
+// name of its own (HOST_SENDERID_SEQ-RANDOM.bbx), made only if no file has
 // it, so a file someone else put there under the batch's name is never
 // taken for it, overwritten or read.
 func TestDeliverNeverTakesAnotherFile(t *testing.T) {
@@ -325,8 +325,8 @@ func TestDeliverNeverTakesAnotherFile(t *testing.T) {
 	if b, _ := os.ReadFile(planted); string(b) != "someone else's" {
 		t.Error("the planted file was changed")
 	}
-	got, _ := filepath.Glob(filepath.Join(in, "WS-05_"+ws.State.Send.ID+"_0000000001_*.bbx"))
-	if len(got) != 1 || len(filepath.Base(got[0])) != len("WS-05_"+ws.State.Send.ID+"_0000000001_0123456789ab.bbx") {
+	got, _ := filepath.Glob(filepath.Join(in, "WS-05_"+ws.State.Send.ID+"_0000000001-*.bbx"))
+	if len(got) != 1 || len(filepath.Base(got[0])) != len("WS-05_"+ws.State.Send.ID+"_0000000001-0123456789ab.bbx") {
 		t.Fatalf("delivered as %v", got)
 	}
 	col, _ := store.Open(t.TempDir())

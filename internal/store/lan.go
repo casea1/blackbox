@@ -48,7 +48,9 @@ type SendState struct {
 	// virtual machine on the collector's PC (UI2).
 	VM bool `json:"vm,omitempty"`
 	// Folder was this computer's own folder in a 0.23 collector's inbox.
-	// No longer used: 0.24 delivers into the drop-only inbox (DESIGN1).
+	// 0.24 delivers into the drop-only inbox (DESIGN1), and into this
+	// folder only while a 0.23 collector still has it (senders upgraded
+	// before the collector).
 	Folder string `json:"folder,omitempty"`
 }
 
