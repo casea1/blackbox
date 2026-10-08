@@ -156,6 +156,20 @@ func registerUninstall(exe, version string) error {
 // runs as SYSTEM and reads the report folder from the config each run.
 func afterReportDirChange(func(string, ...any)) error { return nil }
 
+// CanGrantSystem says GrantSystem works here.
+const CanGrantSystem = true
+
+// GrantSystem gives SYSTEM, which Blackbox's scheduled runs run as,
+// Modify access to a folder (and what it holds), leaving every other
+// entry as it is: a folder open only to an auditors' group stays closed to
+// administrators.
+func GrantSystem(dir string) error {
+	if out, err := hidden.Command("icacls.exe", dir, "/grant", "*S-1-5-18:(OI)(CI)M").CombinedOutput(); err != nil {
+		return fmt.Errorf("%v: %s (as the folder's owner, run: icacls \"%s\" /grant *S-1-5-18:(OI)(CI)M)", err, strings.TrimSpace(string(out)), dir)
+	}
+	return nil
+}
+
 // restrictDir limits a folder Blackbox created to Administrators and
 // SYSTEM (by SID, so it works on any language version of Windows).
 func restrictDir(dir string) error {

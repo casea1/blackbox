@@ -98,6 +98,13 @@ func Run(o Options) (Result, error) {
 		logf("")
 		logf("Done. The first report will be produced at the next scheduled run.")
 		logf("Reports will be saved in %s", cfg.ReportsDir())
+	case install.CanGrantSystem && install.CheckWritable(cfg.ReportsDir()) != nil:
+		// A folder open only to some people (an auditors' group): the
+		// scheduled task, started by the install as SYSTEM, writes the
+		// first report there; this window can't.
+		logf("")
+		logf("Done. The scheduled task (running as SYSTEM) produces the first report in %s.", cfg.ReportsDir())
+		logf("Your account can't open that folder; the people given access to it can.")
 	case o.Reinstall && Reported(a):
 		// An upgrade or a settings change keeps the report schedule: the
 		// next scheduled report covers the whole period as usual.

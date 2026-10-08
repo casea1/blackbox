@@ -44,6 +44,13 @@ that Blackbox can write to:
 
 - **If the folder already exists,** its permissions are left exactly as
   they are.
+- **If it exists but you can't write to it** (a local folder open only to
+  a group such as auditors, with no access for Administrators), setup
+  offers to give SYSTEM Modify access to it. The scheduled task runs as
+  SYSTEM and writes the reports; no one else's access changes, and
+  administrators still get none. Unattended installs do this without
+  asking. The first report is then written by the scheduled task, not by
+  setup.
 - **If it doesn't exist,** Blackbox offers to create it, restricted to
   Administrators and SYSTEM.
 
@@ -160,7 +167,8 @@ Reports open in your normal browser without administrator rights. The
 default reports folder is readable only by administrators with full
 rights. If your account can't open it, the icon asks before giving your
 account read access to that folder. This is the same as Explorer's
-**Continue** button.
+**Continue** button. For a reports folder you chose, nothing is offered: the icon says your
+account can't open it, and its access stays as whoever set it up decided.
 
 ## Where things are
 

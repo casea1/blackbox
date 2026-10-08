@@ -241,6 +241,12 @@ func unitPaths(cfg *config.Config) (mount string, writable []string) {
 // restrictDir limits a folder Blackbox created to root.
 func restrictDir(dir string) error { return os.Chmod(dir, 0o700) }
 
+// CanGrantSystem is false: root can write to any local folder.
+const CanGrantSystem = false
+
+// GrantSystem is not needed here.
+func GrantSystem(string) error { return errors.New("not supported on this system") }
+
 func copyFile(src, dst string, mode os.FileMode) error {
 	in, err := os.Open(src)
 	if err != nil {

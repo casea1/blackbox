@@ -8,9 +8,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 
+	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/hidden"
 )
 
@@ -52,6 +54,12 @@ func openReport(owner uintptr, file, reportsDir string) {
 	}
 	if reportsDir != "" && !userCanRead(file) {
 		account, sid := currentAccount()
+		if !strings.EqualFold(filepath.Clean(reportsDir), filepath.Join(config.DefaultDataDir(), "reports")) {
+			// A folder someone chose and limited (such as an auditors'
+			// group): its access is theirs to decide, so nothing is offered.
+			messageBox(owner, account+" can't open "+reportsDir+". Only the people given access to that folder can open its reports.", "Blackbox", mbOK|mbIconWarning)
+			return
+		}
 		if messageBox(owner, folderAccessQuestion(reportsDir, account), "Blackbox", mbYesNo|mbIconQuestion) != idYes {
 			return // No: nothing is changed
 		}

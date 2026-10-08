@@ -544,7 +544,7 @@ func (s *setupWin) check_() bool {
 			if err := install.ReportDirError(s.a.ReportDir); err != nil {
 				return warn("dir", err.Error())
 			}
-			if !s.folderOK(s.a.ReportDir, "That folder does not exist yet. Create it (administrators only)?") {
+			if !s.folderOK(s.a.ReportDir, "That folder does not exist yet. Create it (administrators only)?", true) {
 				pSetFocus.Call(s.c["dir"])
 				return false
 			}
@@ -557,7 +557,7 @@ func (s *setupWin) check_() bool {
 			if err := install.ReportDirError(s.a.ArchiveDir); err != nil {
 				return warn("logs", err.Error())
 			}
-			if !s.folderOK(s.a.ArchiveDir, "That folder does not exist yet. Create it (administrators only)?") {
+			if !s.folderOK(s.a.ArchiveDir, "That folder does not exist yet. Create it (administrators only)?", true) {
 				pSetFocus.Call(s.c["logs"])
 				return false
 			}
@@ -566,7 +566,7 @@ func (s *setupWin) check_() bool {
 		if err := install.InboxError(s.a.Inbox, install.DefaultInbox()); err != nil {
 			return warn("inbox", err.Error())
 		}
-		if !s.folderOK(s.a.Inbox, "That folder does not exist yet. Create it?") {
+		if !s.folderOK(s.a.Inbox, "That folder does not exist yet. Create it?", false) {
 			pSetFocus.Call(s.c["inbox"])
 			return false
 		}
@@ -602,11 +602,18 @@ func (s *setupWin) check_() bool {
 }
 
 // folderOK checks a folder answer; a missing one is offered for creation
-// (it is created during the install).
-func (s *setupWin) folderOK(dir, create string) bool {
+// (it is created during the install), and a report folder the person can't
+// write to (grant) for giving SYSTEM access, also during the install.
+func (s *setupWin) folderOK(dir, create string, grant bool) bool {
 	switch c, err := install.CheckFolder(dir, dirExists, install.CheckWritable); c {
 	case install.FolderOK:
 		return true
+	case install.FolderNoAccess:
+		if grant {
+			return messageBox(s.hwnd, install.GrantSystemQuestion(dir), "Blackbox setup", mbYesNo|mbIconQuestion) == idYes
+		}
+		messageBox(s.hwnd, fmt.Sprintf("Blackbox cannot write to that folder (%v).", err), "Blackbox setup", mbOK|mbIconWarning)
+		return false
 	case install.FolderBad:
 		messageBox(s.hwnd, err.Error()+".", "Blackbox setup", mbOK|mbIconWarning)
 		return false

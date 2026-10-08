@@ -110,9 +110,10 @@ func ForRole(a Answers) Answers {
 type FolderCheck int
 
 const (
-	FolderOK      FolderCheck = iota // exists and can be written to
-	FolderMissing                    // does not exist yet: offer to create it
-	FolderBad                        // unusable; the error says why
+	FolderOK       FolderCheck = iota // exists and can be written to
+	FolderMissing                     // does not exist yet: offer to create it
+	FolderBad                         // unusable; the error says why
+	FolderNoAccess                    // exists, but the person running setup can't write to it
 )
 
 // CheckFolder checks a report or inbox folder. dirExists and dirWritable
@@ -126,9 +127,22 @@ func CheckFolder(dir string, dirExists func(string) (bool, error), dirWritable f
 		return FolderMissing, nil
 	}
 	if err := dirWritable(dir); err != nil {
+		// A local folder open only to some people (such as an auditors'
+		// group): Blackbox's scheduled runs, not the person running setup,
+		// write the reports, so SYSTEM can be given access instead.
+		if CanGrantSystem && !config.IsShare(dir) {
+			return FolderNoAccess, err
+		}
 		return FolderBad, fmt.Errorf("Blackbox cannot write to that folder (%v).\nChoose another folder, or give administrators write access and try again", err)
 	}
 	return FolderOK, nil
+}
+
+// GrantSystemQuestion asks before giving SYSTEM access to a folder the
+// person running setup can't write to.
+func GrantSystemQuestion(dir string) string {
+	return "You can't write to " + dir + " yourself. Blackbox's scheduled runs write the reports as SYSTEM.\n" +
+		"Give SYSTEM Modify access to this folder? No one else's access changes, and administrators get none."
 }
 
 // ReportDirError says what is wrong with a typed report folder, or nil.

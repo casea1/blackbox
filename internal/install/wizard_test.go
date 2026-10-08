@@ -95,13 +95,19 @@ func TestWizardDefaults(t *testing.T) {
 }
 
 func TestWizardAnswersAndRetries(t *testing.T) {
-	input := lines(
+	// A folder that exists but can't be written to is refused, or, where
+	// SYSTEM can be given access (Windows), offered for that: declined here.
+	readonly, refused := []string{abs("/srv/readonly")}, "cannot write to that folder"
+	if CanGrantSystem {
+		readonly, refused = append(readonly, "n"), "Give SYSTEM Modify access"
+	}
+	input := lines(append(append([]string{
 		"1",      // standalone
 		"Lab 3",  // site
 		"9", "1", // invalid choice is asked again, then daily
 		"noon", "06:30", // invalid time is asked again
-		"reports",               // relative path: asked again
-		abs("/srv/readonly"),    // exists but not writable: asked again
+		"reports", // relative path: asked again
+	}, readonly...),
 		abs("/srv/new-reports"), // does not exist…
 		"y",                     // …create it
 		abs("/srv/logs"),        // original logs on another volume…
@@ -109,7 +115,7 @@ func TestWizardAnswersAndRetries(t *testing.T) {
 		"1",                     // every 15 minutes
 		"",                      // SCAP results: the default
 		"",                      // confirm
-	)
+	)...)
 	a, out, err := runWizard(t, input, Answers{}, fakeEnv{existing: map[string]bool{abs("/srv/readonly"): true}}, false)
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +124,7 @@ func TestWizardAnswersAndRetries(t *testing.T) {
 	if !reflect.DeepEqual(a, want) {
 		t.Errorf("got %+v, want %+v", a, want)
 	}
-	for _, s := range []string{"Please enter a number from 1 to 3", "Please enter a full path", "cannot write to that folder", "does not exist yet"} {
+	for _, s := range []string{"Please enter a number from 1 to 3", "Please enter a full path", refused, "does not exist yet"} {
 		if !strings.Contains(out, s) {
 			t.Errorf("output missing %q", s)
 		}
