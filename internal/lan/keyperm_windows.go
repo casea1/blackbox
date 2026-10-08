@@ -7,19 +7,48 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
-
-	"github.com/casea1/blackbox/internal/hidden"
 )
 
-var procGetAce = syscall.NewLazyDLL("advapi32.dll").NewProc("GetAce")
+var (
+	procGetAce                = syscall.NewLazyDLL("advapi32.dll").NewProc("GetAce")
+	procInitializeAcl         = syscall.NewLazyDLL("advapi32.dll").NewProc("InitializeAcl")
+	procAddAccessAllowedAceEx = syscall.NewLazyDLL("advapi32.dll").NewProc("AddAccessAllowedAceEx")
+	procSetNamedSecurityInfoW = syscall.NewLazyDLL("advapi32.dll").NewProc("SetNamedSecurityInfoW")
+)
 
-// restrictKey gives the key file to Administrators and SYSTEM alone, with
-// nothing inherited.
+// restrictKey gives the key file to Administrators and SYSTEM alone: its
+// whole access list is set, with nothing inherited from the folder (so
+// no entry for the account that made it is left over).
 func restrictKey(path string) error {
-	out, err := hidden.Command("icacls.exe", path, "/inheritance:r",
-		"/grant:r", "*S-1-5-32-544:F", "/grant:r", "*S-1-5-18:F").CombinedOutput()
+	const aclRevision, fileAllAccess = 2, 0x1F01FF
+	const seFileObject, daclSecurityInfo, protectedDacl = 1, 0x4, 0x80000000
+	var sids []*syscall.SID
+	size := uint32(8)
+	for _, s := range []string{"S-1-5-18", "S-1-5-32-544"} {
+		sid, err := syscall.StringToSid(s)
+		if err != nil {
+			return err
+		}
+		sids = append(sids, sid)
+		size += 8 + syscall.GetLengthSid(sid)
+	}
+	size = (size + 3) &^ 3
+	acl := make([]byte, size)
+	if r, _, err := procInitializeAcl.Call(uintptr(unsafe.Pointer(&acl[0])), uintptr(size), aclRevision); r == 0 {
+		return fmt.Errorf("restrict %s: %w", path, err)
+	}
+	for _, sid := range sids {
+		if r, _, err := procAddAccessAllowedAceEx.Call(uintptr(unsafe.Pointer(&acl[0])), aclRevision, 0, fileAllAccess, uintptr(unsafe.Pointer(sid))); r == 0 {
+			return fmt.Errorf("restrict %s: %w", path, err)
+		}
+	}
+	p, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
-		return fmt.Errorf("restrict %s: %v: %s", path, err, strings.TrimSpace(string(out)))
+		return err
+	}
+	if r, _, _ := procSetNamedSecurityInfoW.Call(uintptr(unsafe.Pointer(p)), seFileObject, daclSecurityInfo|protectedDacl,
+		0, 0, uintptr(unsafe.Pointer(&acl[0])), 0); r != 0 {
+		return fmt.Errorf("restrict %s: %w", path, syscall.Errno(r))
 	}
 	return nil
 }
