@@ -60,19 +60,22 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
 
 ## LAN security
 
-- **Least privilege on the inbox (SEC1).** On a Windows collector, the
-  inbox folder is restricted by SID to:
-  - Administrators and SYSTEM
-  - a local group, **Blackbox Senders**, that may reach the share
+- **Least privilege on the inbox (SEC1, DESIGN1).** The inbox is
+  drop-only: senders can add files to it, and nothing else. On a Windows
+  collector its access list, set by SID, is:
+  - Administrators and SYSTEM: full control (Administrators own it)
+  - **Blackbox Senders**: *Create files / write data* and *Synchronize*,
+    on the folder only (no List, Read, Delete, Create folders or Change
+    permissions; files a sender creates inherit nothing for it)
+  - OWNER RIGHTS: no rights, so creating a file gives its account no
+    implicit right to read or change the file's permissions
+  - the marker `BLACKBOX-INBOX.txt` alone is readable to senders
 
-  Each sender has its own folder in it (`blackbox inbox add NAME
-  ACCOUNT`), which only its account can write to: it can create and write
-  files, but not delete or rename them, change their permissions, or open
-  another sender's folder. On a Linux collector each SFTP account has its
-  own directory (root and the account's group, mode 1730). Collectors set
-  up before 0.23 also accept files in the inbox itself, where every member
-  of Blackbox Senders can write, for one more release; `blackbox status`
-  lists the senders that still deliver there.
+  On a Linux collector the inbox is `root:blackbox-senders`, mode 1730:
+  members create files but can't list it or remove others' files. Setup
+  and the upgrade apply this; 0.23's per-sender folders are emptied into
+  the inbox and removed. CI checks both with a real non-administrator
+  sender account.
 
   If shared, the share grants Change to that group only. The installer
   creates the group and, when asked, adds named accounts to it. It never
@@ -158,7 +161,8 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
   - A computer refuses its own batches.
   - It only delivers to a folder that has the collector's marker file, so
     an unmounted share (an empty local folder) is never written to by
-    mistake.
+    mistake. The marker is the one file in the drop-only inbox senders
+    may read.
 - **What a sender can claim.** A sender supplies the host names in its
   data. The Systems page lists every computer seen, so an unexpected one
   stands out. If one computer delivers collection records for another,
@@ -166,9 +170,8 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
 - **Which account delivered a file (SEC1).** The collector reads the
   owner of each file it imports (the file's owner on NTFS, its user ID on
   Linux), logs it, and puts it in the note of any file it sets aside and
-  in any High row about the inbox. What a sender's folder holds must be
-  from that folder's computer, and a sender ID belongs to one folder: a
-  file that claims to be from another computer is set aside in
+  in any High row about the inbox, as information: senders may share one
+  delivery account. A file the collector can't use is set aside in
   `inbox\rejected` with a `.why.txt`, and `blackbox status` exits 4.
 - **What the collector raises (SEC1).** Two different batches under one
   number, two computers using one sender ID (a cloned computer), two

@@ -222,7 +222,7 @@ func TestParseAnywhereErrors(t *testing.T) {
 func TestCommandsFlagsAfterSubcommand(t *testing.T) {
 	missing := t.TempDir() + "/no-such.conf"
 	for name, run := range map[string]func([]string) error{
-		"systems": cmdSystems, "gaps": cmdGaps, "reports": cmdReports, "inbox": cmdInbox,
+		"systems": cmdSystems, "gaps": cmdGaps, "reports": cmdReports,
 	} {
 		err := run([]string{"accept", "PC", "--config", missing, "1-5", "why"})
 		if err == nil || !strings.Contains(err.Error(), "no-such.conf") {
@@ -231,5 +231,17 @@ func TestCommandsFlagsAfterSubcommand(t *testing.T) {
 		if err := run([]string{"accept", "PC", "--nope"}); err == nil || !strings.Contains(err.Error(), "not defined") {
 			t.Errorf("%s: unknown flag: %v", name, err)
 		}
+	}
+}
+
+// DESIGN1: "blackbox inbox" (0.23's per-sender folders) is gone, and says
+// what replaced it.
+func TestInboxCommandRemoved(t *testing.T) {
+	err := cmdInbox([]string{"add", "PC", "bbsend"})
+	if err == nil || !strings.Contains(err.Error(), "removed in 0.24") || !strings.Contains(err.Error(), "How the inbox is protected") {
+		t.Errorf("inbox: %v", err)
+	}
+	if strings.Contains(usage, "inbox add") {
+		t.Error("usage still lists blackbox inbox add")
 	}
 }

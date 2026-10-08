@@ -80,6 +80,3 @@ func VirtualBoxInstalled() bool { return false }
 func RefreshSchedule(time.Duration) error { return nil }
 
 func applySchedule(time.Duration) error { return nil }
-
-// SenderFolderAccess is for Windows and Linux collectors.
-func SenderFolderAccess(dir, account string) error { return errLinux }

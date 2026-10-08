@@ -286,7 +286,7 @@ own reports locally. This covers standalone air-gapped systems.
   - Hosts that are off catch up later.
   - Missing batches, damaged batches, silent hosts and clock skew are
     reported.
-  - Delivery is exactly-once: an outbox, an atomic rename into the inbox,
+  - Delivery is exactly-once: an outbox, a write under a new unique name into the drop-only inbox (DESIGN1),
     and import that is idempotent by sequence number, with write-ahead
     recovery.
 
@@ -365,7 +365,6 @@ blackbox send                 # collect and send to the collector now (e.g. befo
 blackbox send --resend 214-219  # send kept batches again to fill a gap the collector reports
 blackbox send --new-id        # a computer cloned from another: give it a sender ID of its own
 blackbox systems              # the computers a collector reports on (remove NAME to retire one; rename OLD NEW)
-blackbox inbox add NAME ACCOUNT  # a folder in the collector's inbox only ACCOUNT can write to
 blackbox verify <report-dir>  # check the SHA-256 manifest
 blackbox reports              # scheduled reports made here, and any missing or changed (accept NAME "why")
 blackbox uninstall            # remove the task/timer; reports are kept

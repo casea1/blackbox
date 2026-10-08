@@ -84,6 +84,25 @@ jobs:
             Select-String -Path test.log -Pattern '--- FAIL|^FAIL|_test\.go:\d+' | Select-Object -First 25 | ForEach-Object { Write-Output "::error title=go test::$($_.Line.Trim())" }
             exit 1
           }
+      - name: Drop-only inbox, checked as a non-administrator sender (DESIGN1)
+        shell: pwsh
+        run: |
+          # A sender account in Blackbox Senders, as setup makes for a collector.
+          # Complex and 14 characters at most (or net user asks to confirm).
+          $pw = "Dq7!" + [guid]::NewGuid().ToString("N").Substring(0, 9)
+          net user bbacltest $pw /add
+          if ($LASTEXITCODE -ne 0) { throw "could not create the test account" }
+          net localgroup "Blackbox Senders" /add /comment:"Accounts that may deliver Blackbox audit data to this collector's inbox"
+          net localgroup "Blackbox Senders" bbacltest /add
+          if ($LASTEXITCODE -ne 0) { throw "could not add the test account to Blackbox Senders" }
+          $env:BLACKBOX_ACL_USER = "bbacltest"; $env:BLACKBOX_ACL_PASSWORD = $pw
+          go test ./internal/install -run TestDropOnlyInboxAsSender -v -count=1 2>&1 | Tee-Object -FilePath acl.log
+          $code = $LASTEXITCODE
+          net user bbacltest /delete | Out-Null
+          if ($code -ne 0) {
+            Select-String -Path acl.log -Pattern 'a sender could|could not deliver|_test\.go:\d+' | Select-Object -First 25 | ForEach-Object { Write-Output "::error title=drop-only inbox::$($_.Line.Trim())" }
+            exit 1
+          }
       - name: Tray dialogs open on the first click, the menu at once (TRAY1, TRAY2)
         run: go test ./internal/gui -run "TestFirstDialogShows|TestMenuDoesNotWaitForStatus" -v -count=1
       - name: A run killed while holding the lock leaves nothing behind (LOCK1)
@@ -477,6 +496,23 @@ jobs:
           findmnt /srv/blackbox-sftp || { echo "the mount ended with the send"; exit 1; }
           sudo ./blackbox uninstall
           sudo systemctl stop 'srv-blackbox\x2dsftp.mount'
+      - name: "Drop-only inbox on a Linux collector: root:blackbox-senders 1730 (DESIGN1)"
+        run: |
+          sudo ./blackbox install --yes --site CI --inbox /srv/dropinbox --report-dir /srv/bb-drop-reports --no-first-report
+          test "$(sudo stat -c '%U:%G %a' /srv/dropinbox)" = "root:blackbox-senders 1730" || { sudo stat /srv/dropinbox; exit 1; }
+          # An SFTP sender's account, in the group.
+          sudo useradd -M -s /usr/sbin/nologin -G blackbox-senders bbdrop
+          echo "another sender's batch" | sudo tee /srv/dropinbox/OTHER_id_0000000001_0123456789ab.bbx > /dev/null
+          sudo -u bbdrop test -r /srv/dropinbox/BLACKBOX-INBOX.txt || { echo "a sender can't read the inbox marker"; exit 1; }
+          sudo -u bbdrop sh -c 'set -o noclobber; echo mine > /srv/dropinbox/MINE_id_0000000001_0123456789ab.bbx' || { echo "a sender can't add a file"; exit 1; }
+          if sudo -u bbdrop ls /srv/dropinbox; then echo "a sender can list the inbox"; exit 1; fi
+          if sudo -u bbdrop cat /srv/dropinbox/OTHER_id_0000000001_0123456789ab.bbx; then echo "a sender can read another's file"; exit 1; fi
+          if sudo -u bbdrop rm /srv/dropinbox/OTHER_id_0000000001_0123456789ab.bbx; then echo "a sender can delete another's file"; exit 1; fi
+          if sudo -u bbdrop mv /srv/dropinbox/OTHER_id_0000000001_0123456789ab.bbx /srv/dropinbox/x.bbx; then echo "a sender can rename another's file"; exit 1; fi
+          if sudo -u bbdrop sh -c 'echo x >> /srv/dropinbox/BLACKBOX-INBOX.txt'; then echo "a sender can write the marker"; exit 1; fi
+          if sudo -u nobody test -r /srv/dropinbox/BLACKBOX-INBOX.txt; then echo "an account outside the group can reach the inbox"; exit 1; fi
+          sudo ./blackbox uninstall
+          sudo userdel bbdrop
       - uses: actions/upload-artifact@v4
         with:
           name: linux-batches
