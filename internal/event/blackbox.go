@@ -16,8 +16,23 @@ var (
 	bbUninst   = regexp.MustCompile(`(?i)` + bbProgram + `\s+uninstall\b|(?:^|[\s/])uninstall\.sh\b`)
 	bbStop     = regexp.MustCompile(`(?i)\bsystemctl\s+(?:\S+\s+)*(stop|disable|mask|kill)\s+(?:\S+\s+)*blackbox(?:\.timer|\.service)?\b`)
 	bbTaskOff  = regexp.MustCompile(`(?i)\bschtasks(?:\.exe)?\s+.*(?:/delete|/disable|/end)\b.*\bblackbox|\bschtasks(?:\.exe)?\s+.*\bblackbox\b.*(?:/delete|/disable|/end)\b|(?:disable|unregister|stop)-scheduledtask\b.*\bblackbox`)
-	bbRemoveFS = regexp.MustCompile(`(?i)\b(?:rm|del|erase|remove-item|rmdir|rd)\b.*(?:/etc/blackbox|/var/lib/blackbox|programdata[\\/]blackbox|/usr/local/bin/blackbox)`)
+	bbPaths    = `(?:/etc/blackbox|/var/lib/blackbox|programdata[\\/]blackbox|/usr/local/bin/blackbox)`
+	bbPathRE   = regexp.MustCompile(`(?i)` + bbPaths)
+	bbRemoveFS = regexp.MustCompile(`(?i)\b(?:rm|del|erase|remove-item|rmdir|rd)\b.*` + bbPaths)
 )
+
+// FilesRemoved is what a command that deletes Blackbox's files did, and
+// FilesRemoveRefused what it did when the operating system refused the
+// delete (DET1): the report says so and does not count it as a removal.
+const (
+	FilesRemoved       = "deleted Blackbox's files"
+	FilesRemoveRefused = "tried to delete Blackbox's files (refused)"
+)
+
+// BlackboxPath reports whether a path (or a list of them) names one of
+// Blackbox's folders or its program: /etc/blackbox, /var/lib/blackbox,
+// /usr/local/bin/blackbox or C:\ProgramData\Blackbox.
+func BlackboxPath(p string) bool { return bbPathRE.MatchString(p) }
 
 // sensitiveSettings change what the report shows or how long evidence is
 // kept.
@@ -33,7 +48,7 @@ func BlackboxChange(cmd string) (action string, sev Severity, what string, ok bo
 	case bbStop.MatchString(cmd), bbTaskOff.MatchString(cmd):
 		return "blackbox_stopped", SevHigh, "stopped or disabled Blackbox's scheduled collection", true
 	case bbRemoveFS.MatchString(cmd):
-		return "blackbox_files_removed", SevHigh, "deleted Blackbox's files", true
+		return "blackbox_files_removed", SevHigh, FilesRemoved, true
 	}
 	if m := bbConfig.FindStringSubmatch(cmd); m != nil {
 		key := strings.ToLower(strings.Trim(m[1], `"'`))

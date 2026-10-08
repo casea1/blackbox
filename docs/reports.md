@@ -169,6 +169,15 @@ action, so two clears a minute apart are two rows and the detection says
 "2 logs cleared". Every count in the report (the sidebar, the Overview's
 numbers, People, Trends) counts rows.
 
+**A refused delete is an attempt, not a removal.** A command that deletes
+Blackbox's files whose delete the operating system refused (Linux:
+`success=no` with a non-zero exit; Windows: a 4656/4663 audit failure by
+the same process) is "tried to delete Blackbox's files (refused)", Medium,
+listed under Medium as "refused attempts to delete Blackbox's files". It
+is not in the "Blackbox's files removed" detection, its count, or
+"Possible covering of tracks"; the deletes that happened keep their High
+detection with their own count (DET1).
+
 **Blackbox's own writes.** The Event Log service writing the original-log
 pieces during a Blackbox run is not a row, also in a manual report made
 right after a run that made a scheduled report: the report looks at

@@ -17,6 +17,10 @@
 //     unknown says "the user name does not exist" (U6).
 //  3. mergeAdminLogons: an administrator's 4624 and 4672 (one logon ID) are one
 //     logon row with the privileges (U3).
+//  3b. refusedDeletes: a command that deletes Blackbox's files, whose
+//     delete the operating system refused (the same process's audit
+//     failures, success=no on Linux or a 4656/4663 failure on Windows),
+//     is "tried to delete … (refused)", Medium, not a removal (DET1).
 //  4. dedupe: records with the same DedupeKey on one computer within
 //     dedupeWindow are one row, keeping the highest Priority; two failed
 //     logons of the same kind (recordKind) are two attempts, never merged.
