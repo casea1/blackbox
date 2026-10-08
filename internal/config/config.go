@@ -464,12 +464,15 @@ func SetValues(path string, kv [][2]string) error {
 // does not have is kept at the end; one the file does not have is left
 // out, so its default still applies. Nothing is written unless the new
 // file reads back with the same settings. The file as it was is kept
-// next to it as <name>.old, with any comments of your own. It says
-// whether the file changed.
-func Refresh(path string) (bool, error) {
+// next to it, with any comments of your own: the first refresh keeps it
+// as <name>.old, and a later one as <name>.old.<version> (version is the
+// one doing the refresh), so the file a person edited before their first
+// upgrade is never overwritten (SEC3c). It returns the name the earlier
+// file was kept as, or "" when nothing changed.
+func Refresh(path, version string) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	text := string(b)
 	nl := "\n"
@@ -524,24 +527,55 @@ func Refresh(path string) (bool, error) {
 	}
 	next := strings.Join(out, nl)
 	if next == text {
-		return false, nil
+		return "", nil
 	}
 	was, err := parse(strings.NewReader(text), path)
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	now, err := parse(strings.NewReader(next), path)
 	if err != nil || !reflect.DeepEqual(was, now) {
-		return false, fmt.Errorf("the refreshed settings file would not read the same; left as it is")
+		return "", fmt.Errorf("the refreshed settings file would not read the same; left as it is")
 	}
-	if err := os.WriteFile(path+".old", b, 0o640); err != nil {
-		return false, err
+	old := keepName(path, version)
+	if err := os.WriteFile(old, b, 0o640); err != nil {
+		return "", err
 	}
 	tmp := path + ".new"
 	if err := os.WriteFile(tmp, []byte(next), 0o640); err != nil {
-		return false, err
+		return "", err
 	}
-	return true, os.Rename(tmp, path)
+	return old, os.Rename(tmp, path)
+}
+
+// keepName is a name for the earlier settings file that no earlier
+// refresh has used: <path>.old, else <path>.old.<version>, else that with
+// a number added (SEC3c).
+func keepName(path, version string) string {
+	free := func(p string) bool {
+		_, err := os.Lstat(p)
+		return os.IsNotExist(err)
+	}
+	if p := path + ".old"; free(p) {
+		return p
+	}
+	base := path + ".old"
+	if v := strings.Trim(strings.Map(func(r rune) rune {
+		if r == '.' || r == '-' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' {
+			return r
+		}
+		return -1
+	}, version), ".-"); v != "" {
+		base += "." + v
+		if free(base) {
+			return base
+		}
+	}
+	for i := 2; ; i++ {
+		if p := fmt.Sprintf("%s.%d", base, i); free(p) {
+			return p
+		}
+	}
 }
 
 func list(v string) []string {

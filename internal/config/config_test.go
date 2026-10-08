@@ -289,9 +289,9 @@ func TestRefreshKeepsValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	changed, err := Refresh(path)
-	if err != nil || !changed {
-		t.Fatalf("refresh: %v %v", changed, err)
+	kept, err := Refresh(path, "0.21.0")
+	if err != nil || kept != path+".old" {
+		t.Fatalf("refresh: %q %v", kept, err)
 	}
 	after, err := Load(path)
 	if err != nil {
@@ -309,8 +309,39 @@ func TestRefreshKeepsValues(t *testing.T) {
 	if b, _ := os.ReadFile(path + ".old"); string(b) != old {
 		t.Error("the earlier file was not kept")
 	}
-	if changed, err := Refresh(path); changed || err != nil {
-		t.Errorf("second refresh: %v %v", changed, err)
+	if kept, err := Refresh(path, "0.21.0"); kept != "" || err != nil {
+		t.Errorf("second refresh: %q %v", kept, err)
+	}
+}
+
+// SEC3c: a later refresh never overwrites the .old kept by the first one
+// (the file as the person last edited it); it keeps its own copy under
+// the version doing the refresh, and a number if that is taken too.
+func TestRefreshKeepsFirstOld(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "blackbox.conf")
+	stale := "# Events are collected every hour regardless.\nreport_every = daily\n"
+	os.WriteFile(path, []byte(stale), 0o640)
+	if kept, err := Refresh(path, "0.21.0"); err != nil || kept != path+".old" {
+		t.Fatalf("first: %q %v", kept, err)
+	}
+	for i, want := range []string{path + ".old.0.23.0", path + ".old.0.23.0.2"} {
+		second := stale + "# mine " + strconv.Itoa(i) + "\n"
+		os.WriteFile(path, []byte(second), 0o640)
+		kept, err := Refresh(path, "0.23.0")
+		if err != nil || kept != want {
+			t.Fatalf("refresh %d: %q %v", i, kept, err)
+		}
+		if b, _ := os.ReadFile(kept); string(b) != second {
+			t.Errorf("refresh %d kept %q", i, b)
+		}
+	}
+	if b, _ := os.ReadFile(path + ".old"); string(b) != stale {
+		t.Errorf("the first .old was overwritten: %q", b)
+	}
+	// A version is only ever part of a file name.
+	if got := keepName(path, `..\x/y`); got != path+".old.xy" {
+		t.Errorf("unsafe version: %q", got)
 	}
 }
 
