@@ -101,6 +101,7 @@ func Windows(st *store.Store, opt Options) (*store.Run, error) {
 		run.Channels = append(run.Channels, cr)
 	}
 	ClearedNotLost(run, clears, opt.Logf)
+	LogOverwritten(run, opt.Logf)
 	run.Duration = opt.Now().Sub(start).Seconds()
 	if b := opt.Blocked; b != nil {
 		b.Until = start
@@ -145,8 +146,8 @@ func collectChannel(st *store.Store, tr *winevt.Translator, host, ch string, now
 		cr.Reset = true // record numbers went backwards: log cleared or recreated
 		after = 0
 	case after > 0 && oldest.RecordID > after+1:
+		// Logged once it is known the log was not cleared (LC2c).
 		cr.Gap = &store.Gap{Lost: oldest.RecordID - after - 1, From: bm.Time, To: oldest.Time}
-		opt.Logf("%s: %d events were overwritten before they could be collected", ch, cr.Gap.Lost)
 	}
 
 	var batch []*event.Event
@@ -213,6 +214,17 @@ func ClearedNotLost(run *store.Run, clears map[string]*event.Event, logf func(st
 				logf("%s: was cleared; the %d records before the clear are not counted as overwritten", c.Channel, c.Gap.Lost)
 			}
 			c.Gap = nil
+		}
+	}
+}
+
+// LogOverwritten logs the records each log overwrote before they could be
+// collected. It runs after ClearedNotLost, so a cleared log is not also
+// said to be overwritten (LC2c).
+func LogOverwritten(run *store.Run, logf func(string, ...any)) {
+	for _, c := range run.Channels {
+		if c.Gap != nil && !c.Cleared && logf != nil {
+			logf("%s: %d events were overwritten before they could be collected", c.Channel, c.Gap.Lost)
 		}
 	}
 }

@@ -51,10 +51,17 @@
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
-  // t is seconds (UTC); off the report's UTC offset that day.
+  // t is seconds (UTC); off the event's own UTC offset (DST1).
   function when(t, off) {
     var d = new Date((t + off) * 1000);
     return pad(d.getUTCDate()) + ' ' + MONTHS[d.getUTCMonth()] + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
+  }
+  // The zone shown with one event's time: the report's zone name when the
+  // event has the offset that name stands for, else UTC±hh:mm (DST1).
+  function zoneOf(off) {
+    if (off === meta.zoneOff) return meta.zone;
+    var a = Math.abs(off);
+    return 'UTC' + (off < 0 ? '-' : '+') + pad(Math.floor(a / 3600)) + ':' + pad(Math.floor(a % 3600 / 60));
   }
   function dayLabel(day) {
     var d = new Date(Date.UTC(+day.slice(0, 4), +day.slice(4, 6) - 1, +day.slice(6, 8)));
@@ -360,7 +367,10 @@
       return getData(p.ID + '/' + day, p.ID + '-' + day + '.js').then(function (c) {
         var d = c.dict;
         c.rows.forEach(function (r) {
-          rows.push([r[0], c.base + r[1], d[r[2]], d[r[3]], d[r[4]], d[r[5]], r[6], d[r[7]], r[8], r[9], d[r[10]], d[r[11]], r[12], d[r[13]], r[14], day, c.off, d[r[15]] || '', d[r[16]] || '', p.ID]);
+          // r[17] is how far this row's UTC offset is from the day's
+          // (DST1: rows after a clock change on that day).
+          var dz = r[17] || 0;
+          rows.push([r[0], c.base + r[1] - dz, d[r[2]], d[r[3]], d[r[4]], d[r[5]], r[6], d[r[7]], r[8], r[9], d[r[10]], d[r[11]], r[12], d[r[13]], r[14], day, c.off + dz, d[r[15]] || '', d[r[16]] || '', p.ID]);
         });
         done++;
         if (progress) progress(done, p.Days.length);
@@ -552,7 +562,7 @@
     var kind = (this.page.KindLabel || 'kind').toLowerCase();
     var lines = ['time,system,person,target,source,what happened,' + kind + ',severity,event id,log,process,command,outcome'];
     this.shown.forEach(function (r) {
-      lines.push([when(r[1], r[16]), r[2], r[5], r[6], r[7], r[8], r[17], r[3], r[9], r[10], r[11], r[12], r[13]].map(q).join(','));
+      lines.push([when(r[1], r[16]) + ' ' + zoneOf(r[16]), r[2], r[5], r[6], r[7], r[8], r[17], r[3], r[9], r[10], r[11], r[12], r[13]].map(q).join(','));
     });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv' }));
@@ -574,7 +584,7 @@
     (p.Cols || []).forEach(function (c) { cols[c.f] = c.l; });
     var sys = r[2] + (meta.os && meta.os[r[2]] ? ' · ' + meta.os[r[2]] : '');
     var zip = meta.archives && meta.archives[r[2]];
-    var rows = [['Time', when(r[1], r[16]) + ' ' + meta.zone], ['System', sys], ['Person', r[5]], ['Account', r[6]], ['Source address', r[7]],
+    var rows = [['Time', when(r[1], r[16]) + ' ' + zoneOf(r[16])], ['System', sys], ['Person', r[5]], ['Account', r[6]], ['Source address', r[7]],
       [cols.x || '', r[18]], [cols.kind || p.KindLabel || 'Kind', r[17]], ['Program', r[11]], ['Command', r[12]], ['Outcome', r[13]],
       ['Original log', zip ? zip + ' › ' + (r[10] || '') : r[10]]];
     var kv = rows.filter(function (x) { return x[0] && x[1]; }).map(function (x) { return '<span>' + esc(x[0]) + '</span><b>' + esc(x[1]) + '</b>'; }).join('');
@@ -627,7 +637,7 @@
         var d = c.dict, h = c.dict.indexOf(host);
         if (h < 0) return;
         c.rows.forEach(function (x) {
-          var t = c.base + x[1];
+          var t = c.base + x[1] - (x[17] || 0);
           if (x[2] === h && Math.abs(t - t0) <= 120) found.push({ i: x[0], t: t, sum: x[8], user: d[x[5]], page: p.Title });
         });
       });

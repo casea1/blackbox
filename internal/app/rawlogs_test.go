@@ -422,9 +422,11 @@ func TestClearedLogIsNotAGap(t *testing.T) {
 		t.Errorf("status (%v):\n%s", err, b.String())
 	}
 
-	// LC2b: cleared at 06:40; the run at 06:45 reads the clear while the
-	// log is empty; its first record comes at 06:50, so the gap shows at
-	// the 07:00 run, which has no clear in it.
+	// LC2b, LC2c: cleared at 06:40; the run at 06:45 reads the clear
+	// while the log is empty: the clear is the gap at once (06:30, the
+	// last export, to 06:40). Its first record comes at 06:50; the 07:00
+	// run, which has no clear in it, finds the log still "full" from
+	// 06:50, which is not an overwrite and not a second clear.
 	st.State.LogGaps = nil
 	prev, now = now, at(6, 45)
 	states = []archive.LogState{{Source: audit, Wraps: true}}
@@ -432,16 +434,21 @@ func TestClearedLogIsNotAGap(t *testing.T) {
 	run.Channels[0].Cleared, run.Channels[0].ClearedAt, run.Channels[0].ClearedBy = true, at(6, 40), "claude"
 	st.AppendRun(run)
 	a.saveLogPiece(st, run, prev)
-	if len(st.State.LogGaps) != 0 {
-		t.Fatalf("gap with the log empty: %+v", st.State.LogGaps)
+	if len(st.State.LogGaps) != 1 || st.State.LogGaps[0].Cleared == nil || !st.State.LogGaps[0].Cleared.At.Equal(at(6, 40)) ||
+		!st.State.LogGaps[0].From.Equal(at(6, 30)) || !st.State.LogGaps[0].To.Equal(at(6, 40)) {
+		t.Fatalf("the clear read with the log empty is not a gap: %+v", st.State.LogGaps)
 	}
 	prev, now = now, at(7, 0)
 	states = []archive.LogState{{Source: audit, Oldest: at(6, 50), Wraps: true}}
 	run = auditRun(now, 1, 0, at(6, 50))
 	st.AppendRun(run)
 	a.saveLogPiece(st, run, prev)
-	if len(st.State.LogGaps) != 1 || st.State.LogGaps[0].Cleared == nil || !st.State.LogGaps[0].Cleared.At.Equal(at(6, 40)) {
-		t.Fatalf("the clear read a run earlier is not labelled: %+v", st.State.LogGaps)
+	if len(st.State.LogGaps) != 1 {
+		t.Fatalf("a second gap after the clear: %+v", st.State.LogGaps)
+	}
+	pieces, _ = archive.Pieces(a.piecesDir())
+	if g := pieces[len(pieces)-1].Info.Gaps; len(g) != 0 {
+		t.Errorf("the 07:00 piece has gaps: %+v", g)
 	}
 	// Once a record since the clear has been exported, a gap is an
 	// overwrite again.

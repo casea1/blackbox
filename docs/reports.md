@@ -372,12 +372,18 @@ collects less often than every 15 minutes and whose log holds more than
 that, collecting more often.
 
 A log cleared since it last had a record exported is not an overwrite:
-the clear is its own High row. The part it leaves out is labelled with
-who cleared it and when, also when the log stayed empty until a later
-collection: the Original logs page says "Cleared by claude at …: its
-events from before then are not in this archive", `archive.json` has
-`cleared` on that gap, and `blackbox status` has a "Log cleared:" line
-with no size advice and no exit code 4.
+the clear is its own High row. Every clear seen since the last export is
+a gap, whatever the log's size: Windows empties a cleared log's file, so
+a log cleared at 1% of its size never looks full, and its record numbers
+just start again. The gap runs from the last export to the clear and is
+labelled with who cleared it and when, also when the log is still empty:
+the Original logs page says "Cleared by claude at …: its events from
+before then are not in this archive", `archive.json` has `cleared` on
+that gap, and `blackbox status` has a "Log cleared:" line with no size
+advice and no exit code 4. Until a record written after the clear has
+been exported, the log is not taken for one that overwrote itself, and
+`blackbox.log` does not say its records "were overwritten before they
+could be collected".
 
 **Exports lost or changed before packing.** Each export's files are
 hashed when they are written (`piece.json`). When they are packed, a file
@@ -487,9 +493,12 @@ compressed. It depends on how busy the Security log is.
   has "Earlier reports missing or changed" on the Overview and in Audit
   health's gaps, and All reports lists it as "Missing: deleted or moved".
   Every run checks that each file the manifest lists is there, at the
-  size it was written with; once a day every file is hashed again. A
-  file deleted or changed is named, e.g. "REPORT CHANGED: … logs-WS-07.zip
-  is missing". Reports recorded by 0.19 have no file list: it is taken
+  size it was written with, and that no file was added anywhere in the
+  folder (the record keeps how many files it had); once a day every file
+  is hashed again, and one that can't be read is a problem, not verified.
+  A file deleted, changed or added is named, e.g. "REPORT CHANGED: …
+  logs-WS-07.zip is missing" or "… extra/report.html was added after the
+  report was written". Reports recorded by 0.19 have no file list: it is taken
   from their manifest, so a file moved out of one is noticed at once too.
   `blackbox reports` lists them, and exits 4 like `status` when one is
   missing or changed; when one was moved or
@@ -762,11 +771,26 @@ To confirm a report has not been altered, run
 The report also checks each data file as it loads it: if one was changed,
 **Verified** at the top of every page turns red.
 
-`blackbox verify` also fails if a file the manifest lists is missing, if a
-file was added to the folder afterwards, or if the manifest no longer
-lists a file the report needs: `report.html`, `summary.json`,
-`events.zip`, or any data file `report.html` loads. Each problem is one
-line.
+`blackbox verify` also fails if a file the manifest lists is missing or
+can't be read (it is not counted as verified), if a file was added
+anywhere in the folder afterwards (it looks in every sub-folder, not only
+`data/` and `scap/`; only `manifest.sha256` itself and the `desktop.ini`,
+`Thumbs.db` and `.DS_Store` files Windows and macOS add are left out), or
+if the manifest no longer lists a file the report needs: `report.html`,
+`summary.json`, `events.zip`, or any data file `report.html` loads. Each
+problem is one line.
+
+**Time zone.** Times are shown in the zone of the computer that made the
+report (`report.html`, `events.csv` and `README.txt` say which), each with
+the offset from UTC in force at that moment. On a day the clocks change,
+events before and after the change keep their own offset, and every event
+stays on its own local day: on 1 Nov 2026 in Los Angeles, 01:30 happens
+twice, and both are listed on 1 Nov at 01:30, one at UTC-07:00 and one at
+UTC-08:00. The event panel shows the zone's name (PST, say) when the
+event has the offset the report was made in, and the offset (UTC-07:00)
+when it doesn't; the CSV a page downloads has it after each time, and
+`events.csv` has it on every row (`2026-11-01 01:30:00 -08:00`), with
+`time_utc` beside it.
 
 **What this proves, and what it doesn't.** The manifest is not signed, so
 it finds accidental damage, a copy that went wrong, and careless edits.

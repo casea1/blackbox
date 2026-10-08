@@ -597,6 +597,10 @@ type LogClear struct {
 	Channel string    `json:"channel"`
 	At      time.Time `json:"at"`
 	By      string    `json:"by,omitempty"`
+	// Gap is set once an export has recorded the clear as a gap (LC2c):
+	// the clear stays open, so the cleared file, still "full" or with its
+	// record numbers started again, is not then taken for an overwrite.
+	Gap bool `json:"gap,omitempty"`
 }
 
 // LeftOutLogs is a daily archive of original logs left out of a
@@ -630,6 +634,10 @@ type ReportRecord struct {
 	// Files are the size of each file the manifest lists, when it was
 	// written: checked at every run (LEDGER1).
 	Files map[string]int64 `json:"files,omitempty"`
+	// FileCount is how many files the folder held when it was written,
+	// at any depth, with the manifest (VER2). A file added afterwards is
+	// pointed out by name; 0 for reports recorded before 0.23.
+	FileCount int `json:"file_count,omitempty"`
 	// Verified is when every file was last hashed against the manifest
 	// (once a day), and Bad what that found wrong ("" if nothing).
 	Verified time.Time `json:"verified,omitzero"`

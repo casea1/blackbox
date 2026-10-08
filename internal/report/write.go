@@ -8,12 +8,13 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/casea1/blackbox/internal/archive"
 	"html/template"
 	"io"
+	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -389,8 +390,13 @@ func Verify(dir string) ([]string, error) {
 			continue
 		}
 		got, err := fileSHA256(filepath.Join(dir, name))
-		if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
 			problems = append(problems, fmt.Sprintf("%s: missing (%v)", name, err))
+			continue
+		}
+		if err != nil {
+			// A listed file that can't be read is not verified (VER2).
+			problems = append(problems, fmt.Sprintf("%s: could not be read, so it is not verified (%v)", name, err))
 			continue
 		}
 		if got != strings.ToLower(want) {
@@ -419,18 +425,78 @@ func Verify(dir string) ([]string, error) {
 			problems = append(problems, fmt.Sprintf("%s: missing, and not in the manifest (the report needs it)", name))
 		}
 	}
-	// A file the manifest doesn't list was added (or renamed) afterwards.
-	for _, sub := range []string{"", "data", "scap"} {
-		entries, _ := os.ReadDir(filepath.Join(dir, sub))
-		for _, e := range entries {
-			name := path.Join(sub, e.Name())
-			if e.IsDir() || listed[name] || reported[name] || name == "manifest.sha256" || ignoredFile[strings.ToLower(e.Name())] {
-				continue
-			}
+	// A file the manifest doesn't list was added (or renamed) afterwards,
+	// wherever it is in the folder (VER2): the whole folder is walked,
+	// not only data/ and scap/.
+	added, unread, err := unlistedFiles(dir, listed)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range added {
+		if !reported[name] {
 			problems = append(problems, fmt.Sprintf("%s: not in the manifest (added after the report was produced)", name))
 		}
 	}
+	problems = append(problems, unread...)
 	return problems, nil
+}
+
+// Unlisted lists the files in the report folder dir, at any depth, that
+// its manifest does not list (VER2): added after the report was written.
+func Unlisted(dir string) ([]string, error) {
+	f, err := os.Open(filepath.Join(dir, "manifest.sha256"))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	listed := map[string]bool{}
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		if _, name, ok := strings.Cut(strings.TrimSpace(sc.Text()), "  "); ok {
+			listed[name] = true
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	added, _, err := unlistedFiles(dir, listed)
+	return added, err
+}
+
+// CountFiles is how many files are in the report folder dir, at any
+// depth, other than the ones Windows and macOS add to folders (VER2).
+func CountFiles(dir string) int {
+	n := 0
+	filepath.WalkDir(dir, func(_ string, e fs.DirEntry, err error) error {
+		if err == nil && !e.IsDir() && !ignoredFile[strings.ToLower(e.Name())] {
+			n++
+		}
+		return nil
+	})
+	return n
+}
+
+// unlistedFiles walks the whole of dir for files not in listed, other
+// than the manifest itself and the files Windows and macOS add to folders
+// (ignoredFile). unread are the folders it could not look in, as problems.
+func unlistedFiles(dir string, listed map[string]bool) (added, unread []string, err error) {
+	err = filepath.WalkDir(dir, func(p string, e fs.DirEntry, err error) error {
+		rel, _ := filepath.Rel(dir, p)
+		name := filepath.ToSlash(rel)
+		if err != nil {
+			if name == "." {
+				return err
+			}
+			unread = append(unread, fmt.Sprintf("%s: could not be read (%v)", name, err))
+			return nil
+		}
+		if e.IsDir() || listed[name] || name == "manifest.sha256" || ignoredFile[strings.ToLower(e.Name())] {
+			return nil
+		}
+		added = append(added, name)
+		return nil
+	})
+	return added, unread, err
 }
 
 // neededFiles are the files a report can't do without: report.html,
@@ -820,6 +886,14 @@ func Latest(reportsDir string) (IndexEntry, bool) {
 	return best, found
 }
 
+// changesOffset reports whether the report's zone has more than one UTC
+// offset in its period (a daylight saving change).
+func (r *Report) changesOffset() bool {
+	_, a := r.WindowStart.In(r.Location).Zone()
+	_, b := r.WindowEnd.In(r.Location).Zone()
+	return a != b
+}
+
 // readme is README.txt (ASSESS1): for someone who receives only the
 // folder, what each file is, how to check it without Blackbox, how to
 // open the original logs, and the time zone.
@@ -840,6 +914,10 @@ func (r *Report) readme(scap map[string]string) []byte {
 	line("Period: %s to %s", r.WindowStart.In(r.Location).Format("2006-01-02 15:04"), r.WindowEnd.In(r.Location).Format("2006-01-02 15:04"))
 	line("Made: %s", r.Generated.In(r.Location).Format("2006-01-02 15:04"))
 	line("Time zone: times in the report and in events.csv are %s; events.csv also has time_utc.", zone)
+	if r.changesOffset() {
+		// DST1: the zone's offset changes in the period.
+		line("The offset changes with daylight saving time in this period: each time keeps the offset in force then (events.csv shows it on every row).")
+	}
 	line("The original-log archives are named, and their archive.json written, in UTC.")
 	line("")
 	line("FILES")

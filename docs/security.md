@@ -158,7 +158,8 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
 
 - Every report folder has a `manifest.sha256`. `blackbox verify` or
   `sha256sum -c manifest.sha256` detects any change, and any file the
-  report needs that is missing. It detects accidental damage, not
+  report needs that is missing. `blackbox verify` also fails on any file
+  added anywhere in the folder, and on a listed file it can't read. It detects accidental damage, not
   deliberate editing: someone who can change the report can also
   rewrite its manifest. Keep reports where only administrators can
   write, and copy them off the system for long-term evidence.
