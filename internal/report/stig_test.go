@@ -1,6 +1,7 @@
 package report
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +9,52 @@ import (
 	"github.com/casea1/blackbox/internal/check"
 	"github.com/casea1/blackbox/internal/store"
 )
+
+// COMP2: a check with no STIG ID is worded as Blackbox's advice, never
+// "the STIG requires", and is left out of "Systems matching STIG" but
+// counted on its own.
+func TestAdviceNotSTIG(t *testing.T) {
+	at := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	sets := []CheckSet{NewCheckSet("ubu-01", at, []check.Result{
+		{Area: "Baseline", Item: "Compared with", Status: check.Info, Have: "Ubuntu 24.04 STIG V1R5"},
+		{Area: "Time", Item: "Time synchronisation", Status: check.Fail, Have: "no time service running", Want: "chrony or systemd-timesyncd active"},
+		{Area: "Audit rules", Item: "Rules locked until reboot (-e 2)", Status: check.Pass, Have: "Locked", Want: "Locked (enabled 2)", STIG: "UBTU-24-909000"},
+	})}
+	runs := []*store.Run{{Time: at, Host: "ubu-01", OS: "linux"}}
+	r := Build(nil, runs, Options{Location: time.UTC, WindowStart: at.Add(-24 * time.Hour), WindowEnd: at, Generated: at, CheckSets: sets})
+	hp := r.healthPage()
+	if hp.Stats[0].Label != "Systems matching STIG" || hp.Stats[0].Value != "1 / 1" || hp.Stats[0].Note != "0 gaps · 0 warnings" {
+		t.Errorf("advice counted against the STIG: %+v", hp.Stats[0])
+	}
+	if hp.Stats[1].Label != "Blackbox's advice" || hp.Stats[1].Value != "1" || hp.Stats[1].Level != "warn" {
+		t.Errorf("advice count: %+v", hp.Stats[1])
+	}
+	found := false
+	for _, g := range hp.Gaps {
+		if g.Title != "Time synchronisation" {
+			continue
+		}
+		found = true
+		if strings.Contains(g.Explain, "STIG requires") || !strings.Contains(g.Explain, "Blackbox recommends chrony or systemd-timesyncd active") || !g.Advice || g.Level != "warn" {
+			t.Errorf("advice gap: %+v", g)
+		}
+	}
+	if !found {
+		t.Error("the advice is not listed")
+	}
+	for _, k := range r.overview(nil).KPIs {
+		if k.Label == "Audit health" && k.Value != "1 / 1" {
+			t.Errorf("overview Audit health %q: advice counted against the STIG", k.Value)
+		}
+	}
+	var b bytes.Buffer
+	if err := r.WriteHTML(&b, nil); err != nil {
+		t.Fatal(err)
+	}
+	if html := b.String(); !strings.Contains(html, "Blackbox&#39;s advice") || !strings.Contains(html, ">Advice</span>") {
+		t.Error("the page does not mark the advice")
+	}
+}
 
 // STIG1: a gap two systems share under different STIGs lists each one's
 // IDs, by OS; the CSV gives each system its own.

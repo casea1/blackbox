@@ -231,8 +231,10 @@ $acl.AddAuditRule($rule)
 Set-Acl C:\ProgramData\Blackbox $acl
 ```
 
-This needs File System auditing (success and failure), which the STIG
-already requires.
+This needs File System auditing (success and failure). The Server 2025
+STIG requires it (WN25-AU-000581/582); the Windows 11 STIG no longer
+does (see Audit settings below), so on Windows 11 `blackbox check` asks
+for it as Blackbox's advice.
 
 Two kinds of writes to that folder are Blackbox's own and are not rows:
 the original-log pieces each collection exports (`archive-pieces\000001\Security.evtx`
@@ -278,7 +280,7 @@ Blackbox picks the STIG from the kind of Windows:
 
 | Computer | Compared with |
 |---|---|
-| Windows 11 (workstations) | Windows 11 STIG V2R8 (audit rules unchanged through V2R10, September 2026) |
+| Windows 11 (workstations) | Windows 11 STIG V2R11 (5 October 2026) |
 | Windows Server (any version) | Windows Server 2025 STIG V1R1 |
 
 Each setting shows its STIG rule ID (for example `WN11-AU-000505`). Each
@@ -290,15 +292,28 @@ and which STIG it used.
 What is checked:
 
 - **Advanced audit policy**: every subcategory the STIG requires, with
-  success and/or failure exactly as the STIG says. This includes the 2026
-  additions: File System, Handle Manipulation and Registry (success and
-  failure), and Process Creation failures (Windows 11).
+  success and/or failure exactly as the STIG says, including Registry
+  (success and failure) and Process Creation failures (Windows 11).
+  Server 2025 also requires File System and Handle Manipulation (success
+  and failure).
+- **Blackbox's advice on Windows 11: File System (success and failure)
+  and Handle Manipulation success.** The Windows 11 STIG had these
+  (WN11-AU-000582, 000581 and 000584) up to V2R7, but V2R8 (10 July 2026)
+  and V2R11 (5 October 2026) do not; Handle Manipulation failure
+  (WN11-AU-000583) is still a rule. Blackbox still asks for them, marked
+  "Blackbox's advice" rather than a STIG ID: File System success is what
+  records changes to Blackbox's own folder, and Server 2025 requires
+  them. They are not counted in "Systems matching STIG". Checked on
+  8 October 2026 against the stigaview.com copy of the DISA Windows 11
+  STIG releases (V2R7, V2R8 and V2R11 rule lists); the DISA library at
+  cyber.mil could not be read by script that day, so check your own copy
+  of the current release.
 - **Security log size**:
-  - Windows 11 (WN11-AU-000505, V2R8): it must hold at least a week of
+  - Windows 11 (WN11-AU-000505, V2R8 to V2R11): it must hold at least a week of
     events, and the STIG's check fails a maximum size below
     **5,120,000 KB** (about 5 GB; earlier releases said 1,024,000 KB).
     Blackbox fails it below that size. The 20 MB default is far too small
-    with the STIG's File System auditing: one Windows Update run
+    with File System auditing: one Windows Update run
     overwrote it many times within an hour in testing (94,565 events
     lost).
   - Windows Server 2025 (WN25-CC-000280): at least 196,608 KB.
@@ -339,17 +354,24 @@ What is checked:
 - **PowerShell script block logging**, and on Windows 11 **PowerShell
   transcription**.
 - **Windows Time** running and synchronising (from the domain, or an NTP
-  server), so event times from different computers line up (AU-8).
+  server), so event times from different computers line up (AU-8). This
+  is a basic check and Blackbox's advice, not a STIG rule.
 - **USB logs** (Partition/Diagnostic and Kernel-PnP/Configuration),
   which the report needs for device details, and the **PowerShell log**
   (on by default; shown for information, never as a failure). These are
-  not STIG rules.
+  not STIG rules: Blackbox's advice.
+- **Defender**: real-time protection on and definitions under 30 days
+  old. Blackbox's advice, not STIG rules.
+
+Every check without a STIG ID is Blackbox's advice. The report words it
+"Blackbox recommends", not "the STIG requires", leaves it out of
+"Systems matching STIG" and counts it on its own ("Blackbox's advice").
 
 On a server, Other Logon/Logoff Events auditing is not a STIG rule, but
 the report needs it for Remote Desktop sessions. It is listed as
 recommended, not as a failure.
 
-The File System, Handle Manipulation and Registry rules record far more
+File System, Handle Manipulation and Registry auditing record far more
 events where files and keys have auditing (SACLs) set. That is why the STIG
 asks for a much larger Security log. Blackbox reads these events but
 reports only what matters, so the report itself does not grow much.

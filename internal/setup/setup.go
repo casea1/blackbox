@@ -177,15 +177,24 @@ func CheckLines(rs []check.Result, all bool) []string {
 	pass, fail, warn := check.Summary(rs)
 	for _, r := range rs {
 		if r.Area == "Baseline" {
-			out = append(out, fmt.Sprintf("  Compared with the %s.", r.Have))
+			if strings.HasPrefix(r.Have, "Blackbox's advice") {
+				out = append(out, "  No DISA STIG is cited for this system: every check is Blackbox's advice.")
+			} else {
+				out = append(out, fmt.Sprintf("  Compared with the %s.", r.Have))
+			}
 			continue
 		}
 		if r.Status == check.Pass && !all {
 			continue
 		}
 		stig := ""
-		if r.STIG != "" {
+		switch {
+		case r.STIG != "" && !r.Advice:
 			stig = " [" + r.STIG + "]"
+		case r.STIG != "":
+			stig = " [" + r.STIG + "; the rest is Blackbox's advice]"
+		default:
+			stig = " [Blackbox's advice, not a STIG rule]"
 		}
 		out = append(out, fmt.Sprintf("  [%-5s] %s: %s%s — have %s, need %s", strings.ToUpper(string(r.Status)), r.Area, r.Item, stig, r.Have, r.Want))
 		if r.Affects != "" && r.Status != check.Pass {
@@ -196,10 +205,25 @@ func CheckLines(rs []check.Result, all bool) []string {
 		}
 	}
 	last := fmt.Sprintf("  %d settings pass, %d need attention", pass, fail)
+	if n := adviceFails(rs); n > 0 {
+		last += fmt.Sprintf(" (%d of them Blackbox's advice, not STIG rules)", n)
+	}
 	if warn > 0 {
 		last += fmt.Sprintf(", %d warnings", warn)
 	}
 	return append(out, last+".")
+}
+
+// adviceFails counts the failing checks that are Blackbox's advice rather
+// than STIG rules (COMP2).
+func adviceFails(rs []check.Result) int {
+	n := 0
+	for _, r := range rs {
+		if (r.Status == check.Fail || r.Status == check.Error) && r.IsAdvice() && r.Area != "Baseline" {
+			n++
+		}
+	}
+	return n
 }
 
 func es(n int) string {

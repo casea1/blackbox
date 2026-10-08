@@ -91,7 +91,7 @@ func TestStandaloneShowsOnlyItself(t *testing.T) {
 	st.NoteSystem("claude-code", "linux", "0.9.2", "claude-code", now.AddDate(0, 0, -4), now.AddDate(0, 0, -4), now.AddDate(0, 0, -4))
 	st.Save()
 	st.AppendChecks(&store.CheckRecord{Time: now.Add(-time.Hour), Host: "claude-code", OS: "linux",
-		Results: []check.Result{{Area: "Audit service", Item: "auditd", Status: check.Fail}}})
+		Results: []check.Result{{Area: "Audit service", Item: "auditd running", Status: check.Fail, STIG: "ALMA-09-054910"}}})
 	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportEvery: "weekly"}, Now: func() time.Time { return now }, Loc: time.UTC}
 	h, err := a.Health()
 	if err != nil {

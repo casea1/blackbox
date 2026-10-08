@@ -35,13 +35,41 @@ func TestAuditpol(t *testing.T) {
 	if al := byName["Account Lockout"]; al.Status != Fail || !strings.HasSuffix(al.Fix, "Audit Account Lockout: Configure the following audit events: Failure") {
 		t.Errorf("Account Lockout needs failure only on Windows 11: %+v", al)
 	}
-	for _, name := range []string{"File System", "Handle Manipulation", "Registry"} {
-		if r := byName[name]; r.Want != "Success and Failure" || r.Status != Fail {
-			t.Errorf("%s is required (2026 STIG): %+v", name, r)
-		}
+	if r := byName["Registry"]; r.Want != "Success and Failure" || r.Status != Fail || r.IsAdvice() {
+		t.Errorf("Registry is required (WN11-AU-000586/589): %+v", r)
+	}
+	// COMP1: File System (WN11-AU-000581/582) and Handle Manipulation
+	// success (WN11-AU-000584) are not in V2R8 or V2R11: Blackbox's advice.
+	if r := byName["File System"]; r.Status != Fail || r.STIG != "" || !r.IsAdvice() || !strings.Contains(r.Want, "Blackbox's advice") {
+		t.Errorf("File System is Blackbox's advice on Windows 11: %+v", r)
+	}
+	if r := byName["Handle Manipulation"]; r.Status != Fail || r.STIG != "WN11-AU-000583" || r.IsAdvice() {
+		t.Errorf("Handle Manipulation failure (WN11-AU-000583) is still a STIG gap: %+v", r)
 	}
 	if r := byName["Process Creation"]; r.Want != "Success and Failure" {
 		t.Errorf("Process Creation failures are required (WN11-AU-000585): %+v", r)
+	}
+}
+
+// COMP1: with Handle Manipulation failure audited, only Blackbox's advice
+// (success) is missing; Server 2025 still requires all three.
+func TestWindows11AdviceNotSTIG(t *testing.T) {
+	have := map[string][2]bool{gHandleManipulation: {false, true}}
+	for _, r := range EvaluateAuditpol(Windows11, have) {
+		if r.Item == "Handle Manipulation" && (r.Status != Fail || !r.IsAdvice() || r.STIG != "WN11-AU-000583") {
+			t.Errorf("only the advised success part is missing: %+v", r)
+		}
+		if strings.Contains(r.STIG, "WN11-AU-000581") || strings.Contains(r.STIG, "WN11-AU-000582") || strings.Contains(r.STIG, "WN11-AU-000584") {
+			t.Errorf("%s cites a rule not in the Windows 11 STIG V2R11: %s", r.Item, r.STIG)
+		}
+	}
+	for _, r := range EvaluateAuditpol(WindowsServer2025, map[string][2]bool{}) {
+		if (r.Item == "File System" || r.Item == "Handle Manipulation") && r.IsAdvice() {
+			t.Errorf("Server 2025 STIG requires %s: %+v", r.Item, r)
+		}
+	}
+	if Windows11.Name != "Windows 11 STIG V2R11" {
+		t.Errorf("baseline name %q", Windows11.Name)
 	}
 }
 

@@ -687,6 +687,19 @@ In the **Antivirus** table, systems with current definitions are folded
 the same way. The gaps follow below the grid as a table, one row per gap (its STIG ID, the systems and the result; a gap systems share under different STIGs lists each one's IDs with its OS, e.g. "WN25-AU-000070, WN25-AU-000080 (Windows Server 2025) · WN11-AU-000010, WN11-AU-000005 (Windows 11)", and the CSV gives each system its own); click a gap for what it means and how to fix it. **Log size and space settings** counts the
 systems whose logs are smaller than the STIG asks, or, on Linux, whose
 auditd space and disk actions differ from it.
+
+**Systems matching STIG** counts only checks that cite a STIG rule ID.
+A check with no STIG ID (for example Windows Time, the USB logs,
+Defender real-time protection, the other logs' sizes, and on Windows 11
+File System auditing, which the STIG dropped in V2R8) is **Blackbox's
+advice**: its gap row says "Advice" with "Blackbox's advice" in the STIG
+ID column, its text says "Blackbox recommends …", never "the STIG
+requires …", it shows as a warning (!) in the grid, and the
+**Blackbox's advice** card counts these on their own. The overview's
+Audit health figure counts the same way. On Linux the IDs come from the
+STIG for the distribution (UBTU-24, UBTU-22, ALMA-09, RHEL-09, and RHEL-08
+for AlmaLinux 8; see linux.md).
+
 "How to fix" gives the Group Policy location and setting for each gap
 (for example Computer Configuration > Policies > Windows Settings >
 Security Settings > Advanced Audit Policy Configuration > Audit Policies >

@@ -202,7 +202,7 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	for _, s := range systems {
 		if s.Checks != nil {
 			checked++
-			if s.Checks.Fail == 0 {
+			if s.Checks.STIGFail == 0 { // STIG rules only, not Blackbox's advice (COMP2)
 				matching++
 			}
 		}

@@ -35,10 +35,21 @@ type Result struct {
 	Affects string `json:"affects,omitempty"` // report section that is incomplete without it
 	Fix     string `json:"fix,omitempty"`
 	STIG    string `json:"stig,omitempty"` // STIG rule IDs, e.g. WN11-AU-000505
+	// Advice: what falls short is Blackbox's advice, not the STIG rule
+	// named in STIG (Windows 11 Handle Manipulation: failure is
+	// WN11-AU-000583, success only Blackbox's advice). A result with no
+	// STIG ID is always advice (COMP2).
+	Advice bool `json:"advice,omitempty"`
 	// Dated is when antivirus definitions were made (Defender's version
 	// creation time, ClamAV's build time), so the report can show it.
 	Dated time.Time `json:"dated,omitzero"`
 }
+
+// IsAdvice reports whether a shortfall in r is Blackbox's advice rather
+// than a STIG rule: it cites no STIG rule, or the part that falls short is
+// not one. Reports word it "Blackbox recommends", never "the STIG
+// requires", and leave it out of "matching the STIG" (COMP2).
+func (r Result) IsAdvice() bool { return r.Advice || strings.TrimSpace(r.STIG) == "" }
 
 // Summary counts results by status.
 func Summary(rs []Result) (pass, fail, warn int) {
@@ -57,9 +68,21 @@ func Summary(rs []Result) (pass, fail, warn int) {
 
 type auditReq struct {
 	guid, name string
-	succ, fail string // STIG IDs requiring success / failure auditing ("" = not required)
+	// STIG IDs requiring success / failure auditing ("" = not required,
+	// advice = Blackbox asks for it, but the STIG does not).
+	succ, fail string
 	affects    string
 	optional   bool // not a STIG requirement here, but this report needs it
+}
+
+// advice in place of a STIG ID: Blackbox's advice, with no STIG rule (COMP1).
+const advice = "advice"
+
+func stigID(id string) string {
+	if id == advice {
+		return ""
+	}
+	return id
 }
 
 func settingText(s, f bool) string {
@@ -121,18 +144,40 @@ func EvaluateAuditpol(b Baseline, have map[string][2]bool) []Result {
 			wantS, wantF = true, true
 		}
 		r := Result{Area: "Audit policy", Item: q.name, Have: settingText(h[0], h[1]),
-			Want: settingText(wantS, wantF), Affects: q.affects, STIG: joinIDs(q.succ, q.fail), Status: Pass}
-		if (wantS && !h[0]) || (wantF && !h[1]) {
+			Want: settingText(wantS, wantF), Affects: q.affects, STIG: joinIDs(stigID(q.succ), stigID(q.fail)), Status: Pass}
+		if n := adviceNote(q); n != "" {
+			r.Want += " (" + n + ")"
+		}
+		missS, missF := wantS && !h[0], wantF && !h[1]
+		if missS || missF {
 			r.Status = Fail
-			if q.optional {
+			switch {
+			case q.optional:
 				r.Status = Info
 				r.Want += " (recommended for this report; not a STIG requirement for this system)"
+			case !(missS && stigID(q.succ) != "") && !(missF && stigID(q.fail) != ""):
+				// Only Blackbox's advice falls short (COMP1).
+				r.Advice = true
 			}
 			r.Fix = auditGPO(q.name, settingText(wantS, wantF))
 		}
 		out = append(out, r)
 	}
 	return out
+}
+
+// adviceNote says which part of a subcategory is Blackbox's advice rather
+// than a STIG rule ("" when none is).
+func adviceNote(q auditReq) string {
+	switch {
+	case q.succ == advice && stigID(q.fail) != "":
+		return "Failure: " + q.fail + "; Success is Blackbox's advice, not a STIG rule in this release"
+	case q.fail == advice && stigID(q.succ) != "":
+		return "Success: " + q.succ + "; Failure is Blackbox's advice, not a STIG rule in this release"
+	case q.succ == advice || q.fail == advice:
+		return "Blackbox's advice: not a STIG rule in this release"
+	}
+	return ""
 }
 
 func joinIDs(ids ...string) string {

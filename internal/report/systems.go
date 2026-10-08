@@ -34,10 +34,14 @@ type CheckSet struct {
 	Host             string
 	Time             time.Time
 	Results          []check.Result
-	Pass, Fail, Warn int    // audit settings
-	AVFail           int    // antivirus checks failing (counted apart from audit settings)
-	Baseline         string // the STIG compared with, e.g. "Windows 11 STIG V2R8"
-	Inventory        *inventory.Inventory
+	Pass, Fail, Warn int // audit settings
+	// STIGFail and STIGWarn count only the settings a STIG rule requires;
+	// Advice counts the others that need a look (Blackbox's advice, with
+	// no STIG ID). "Matching the STIG" uses STIGFail (COMP2).
+	STIGFail, STIGWarn, Advice int
+	AVFail                     int    // antivirus checks failing (counted apart from audit settings)
+	Baseline                   string // the STIG compared with, e.g. "Windows 11 STIG V2R11"
+	Inventory                  *inventory.Inventory
 }
 
 // SystemRow is one computer on the Systems page.
@@ -290,6 +294,19 @@ func NewCheckSet(host string, at time.Time, rs []check.Result) CheckSet {
 		audit = append(audit, r)
 	}
 	cs.Pass, cs.Fail, cs.Warn = check.Summary(audit)
+	for _, r := range audit {
+		if r.Area == "Baseline" || (r.Status != check.Fail && r.Status != check.Error && r.Status != check.Warn) {
+			continue
+		}
+		switch {
+		case r.IsAdvice():
+			cs.Advice++
+		case r.Status == check.Warn:
+			cs.STIGWarn++
+		default:
+			cs.STIGFail++
+		}
+	}
 	for _, r := range rs {
 		if r.Area == "Baseline" {
 			cs.Baseline = r.Have

@@ -104,6 +104,7 @@ type HealthRow struct {
 // SettingLine is one line of a system's settings table.
 type SettingLine struct {
 	Check, STIG, Want, Have, Result, Class, Fix string
+	Advice                                      bool   // Blackbox's advice, not a STIG rule (COMP2)
 	Note                                        string // how the report covers it, when it doesn't review it
 	Href                                        string // where the check's details are, if elsewhere
 }
@@ -116,6 +117,8 @@ type GapCard struct {
 	// STIGs, when the systems are under different STIGs, is each one's
 	// IDs with its OS, one per line (STIG1); STIG then joins them.
 	STIGs []string
+	// Advice: Blackbox's advice, not a STIG rule (COMP2).
+	Advice bool
 }
 
 // HealthPage is the Audit health page.
@@ -232,7 +235,7 @@ func (r *Report) healthPage() *HealthPage {
 		}
 	}
 
-	matching, gaps, warns, clearedN, small := 0, 0, 0, 0, 0
+	matching, gaps, warns, advice, clearedN, small := 0, 0, 0, 0, 0, 0
 	var totalLost, totalOther uint64
 	var clearedWho, smallWho []string
 	gapCards := map[string]*GapCard{}
@@ -288,8 +291,12 @@ func (r *Report) healthPage() *HealthPage {
 				if col == "" {
 					continue
 				}
-				if rank[res.Status] > rank[worst[col]] {
-					worst[col] = res.Status
+				st := res.Status
+				if st == check.Fail && res.IsAdvice() {
+					st = check.Warn // Blackbox's advice is never a STIG gap (COMP2)
+				}
+				if rank[st] > rank[worst[col]] {
+					worst[col] = st
 				}
 				if res.Status == check.Fail || res.Status == check.Warn || res.Status == check.Error {
 					titles[col] = append(titles[col], res.Item+": "+res.Have)
@@ -360,12 +367,15 @@ func (r *Report) healthPage() *HealthPage {
 		default:
 			row.Note = "OK"
 		}
-		if row.Checked && s.Checks.Fail == 0 {
+		// Only STIG rules count towards matching the STIG; Blackbox's
+		// advice is counted on its own (COMP2).
+		if row.Checked && s.Checks.STIGFail == 0 {
 			matching++
 		}
 		if s.Checks != nil {
-			gaps += s.Checks.Fail
-			warns += s.Checks.Warn
+			gaps += s.Checks.STIGFail
+			warns += s.Checks.STIGWarn
+			advice += s.Checks.Advice
 		}
 
 		// Gaps, as rows of the Gaps table.
@@ -420,21 +430,32 @@ func (r *Report) healthPage() *HealthPage {
 					smallWho = append(smallWho, s.Name+" "+res.Have)
 				}
 				lv := "bad"
-				if res.Status == check.Warn {
+				adv := res.IsAdvice()
+				if res.Status == check.Warn || adv {
 					lv = "warn"
 				}
 				explain := ""
 				if res.Have != "" || res.Want != "" {
-					explain = fmt.Sprintf("Set to %s; the STIG requires %s.", orDash(res.Have), orDash(res.Want))
-					if res.STIG == "" && res.Area == "Event log size" {
-						explain = fmt.Sprintf("Set to %s; Blackbox recommends %s.", orDash(res.Have), orDash(res.Want))
+					// A check with no STIG rule is never worded as the
+					// STIG's (COMP2).
+					if adv {
+						explain = fmt.Sprintf("Set to %s; Blackbox recommends %s. This is Blackbox's advice, not a STIG rule.", orDash(res.Have), orDash(res.Want))
+					} else {
+						explain = fmt.Sprintf("Set to %s; the STIG requires %s.", orDash(res.Have), orDash(res.Want))
 					}
 				}
 				if res.Affects != "" {
 					explain = strings.TrimSpace(explain + " Without it the report is missing: " + res.Affects + ".")
 				}
-				addGap("check|"+res.Item, GapCard{Title: res.Item, STIG: res.STIG, Explain: explain, Fix: res.Fix, Level: lv}, s.Name)
-				addSTIG("check|"+res.Item, osLabel(s), res.STIG)
+				key, stig := "check|"+res.Item, res.STIG
+				if adv {
+					// Kept apart from the same setting where a STIG
+					// requires it (File System: advice on Windows 11, a
+					// rule on Server 2025).
+					key, stig = key+"|advice", ""
+				}
+				addGap(key, GapCard{Title: res.Item, STIG: stig, Explain: explain, Fix: res.Fix, Level: lv, Advice: adv}, s.Name)
+				addSTIG(key, osLabel(s), stig)
 			}
 		}
 
@@ -449,7 +470,7 @@ func (r *Report) healthPage() *HealthPage {
 				if res.Area == "Baseline" {
 					continue
 				}
-				l := SettingLine{Check: res.Item, STIG: res.STIG, Want: orDash(res.Want), Have: orDash(res.Have), Fix: res.Fix}
+				l := SettingLine{Check: res.Item, STIG: res.STIG, Want: orDash(res.Want), Have: orDash(res.Have), Fix: res.Fix, Advice: res.IsAdvice()}
 				if res.Area == "Audit policy" {
 					switch winevt.SubcategoryReviewed(res.Item) {
 					case "counted":
@@ -463,6 +484,9 @@ func (r *Report) healthPage() *HealthPage {
 					l.Result, l.Class = "Matches", "ok"
 				case check.Fail:
 					l.Result, l.Class = "Gap", "bad"
+					if l.Advice {
+						l.Result, l.Class = "Advice", "warn"
+					}
 				case check.Warn, check.Error:
 					l.Result, l.Class = "Warning", "warn"
 				default:
@@ -657,6 +681,9 @@ func (r *Report) healthPage() *HealthPage {
 	hp.Stats = []EventCard{
 		{Icon: "shield-check", Label: "Systems matching STIG", Scroll: "h-matrix", Value: fmt.Sprintf("%d / %d", matching, total),
 			Note: plural(gaps, "gap") + " · " + plural(warns, "warning"), Level: lvl(matching < total, "bad")},
+		// Checks with no STIG rule, counted on their own (COMP2).
+		{Icon: "list-checks", Label: "Blackbox's advice", Scroll: "h-gaps", Value: commas(advice),
+			Note: "to look at · not STIG rules", Level: lvl(advice > 0, "warn")},
 		{Icon: "eraser", Label: "Logs cleared", Href: searchLink("page", "integrity", "text", "cleared"), Value: commas(clearedN), Note: short(set(clearedWho), 2), Level: lvl(clearedN > 0, "bad")},
 		{Icon: "circle-check", Label: "Events lost to rollover", Scroll: "h-gaps", Value: commas(int(totalLost)), Note: lostNote(totalOther, r.Health.Runs), Level: lvl(totalLost > 0, "bad")},
 		{Icon: "hard-drive", Label: "Log size and space settings", Scroll: "h-gaps", Value: commas(small), Note: short(set(smallWho), 1), Level: lvl(small > 0, "warn")},

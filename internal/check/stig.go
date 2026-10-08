@@ -11,7 +11,7 @@ import (
 
 // Baseline is the audit configuration one DISA STIG requires.
 type Baseline struct {
-	Name     string // e.g. "Windows 11 STIG V2R8"
+	Name     string // e.g. "Windows 11 STIG V2R11"
 	Audit    []auditReq
 	Registry []regReq
 	Logs     []logReq
@@ -71,10 +71,15 @@ const (
 func w11(n string) string { return "WN11-AU-000" + n }
 func w25(n string) string { return "WN25-AU-000" + n }
 
-// Windows11 is the Windows 11 STIG (V2R8, July 2026; the audit rules are
-// unchanged through V2R10, September 2026).
+// Windows11 is the Windows 11 STIG V2R11 (5 October 2026). COMP1: File
+// System success and failure (WN11-AU-000582/581) and Handle Manipulation
+// success (WN11-AU-000584) were in the Windows 11 STIG up to V2R7 but are
+// not in V2R8 or V2R11 (checked against the stigaview.com copy of the
+// DISA releases on 8 October 2026). Blackbox still asks for them as its
+// own advice: File System success is what records changes to Blackbox's
+// own folder, and the Server 2025 STIG still requires all three.
 var Windows11 = Baseline{
-	Name: "Windows 11 STIG V2R8",
+	Name: "Windows 11 STIG V2R11",
 	Audit: []auditReq{
 		{gCredentialValidation, "Credential Validation", w11("010"), w11("005"), aFailedLogons, false},
 		{gSecurityGroupMgmt, "Security Group Management", w11("030"), "", aAccounts, false},
@@ -91,8 +96,8 @@ var Windows11 = Baseline{
 		{gDetailedFileShare, "Detailed File Share", "", w11("570"), "", false},
 		{gOtherObjectAccess, "Other Object Access Events", w11("083"), w11("084"), "Other Security Events (scheduled tasks)", false},
 		{gRemovableStorage, "Removable Storage", w11("090"), w11("085"), aUSB + " (files read/written)", false},
-		{gFileSystem, "File System", w11("582"), w11("581"), "", false},
-		{gHandleManipulation, "Handle Manipulation", w11("584"), w11("583"), "", false},
+		{gFileSystem, "File System", advice, advice, "Audit & System Integrity (changes to Blackbox's own folder)", false},
+		{gHandleManipulation, "Handle Manipulation", advice, w11("583"), "", false},
 		{gRegistry, "Registry", w11("586"), w11("589"), "", false},
 		{gAuditPolicyChange, "Audit Policy Change", w11("100"), "", aIntegrity, false},
 		{gAuthenticationPolicy, "Authentication Policy Change", w11("105"), "", "", false},
@@ -115,7 +120,7 @@ var Windows11 = Baseline{
 			gpAdmin + " > Windows Components > Windows PowerShell > Turn on PowerShell Transcription: Enabled", "WN11-CC-000327"},
 	},
 	Logs: []logReq{
-		// WN11-AU-000505 (V2R8): the Security log must hold a week of
+		// WN11-AU-000505 (V2R8 to V2R11): the Security log must hold a week of
 		// records, and the check fails a MaxSize below 5,120,000 KB (older
 		// releases: 1,024,000 KB). C6: a STIG-audited Windows 11 fills the
 		// 20 MB default within an hour during Windows Update.

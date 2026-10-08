@@ -38,7 +38,8 @@ func EvaluateAuditdActions(conf map[string]string) []Result {
 			return false
 		}
 	}
-	notStop := func(v string) bool { return v != "" && v != "suspend" && v != "ignore" }
+	// What the STIGs accept (ALMA-09-054140/054030, RHEL-09-653025/653020).
+	notStop := in("syslog", "single", "halt")
 	const conf_ = "/etc/audit/auditd.conf"
 	act("space_left_action", "email, exec or syslog (someone is told)", in("email", "exec", "syslog", "single", "halt"),
 		"Audit & System Integrity: nobody is warned before the audit disk fills", "set space_left_action = email in "+conf_+", then restart auditd")
