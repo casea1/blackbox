@@ -90,6 +90,9 @@ func (r *Report) logsPage() *LogsPage {
 	for _, l := range r.LeftOut {
 		lp.Failing = append(lp.Failing, l.Text(r.stamp))
 	}
+	for _, o := range r.Overdue {
+		lp.Failing = append(lp.Failing, o.Text(r.stamp))
+	}
 	if r.Interim && len(r.Archives) == 0 {
 		lp.Manual, lp.Waiting = true, r.waitingText()
 		return lp

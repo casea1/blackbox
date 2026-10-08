@@ -56,12 +56,25 @@ func TestSavedTextEmpty(t *testing.T) {
 	}
 }
 
-// A9: less than a year of retention needs a typed yes, or --yes.
+// A9, RET1: any retention period needs a typed yes, or --yes, and the
+// prompt names the records schedule and legal holds.
 func TestConfirmRetention(t *testing.T) {
-	if err := confirmRetention("retention_days", "400", false, false, strings.NewReader("")); err != nil {
-		t.Errorf("400 days: %v", err)
+	err := confirmRetention("retention_days", "400", false, false, strings.NewReader(""))
+	if err == nil {
+		t.Fatal("400 days, no prompt: changed without asking")
 	}
-	if err := confirmRetention("retention_days", "30", false, false, strings.NewReader("")); err == nil || !strings.Contains(err.Error(), "--yes") {
+	for _, want := range []string{"records schedule", "ISSM", "not from AU-11", "legal hold", "never put in a report are never deleted"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("prompt missing %q: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "less than a year") {
+		t.Errorf("400 days called less than a year: %v", err)
+	}
+	if err := confirmRetention("retention_days", "400", true, false, strings.NewReader("")); err != nil {
+		t.Errorf("400 days --yes: %v", err)
+	}
+	if err := confirmRetention("retention_days", "30", false, false, strings.NewReader("")); err == nil || !strings.Contains(err.Error(), "--yes") || !strings.Contains(err.Error(), "less than a year") {
 		t.Errorf("30 days, no prompt: %v", err)
 	}
 	if err := confirmRetention("retention_days", "30", true, false, strings.NewReader("")); err != nil {

@@ -19,7 +19,7 @@ file:
 | `report_dir` | *(blank = default)* | Folder for reports. Any full path Blackbox can write to, including one you have locked down |
 | `archive_dir` | *(blank = `archives` in the data folder)* | Folder where the original logs (this computer's and, on a collector, every sender's) wait until the next **scheduled** report moves them into its folder; with weekly reports that is up to a week of logs. Choose a larger volume for many computers, e.g. `D:\BlackboxLogs`. Setup asks for it. A new folder is created for administrators only; an existing one keeps its permissions. Archives already waiting where it was go into the next report from there |
 | `collect_every` | `15m` | How often events are collected (15 minutes since 0.12: a STIG-audited Security log can fill within an hour). An upgrade keeps the old value, often `1h`; while events are being lost to rollover, `status` and the report give the command to change it (only when collecting more often would help: a log that turns over faster than collection needs to be larger, and they say by how much, LOG1). `blackbox config set collect_every 15m` changes it and the schedule (the scheduled task or `blackbox.timer`); it must divide an hour or a day evenly |
-| `retention_days` | `0` | Days to keep reports and collected events; `0` keeps them forever. A report folder holds the original logs (the daily archives) for its period, so they are deleted with it. Below 365 days, `config set` asks you to type `yes` (or add `--yes` in a script), since a year is the usual retention (AU-11). The next scheduled report lists the reports that were removed |
+| `retention_days` | `0` | Days to keep reports and collected events; `0` keeps them forever. A report is removed once its period ended more than this many days ago (its period end, from the report ledger or its `summary.json`, not the folder's date; a folder with no readable period end is kept). A report folder holds the original logs (the daily archives) for its period, so they are deleted with it. Original logs not yet in a report (waiting in `archive_dir`, set aside, or delivered by a sender) are never deleted; once older than `retention_days`, `status` and the report point them out. Take the period from your site's records schedule (the NARA General Records Schedule or your DoD component's records schedule; ask your ISSM), not from AU-11, which leaves it to the organization, and do not set it while a legal hold covers these records. `config set` always asks you to type `yes` (or add `--yes` in a script). The next scheduled report lists the reports that were removed |
 | `exclude_users` | *(none)* | Accounts whose routine activity is left out of reports, e.g. `svc_backup, CORP\svc_scanner`. Failed logons against them, changes to them and anything Medium or above are always shown (see [Exclusions](reports.md#detections)) |
 | `exclude_processes` | *(none)* | Programs to leave out, by name or full path, e.g. `scan.exe` |
 | `scap_results` | *(blank)* | SCAP scan results to show each computer's STIG compliance ([STIG compliance](reports.md#stig-compliance-scap)). Blank reads the `scap` folder in the data folder; set a folder (for example SCC's results folder) to read that instead, including its subfolders, or `none` to turn this off. Setup asks for it (the **SCAP results** page). Blackbox only reads results; it never runs a scan |
@@ -49,8 +49,11 @@ blackbox config set working_hours "Mon-Fri 06:00-18:00"
   A new share password is read from `BLACKBOX_SHARE_PASSWORD`.
 - `none` clears a LAN setting, `exclude_users`, `exclude_processes` or
   `working_hours` ("Cleared exclude_users.").
-- `retention_days` below 365 asks you to confirm by typing `yes`; in a
-  script, add `--yes`.
+- `retention_days` (any value but 0) asks you to confirm by typing `yes`;
+  in a script, add `--yes`. The prompt says what is deleted, that the
+  period comes from the site's records schedule (ask your ISSM), not
+  AU-11, and not to set it under a legal hold; below 365 days it also
+  says the period is less than a year.
 
 Run `blackbox config` to see the current settings, and `blackbox status` to
 see whether everything is working.

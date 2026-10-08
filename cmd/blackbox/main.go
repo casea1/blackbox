@@ -501,28 +501,35 @@ func savedText(key, value string) string {
 	return s
 }
 
-// retentionFloor is a year: AU-11 audit record retention, the period sites
-// usually set, and how far back an assessor looks.
+// retentionFloor is a year: below it the prompt also says the period is
+// short.
 const retentionFloor = 365
 
-// confirmRetention asks before reports are kept less than a year (A9):
-// shortening retention deletes reports and their original logs at the
-// next scheduled report.
+// confirmRetention asks before any retention period is set (A9, RET1):
+// retention_days deletes reports and their original logs at the next
+// scheduled report. The period is the site's records schedule, not
+// Blackbox's to choose, and a legal hold overrides it.
 func confirmRetention(key, value string, yes, interactive bool, in io.Reader) error {
 	if key != "retention_days" {
 		return nil
 	}
 	n, err := strconv.Atoi(strings.TrimSpace(value))
-	if err != nil || n <= 0 || n >= retentionFloor || yes {
+	if err != nil || n <= 0 || yes {
 		return nil // invalid values are refused by the settings check
 	}
-	warn := fmt.Sprintf("retention_days = %d keeps reports, and the original logs saved with them, for less than a year (%d days). "+
-		"At the next scheduled report, every report older than %d days is deleted for good.", n, retentionFloor, n)
+	warn := fmt.Sprintf("retention_days = %d deletes, at every scheduled report, each report whose period ended more than %d days ago, "+
+		"with the original logs saved in it, for good.", n, n)
+	if n < retentionFloor {
+		warn += fmt.Sprintf(" That is less than a year (%d days).", retentionFloor)
+	}
+	warn += " Take the period from your site's records schedule (NARA General Records Schedule or your DoD component's records schedule; ask your ISSM), " +
+		"not from AU-11, which leaves it to the organization. Do not set it while a legal hold, investigation or audit covers these records. " +
+		"Original logs that were never put in a report are never deleted."
 	if !interactive {
 		return fmt.Errorf("%s\nTo do this anyway, add --yes: blackbox config set retention_days %d --yes", warn, n)
 	}
 	fmt.Println(warn)
-	fmt.Print("Type yes to keep them for only ", n, " days: ")
+	fmt.Print("Type yes to keep reports for only ", n, " days: ")
 	line, _ := bufio.NewReader(in).ReadString('\n')
 	if strings.TrimSpace(strings.ToLower(line)) != "yes" {
 		return fmt.Errorf("not changed")
