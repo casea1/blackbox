@@ -34,6 +34,8 @@ Blackbox-Setup-<version>.exe install --yes --site "Lab 3" --report-dir D:\AuditR
 
 (From cmd.exe, put `start /wait` in front so the prompt waits for it.)
 
+A run with `--yes` keeps the earlier answers you don't repeat. Giving only `--inbox` (or only `--send-to`) replaces the computer's earlier role: a former sender given `--inbox` becomes a collector.
+
 For a PC with Linux VMs, or a LAN, see [Several computers](lan.md): the
 other choices ask where the inbox is, or where to send.
 
@@ -255,7 +257,10 @@ High for `exclude_users`, `exclude_processes`, `retention_days`,
 writes the same record to the Application log, source **Blackbox**, event ID 100, so a copy exists outside its own folder.
 A scheduled report found missing or changed afterwards ("REPORT MISSING",
 "REPORT CHANGED") is written there too, once per report, as a warning
-with event ID 101 (LEDGER4).
+with event ID 101 (LEDGER4). An administrator's decision about a
+sender's signing key on a collector (`blackbox senders approve`, `rekey`
+or `forget`) is written there as event ID 102, with who did it and why
+(DESIGN1).
 Installing, upgrading and removing Blackbox are recorded the same way. A
 `config set` command line with no matching record (refused, answered
 "no", failed, or the value was already set) is shown as "tried to change

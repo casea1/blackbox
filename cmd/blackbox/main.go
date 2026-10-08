@@ -47,9 +47,10 @@ Usage:
   blackbox systems remove NAME   Stop listing a retired computer
   blackbox systems rename OLD NEW
                                  Accept OLD as a former name of NEW
-  blackbox inbox                 List the senders' own folders in this collector's inbox
-  blackbox inbox add NAME ACCOUNT [--host COMPUTER]
-                                 Make a folder in the inbox that only ACCOUNT can write to
+  blackbox senders               List the computers that deliver here, with their signing keys (collector)
+  blackbox senders approve|rekey|forget NAME ["why"]
+                                 Take a new computer held for approval, take a computer's new key,
+                                 or drop its key (the next one it signs with is taken)
   blackbox gaps                  List batches that never arrived (collector)
   blackbox gaps accept NAME FROM-TO "why"
                                  Accept that those batches will not arrive
@@ -119,6 +120,8 @@ func main() {
 		err = cmdSystems(args)
 	case "inbox":
 		err = cmdInbox(args)
+	case "senders":
+		err = cmdSenders(args)
 	case "gaps":
 		err = cmdGaps(args)
 	case "reports":
@@ -220,6 +223,7 @@ environment variable (so it is not shown in the process list).
 	shareUser := fs.String("share-user", "", "account on the collector for --send-to (\"-\" for none)")
 	inbox := fs.String("inbox", "", "make this computer a collector that receives in this folder (\"none\" to stop)")
 	shareInbox := fs.Bool("share-inbox", false, "Windows collector: share the inbox on the network as "+install.ShareName)
+	newSenders := fs.String("new-senders", "", "collector: accept (the default) takes a new computer at its first signed delivery; hold keeps its deliveries until blackbox senders approve NAME")
 	var writers listFlag
 	fs.Var(&writers, "inbox-writer", "Windows collector: an account allowed to deliver to the inbox, e.g. the user who runs VirtualBox (repeatable)")
 	yes := fs.Bool("yes", false, "do not ask questions; use the options given and current or default settings")
@@ -306,7 +310,19 @@ environment variable (so it is not shown in the process list).
 		if *shareInbox {
 			ans.ShareInbox = true
 		}
+		switch strings.ToLower(*newSenders) {
+		case "":
+		case "accept":
+			ans.HoldNewSenders = false
+		case "hold":
+			ans.HoldNewSenders = true
+		default:
+			return fmt.Errorf("--new-senders must be accept or hold")
+		}
 		ans.InboxWriters = writers
+		// A role named on the command line replaces the kept one: --inbox
+		// on a former sender makes a collector, not a sender that ignores it.
+		ans = flagRole(ans, *sendTo, *inbox)
 	}
 	ans.Role = install.RoleOf(ans.SendTo, ans.Inbox)
 	ans = install.ForRole(ans)
@@ -593,7 +609,10 @@ func cmdSend(args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("This computer now sends as %s (it was %s). The collector treats it as a new sender from its next delivery.\n", id, orNone(old))
+		fmt.Printf("This computer now sends as %s (it was %s), signing with a new key. The collector treats it as a new sender from its next delivery.\n", id, orNone(old))
+		if k, err := lan.LoadKey(cfg.DataDir); err == nil {
+			fmt.Printf("Its signing key: %s\n", k.Fingerprint())
+		}
 		return nil
 	}
 	if *resend != "" {
@@ -697,13 +716,19 @@ func orNone(s string) string {
 	return s
 }
 
-// cmdInbox lists the senders' own folders in this collector's inbox, or
-// makes one (SEC1).
+// cmdInbox is gone (DESIGN1): 0.23's per-sender folders were replaced by
+// a drop-only inbox in 0.24. It says so rather than "unknown command".
 func cmdInbox(args []string) error {
-	fs := flag.NewFlagSet("inbox", flag.ContinueOnError)
+	return errors.New("blackbox inbox was removed in 0.24: senders no longer need folders of their own. Every sender delivers into the one inbox, which they can add files to but not list, read, change or delete (see docs/lan.md, \"How the inbox is protected\"). Setup and the upgrade set this up; there is nothing to add")
+}
+
+// cmdSenders lists the computers that deliver to this collector and the
+// keys they sign with, or carries out an administrator's decision about
+// one (DESIGN1). Flags may come anywhere after the command (CLI2).
+func cmdSenders(args []string) error {
+	fs := flag.NewFlagSet("senders", flag.ContinueOnError)
 	var c common
 	c.register(fs)
-	host := fs.String("host", "", "the computer that delivers there (default: the first one that does)")
 	rest, err := parseAnywhere(fs, args)
 	if err != nil {
 		return err
@@ -713,21 +738,33 @@ func cmdInbox(args []string) error {
 		return err
 	}
 	a := newApp(cfg, nil)
-	switch {
-	case len(rest) == 0:
-		return a.InboxFolders(os.Stdout)
-	case len(rest) == 3 && rest[0] == "add":
-		if err := install.RequireAdmin(); err != nil {
-			return err
-		}
-		dir, err := a.AddSenderFolder(rest[1], rest[2], *host)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("Made %s: only %s can write there.\nSenders from 0.23 find it themselves and deliver into it from their next run.\n", dir, rest[2])
-		return nil
+	if len(rest) == 0 {
+		return a.Senders(os.Stdout)
 	}
-	return errors.New("usage: blackbox inbox                                   (list the senders' folders)\n       blackbox inbox add NAME ACCOUNT [--host COMPUTER]  (a folder only ACCOUNT can write to)")
+	act := lan.KeyAction(rest[0])
+	if len(rest) < 2 || (act != lan.Approve && act != lan.Rekey && act != lan.Forget) {
+		return errors.New("usage: blackbox senders                              (list, with each computer's signing key)\n       blackbox senders approve NAME [\"why\"]       (take a new computer held under new_senders = hold)\n       blackbox senders rekey NAME [\"why\"]         (take the new key a known computer signs with)\n       blackbox senders forget NAME [\"why\"]        (drop its key; the next one it signs with is taken)")
+	}
+	if err := install.RequireAdmin(); err != nil {
+		return err
+	}
+	n, err := a.SenderKey(rest[1], act, strings.Join(rest[2:], " "))
+	if err != nil {
+		return err
+	}
+	switch act {
+	case lan.Approve:
+		fmt.Printf("%s is approved: its deliveries are taken from now on.", rest[1])
+	case lan.Rekey:
+		fmt.Printf("%s's new key is taken: its deliveries signed with it are imported from now on.", rest[1])
+	case lan.Forget:
+		fmt.Printf("%s's key is dropped: the next key it signs with is taken as a new computer's.", rest[1])
+	}
+	if n > 0 {
+		fmt.Printf(" %d held file%s go back into the inbox and are imported at the next run.", n, map[bool]string{true: "s"}[n != 1])
+	}
+	fmt.Println("\nThis is recorded with who did it and why.")
+	return nil
 }
 
 // cmdGaps lists batches that never arrived, or accepts a known gap (L13b).
@@ -1116,4 +1153,18 @@ func parseWhen(s string, loc *time.Location) (time.Time, bool, error) {
 		return t, false, fmt.Errorf("%q is not a date like 2026-09-01 or 2026-09-01 08:00", s)
 	}
 	return t, true, nil
+}
+
+// flagRole drops the kept setting of the other role when only one of
+// --send-to and --inbox is given (a path, not "none").
+func flagRole(ans install.Answers, sendTo, inbox string) install.Answers {
+	setSend := sendTo != "" && sendTo != "none"
+	setInbox := inbox != "" && inbox != "none"
+	switch {
+	case setInbox && !setSend:
+		ans.SendTo, ans.ShareUser, ans.SharePassword = "", "", ""
+	case setSend && !setInbox:
+		ans.Inbox, ans.ShareInbox, ans.InboxWriters, ans.ShareWriters = "", false, nil, nil
+	}
+	return ans
 }

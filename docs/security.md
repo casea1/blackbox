@@ -60,19 +60,22 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
 
 ## LAN security
 
-- **Least privilege on the inbox (SEC1).** On a Windows collector, the
-  inbox folder is restricted by SID to:
-  - Administrators and SYSTEM
-  - a local group, **Blackbox Senders**, that may reach the share
+- **Least privilege on the inbox (SEC1, DESIGN1).** The inbox is
+  drop-only: senders can add files to it, and nothing else. On a Windows
+  collector its access list, set by SID, is:
+  - Administrators and SYSTEM: full control (Administrators own it)
+  - **Blackbox Senders**: *Create files / write data* and *Synchronize*,
+    on the folder only (no List, Read, Delete, Create folders or Change
+    permissions; files a sender creates inherit nothing for it)
+  - OWNER RIGHTS: no rights, so creating a file gives its account no
+    implicit right to read or change the file's permissions
+  - the marker `BLACKBOX-INBOX.txt` alone is readable to senders
 
-  Each sender has its own folder in it (`blackbox inbox add NAME
-  ACCOUNT`), which only its account can write to: it can create and write
-  files, but not delete or rename them, change their permissions, or open
-  another sender's folder. On a Linux collector each SFTP account has its
-  own directory (root and the account's group, mode 1730). Collectors set
-  up before 0.23 also accept files in the inbox itself, where every member
-  of Blackbox Senders can write, for one more release; `blackbox status`
-  lists the senders that still deliver there.
+  On a Linux collector the inbox is `root:blackbox-senders`, mode 1730:
+  members create files but can't list it or remove others' files. Setup
+  and the upgrade apply this; 0.23's per-sender folders are emptied into
+  the inbox and removed. CI checks both with a real non-administrator
+  sender account.
 
   If shared, the share grants Change to that group only. The installer
   creates the group and, when asked, adds named accounts to it. It never
@@ -153,12 +156,33 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
   The collector reports missing batch numbers, and sets damaged or
   altered batches aside and reports them. These checks detect loss and
   accidental or careless change, not a determined attacker with write
-  access to the inbox. The batches are not cryptographically signed.
+  access to the inbox. Since 0.24 every delivery is also signed (below).
+- **Signed deliveries (DESIGN1).** Each sender signs every batch,
+  original-log archive and SCAP result with its own Ed25519 key (inside
+  Go's FIPS 140-3 module v1.0.0; it works with `GODEBUG=fips140=only`).
+  The signature covers the file's SHA-256, the computer's name, its sender
+  ID and batch number (an archive: its period; a SCAP result: its hash) and
+  the time. The private key is in the data folder (Administrators and
+  SYSTEM only, root `0600`), never leaves the computer, and the sender
+  checks those permissions in `blackbox status`. The collector pins each
+  computer to the first key it signs with (trust on first use;
+  `new_senders = hold` makes a new one wait for `blackbox senders
+  approve`); a different key later is held, not imported, with a High
+  row, until `blackbox senders rekey`; one key on two computers is a High
+  row. Host and sender-ID spoofing, a forged first batch number, false
+  former names and forged archives or SCAP results can't be made without
+  the computer's key. Unsigned deliveries are taken for this release only
+  from computers that have never signed (`require_signed = yes` refuses
+  them all), and are listed to upgrade. Limits: the first delivery is
+  trusted as it comes (compare the key with the sender's `blackbox
+  status`), and someone with administrator rights on a sender can use its
+  key, as they can change what it collects.
 - **No loops, no spoofed collectors.**
   - A computer refuses its own batches.
   - It only delivers to a folder that has the collector's marker file, so
     an unmounted share (an empty local folder) is never written to by
-    mistake.
+    mistake. The marker is the one file in the drop-only inbox senders
+    may read.
 - **What a sender can claim.** A sender supplies the host names in its
   data. The Systems page lists every computer seen, so an unexpected one
   stands out. If one computer delivers collection records for another,
@@ -166,9 +190,8 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
 - **Which account delivered a file (SEC1).** The collector reads the
   owner of each file it imports (the file's owner on NTFS, its user ID on
   Linux), logs it, and puts it in the note of any file it sets aside and
-  in any High row about the inbox. What a sender's folder holds must be
-  from that folder's computer, and a sender ID belongs to one folder: a
-  file that claims to be from another computer is set aside in
+  in any High row about the inbox, as information: senders may share one
+  delivery account. A file the collector can't use is set aside in
   `inbox\rejected` with a `.why.txt`, and `blackbox status` exits 4.
 - **What the collector raises (SEC1).** Two different batches under one
   number, two computers using one sender ID (a cloned computer), two

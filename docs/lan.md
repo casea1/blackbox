@@ -146,8 +146,10 @@ VM does not have to be on at a particular time:
    (or accounts) the other computers deliver as. Setup then:
    - shares `C:\BlackboxInbox` as `\\COLLECTOR\BlackboxInbox`, encrypted,
      with offline caching off (no copies of batches in client caches)
-   - gives the local group **Blackbox Senders** permission to write to
-     it (and nobody else), and adds those accounts to it
+   - gives the local group **Blackbox Senders** permission to add files
+     to it, and nothing else (see
+     [How the inbox is protected](#how-the-inbox-is-protected)), and adds
+     those accounts to it
    - checks that Windows Firewall lets file sharing in: any enabled
      inbound rule that allows TCP 445 counts, including **File and Printer
      Sharing (Restrictive) (SMB-In)**, which Windows 11 25H2 turns on when
@@ -239,8 +241,9 @@ The data simply waits until the mount is back.
 1. On the Windows collector, turn on the **OpenSSH Server** optional
    feature. On an air-gapped system, install it from the Features on
    Demand media.
-2. Give an account (the same one as for SMB is fine) write access to the
-   inbox through **Blackbox Senders**, and use key-based sign-in.
+2. Give an account (the same one as for SMB is fine) access to the
+   inbox through **Blackbox Senders** (on a Linux collector,
+   **blackbox-senders**), and use key-based sign-in.
 3. On the Linux sender, install `sshfs` from the installation media and
    mount the inbox at boot. For example, in `/etc/fstab`:
 
@@ -285,47 +288,173 @@ the route there:
 - A later option for domain-joined senders is SMB with Kerberos
   (`sec=krb5`) and a machine keytab, which needs no NTLM.
 
-## Each sender's own folder
+## How the inbox is protected
 
 The inbox is a trust boundary: whatever is in it goes into the
-collector's reports as that computer's evidence. From 0.23 each sender
-delivers into a folder of its own, which only its account can write to.
-The collector accepts from a folder only what is from that folder's
-computer.
+collector's reports as that computer's evidence. From 0.24 there is one
+inbox, as before 0.23, and it is **drop-only**: senders can add files to
+it, but can't list, read, change, rename or delete anything in it, their
+own files included. Setup applies this on the collector, and so does the
+upgrade; there is nothing to set up per computer, and senders may share
+one delivery account. On top of that, **every delivery is signed** by the
+computer that made it, so what one computer puts in the inbox can't pass
+for another's.
 
-On the collector, as an administrator or root, make one folder per
-sending computer, each for the account that computer delivers with:
+### The drop-only folder
+
+- **Windows (NTFS, under the share):**
+  - **Blackbox Senders** has *Create files / write data* and
+    *Synchronize* on the inbox folder only. It has no *List folder*,
+    *Read*, *Create folders*, *Delete* or *Change permissions*, and the
+    files a sender creates inherit no entry for it.
+  - **OWNER RIGHTS** has no rights on the files, so the account that
+    created a file gets nothing from owning it (no reading or changing its
+    permissions).
+  - The handle that creates a file keeps the access it asked for, so a
+    sender writes the file it just made, and nothing afterwards.
+  - **Administrators** and **SYSTEM** keep full control, and Administrators
+    own the folder.
+  - The marker file `BLACKBOX-INBOX.txt` is the one thing senders can
+    read, so a sender can tell the collector's inbox from a share that is
+    not connected.
+- **Linux (SFTP senders):** the inbox is owned by root and the group
+  **blackbox-senders** (setup makes it), mode **1730**. Members can create
+  files there, but can't list the directory or remove anyone else's files.
+  A sender can still remove its own file; that batch is then a number that
+  never arrives, which the collector reports as missing. Add the account
+  SFTP senders sign in as to the group (`usermod -aG blackbox-senders
+  bbsend`). The data folder (`/var/lib/blackbox`) is root-only, so for SFTP
+  senders give the collector an inbox outside it, such as
+  `/srv/blackbox-inbox`.
+
+### Signed deliveries
+
+- **Each sender has its own signing key**, made at install or upgrade
+  (or at its first delivery after an upgrade without setup). It is
+  **Ed25519**, which is inside Go's FIPS 140-3 module (v1.0.0, and works
+  with `GODEBUG=fips140=only`), so FIPS builds use it unchanged. The
+  private key is `sender-key.pem` in the data folder: Administrators and
+  SYSTEM only on Windows, root `0600` on Linux. It never leaves the
+  computer. `blackbox status` on the sender shows `Signing key:
+  SHA256:…`, and so does setup's last screen; `blackbox status` says so
+  if the key file can be read by any other account.
+- **What is signed:** every batch, original-log archive and SCAP result.
+  The signature covers the file's SHA-256, the computer's name, its
+  sender ID and what the file is (a batch: its number; an archive: its
+  period; a SCAP result: the hash of the result), and the time it was
+  signed. A batch carries it in its end marker; an archive or SCAP result
+  in `NAME.sig`, written just before it under the same unique name. A
+  `NAME.sig` whose file is not in the inbox (a sender stopped between the
+  two, or a 0.23 collector imported the file and left the signature) is
+  removed after 10 minutes and logged; it holds nothing to import.
+  `blackbox send --new-id` (a computer cloned with its data folder) makes
+  a new key as well as a new sender ID.
+- **Trust on first use.** The first signed delivery from a computer the
+  collector has not seen pins that computer to its key. `blackbox status`
+  on the collector shows "New sender: ubu-ws-01 (key SHA256:ab12…, first
+  seen 2026-10-08 14:02)" for a week, and the next report has an Info row
+  and a **New senders** line under Needs attention. Compare the key with
+  `blackbox status` on that computer. With `new_senders = hold` (setup:
+  untick **Accept new computers automatically**), its deliveries wait in
+  `inbox/rejected/held` until `blackbox senders approve NAME`.
+- **A key change** (a reinstall, a re-imaged computer, a restored data
+  folder): a known computer delivering under a different key is **not
+  imported**. Its files wait in `inbox/rejected/held`, the next report has
+  a High row, and `blackbox status` says "ubu-ws-01 is now signing with a
+  different key (SHA256:cd34…, was SHA256:ab12…). If that computer was
+  reinstalled: blackbox senders rekey ubu-ws-01" (and exits 4). After
+  `rekey`, the held files are imported at the next run.
+- **One key on two computers** (a computer copied with its data folder)
+  is a High row; neither is merged into the other. Run `blackbox send
+  --new-id` on the copy.
+- **A signature that doesn't verify**, or a file signed for another
+  computer, number or period than it says, is refused into
+  `inbox/rejected` with the reason.
+
+On the collector, `blackbox senders` lists each computer with its key's
+fingerprint, when it was first seen, its last delivery, and whether it
+signs. Decisions are recorded with who made them and why, in the next
+report and in the Application log (event 102) or the journal:
 
 ```
-blackbox inbox add DC01 CORP\DC01$ --host DC01
-blackbox inbox add ubu-ws12 bbsend-ubu12 --host ubu-ws12
-blackbox inbox                      # list them
+blackbox senders                                  # list
+blackbox senders approve ubu-ws-01 "new workstation, ticket 4410"
+blackbox senders rekey ubu-ws-01 "reinstalled 8 Oct, ticket 4411"
+blackbox senders forget ubu-ws-01 "retired"       # its next key is taken as new
 ```
 
-- **Windows:** the folder's permissions let the account create and write
-  files, but not delete or rename them, change their permissions, or open
-  another sender's folder. Administrators and SYSTEM keep full control.
-  The account is added to **Blackbox Senders**, which gives it the share.
-- **Linux (SFTP):** one directory per account, owned by root and the
-  account's group (mode 1730). The account can create files there but not
-  list the directory, and can't touch anyone else's files.
-- Without `--host`, the folder takes the computer of the first file
-  delivered into it, and keeps it.
+The checks from 0.23 (sender ID, numbering, former names, content hashes,
+below) still apply, as a second line. The account that wrote each file is
+recorded as information only: signatures decide what is accepted.
 
-Senders find their folder themselves from their next run: it is the one
-whose `BLACKBOX-SENDER.txt` they can read, preferring the one named after
-the computer. `blackbox status` on a sender names its folder.
+**Unsigned senders during the upgrade.** For this release, the collector
+still takes unsigned deliveries (from senders not yet on 0.24) from a
+computer that has **never** delivered signed, marked "unsigned" in
+`blackbox status` ("upgrade these to 0.24"), in `blackbox senders` and on
+the system's page in the report. Once a computer has delivered signed, an
+unsigned file claiming to be from it is refused: there is no going back.
+`require_signed = yes` refuses all unsigned deliveries; it becomes the
+default in the next release. A sender upgraded with batches still
+waiting signs them as it delivers them, and its import record (last
+number, missing batches, the hashes behind "already imported") is kept by
+sender ID, so nothing is missed or imported twice.
 
-**What the collector checks** (each file it can't accept is moved to
+### Delivering and importing
+
+**How a sender delivers.** A sender can't look in the inbox, so:
+
+- it writes each file straight under its final name,
+  `HOST_SENDERID_SEQ-RANDOM.bbx` (log archives and SCAP results likewise
+  end in `-RANDOM`), and only if no file has that name (`O_EXCL`,
+  `CREATE_NEW`). The random part follows a dash, so a 0.23 collector reads
+  the name too. A name already taken means someone else made that file;
+  the batch then goes under a new random part;
+- a batch counts as delivered when it was written and closed without an
+  error. The collector's list of missing batches (`blackbox gaps`, then
+  `blackbox send --resend` on the sender) is the check that it arrived.
+
+**How the collector reads it.** A file that can't be read whole may still
+be being written. The collector leaves it for 10 minutes after it was
+last written, then moves it to `inbox\rejected` as incomplete (the sender
+sends a batch it could not finish again by itself).
+
+### Upgrading from 0.23
+
+The per-sender folders 0.23 made with
+`blackbox inbox add` are no longer used. At the collector's upgrade (and
+its next run), what waits in them is moved into the inbox and imported
+like any other delivery, and the folders are removed. Each sender's
+import record (its last number, its missing batches and the hashes behind
+"already imported") is kept by sender ID, not by folder, so nothing is
+missed or imported twice. `blackbox inbox add` is gone.
+
+Upgrade the senders first, then the collector:
+
+- a 0.24 sender's files are read by a 0.23 collector as well. While the
+  collector is still 0.23, a sender that had its own folder there keeps
+  delivering into it (a 0.23 collector refuses a file in the inbox itself
+  from a computer that has a folder); once the collector is upgraded and
+  the folder is gone, it delivers into the inbox. A 0.23 collector reads
+  a file in the inbox itself (not a folder) as soon as it sees it, so a
+  batch it catches half written is set aside as incomplete; `blackbox
+  gaps` lists it and `blackbox send --resend` on the sender sends it again.
+  A 0.23 collector imports signed files as unsigned ones and leaves each
+  archive's and SCAP result's `NAME.sig` behind; the upgraded collector
+  removes those;
+- senders from before 0.24 rename their files into place, which the
+  drop-only inbox does not allow on a Windows collector. If the collector
+  is upgraded first, their batches wait on the sender, safely, until the
+  sender is upgraded too.
+
+### What the collector checks
+
+Each file it can't accept is moved to
 `inbox\rejected` with a `NAME.why.txt` note saying why and which account
 wrote it; `blackbox status` lists them and exits 4, the next report says
-so, and the rest are still imported):
+so, and the rest are still imported:
 
-- a batch, log archive or SCAP result in a sender's folder must be from
-  that folder's computer, and its sender ID must not belong to another
-  folder;
-- a file in the inbox itself (the shared folder) is refused when it claims
-  to be from a computer that has its own folder;
+- a signature that does not verify, or an unsigned file from a computer
+  that signs (see above);
 - a batch whose records can't be read (not an event, a bad time, a record
   of no known type) is set aside, and its number stays missing until it
   is sent again with `blackbox send --resend`;
@@ -333,9 +462,13 @@ so, and the rest are still imported):
   whose computer name is `.` or `..` is refused;
 - a SCAP result must match the hash in its file name.
 
-**What it raises as High** (one row in the next report, with the account
-that wrote the file):
+The account that wrote each file is recorded (in the log, in the note of
+a file set aside, and in any High row about the inbox), as information:
+with one shared delivery account it says little.
 
+**What it raises as High** (one row in the next report):
+
+- **A key change** or **one key on two computers** (see above).
 - **Two different batches with one number** from a computer: both are
   kept. A batch is "already imported" only when it is the same batch.
 - **Two computers using one sender ID** (a computer cloned from another,
@@ -352,12 +485,6 @@ A sender's "first batch for this collector" (sent after it moved from
 another collector) is taken only when it is close to the next number
 expected; a jump is recorded as missing batches, and a gap already
 recorded is never erased by it.
-
-**The shared folder.** Senders of collectors set up before 0.23 deliver
-into the inbox itself, which every sender can write to. That still works
-in 0.23, and `blackbox status` on the collector lists the senders that do
-it ("SHARED FOLDER"). It stops working in the next release: give each one
-its own folder, then upgrade it.
 
 ## Day to day
 
@@ -503,8 +630,11 @@ and in `summary.json`:
 | A delivery never arrived (for example, deleted from the inbox) | Which batches from which computer are missing, and the `blackbox send --resend` command to run on that computer |
 | A computer's clock is ahead of the collector's | The computer and by how much. Event times from it may be wrong |
 | Events arrived after the report they belong to | Included in the next report, marked **Late** |
-| A delivery is damaged, altered, or not from the folder's computer | It is set aside in `inbox\rejected` with a `.why.txt` note, `blackbox status` lists it and exits 4, and the report says so. The gap it leaves is reported |
-| Two different files claim to be the same batch or archive, or two computers share a sender ID | A High row: both are kept (see [Each sender's own folder](#each-senders-own-folder)) |
+| A delivery is damaged, altered, or its signature does not verify | It is set aside in `inbox\rejected` with a `.why.txt` note, `blackbox status` lists it and exits 4, and the report says so. The gap it leaves is reported |
+| Two different files claim to be the same batch or archive, or two computers share a sender ID | A High row: both are kept (see [How the inbox is protected](#how-the-inbox-is-protected)) |
+| A computer delivers for the first time | An Info row with its key, and **New senders** under Needs attention. Each system's page says "Delivery: signed · key SHA256:ab12… since 8 Oct" |
+| A known computer signs with a different key, or two computers sign with one | A High row, and **Senders waiting for a decision** or **Two computers, one key** under Needs attention; the held files are not in the report until `blackbox senders rekey` |
+| A computer delivers unsigned (Blackbox before 0.24) | **Unsigned senders** under Needs attention ("upgrade these to 0.24"), and "unsigned" on its system page. When every delivery was signed, the Verified pop-up says "All deliveries were signed by their computer's key" |
 
 ## Troubleshooting
 
@@ -528,12 +658,10 @@ This section is for reviewers.
   JSON lines with a SHA-256 checksum and a closing record, so a damaged or
   cut-short file is detected. It then copies waiting batches, oldest
   first, into the inbox:
-  - into its own folder in the inbox, written in place (it may not rename
-    or delete files there); the collector leaves a file that is not
-    complete yet for 10 minutes. Into the shared inbox folder (collectors
-    set up before 0.23), under a temporary name first, then renamed
-  - a file already there under the next name counts as delivered only if
-    it is the same; otherwise the batch goes under a new name (`…-2.bbx`)
+  - written in place under a name of its own, `HOST_SENDERID_SEQ-RANDOM.bbx`,
+    made only if no file has it; the sender can't rename, read or delete
+    anything in the inbox. The collector leaves a file that is not
+    complete yet for 10 minutes
   - only into a folder that holds the collector's `BLACKBOX-INBOX.txt`
     marker, so a share that is not mounted (an empty local folder) is
     never mistaken for the collector
@@ -555,7 +683,7 @@ This section is for reviewers.
   A computer that is reinstalled starts a new sequence instead of looking
   like a gap. A computer cloned with its data folder keeps the ID: the
   collector notices two computers using it, and `blackbox send --new-id`
-  gives one a new ID.
+  gives one a new ID, and a new signing key.
 
 **The "Blackbox Senders" group is kept when Blackbox is uninstalled.** A
 sender's open connection to the share carries the group's identity, so

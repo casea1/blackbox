@@ -3,8 +3,6 @@ package lan
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -13,9 +11,8 @@ import (
 	"github.com/casea1/blackbox/internal/store"
 )
 
-// The inbox is a trust boundary (SEC1): each sender writes only into its
-// own folder, and the collector checks that what a folder holds is from
-// that folder's computer.
+// The inbox is a trust boundary (SEC1): senders can only add files to it
+// (DESIGN1), and the collector checks what each file says it is.
 
 const (
 	// settle is how long a file that can't be read whole yet is left for
@@ -32,9 +29,10 @@ const (
 	liveDays = 30
 )
 
-// SenderMarker is the file the collector puts in each sender's folder, so
-// a sender finds the folder it may write to.
-const SenderMarker = "BLACKBOX-SENDER.txt"
+// legacyMarker is the file 0.23 put in each sender's own folder in the
+// inbox. Those folders are gone from 0.24 (DESIGN1): see
+// MigrateSenderFolders.
+const legacyMarker = "BLACKBOX-SENDER.txt"
 
 // errWriting: the file is still being written; it is tried at the next run.
 var errWriting = errors.New("still being written")
@@ -43,62 +41,6 @@ var errWriting = errors.New("still being written")
 type badBatch struct{ why string }
 
 func (b *badBatch) Error() string { return b.why }
-
-// checkFolder says why a file in folder ("" for the shared inbox folder)
-// that says it is from host and sender ID id can't be accepted, or nil.
-func checkFolder(st *store.Store, folder, host, id string) error {
-	snd := st.State.Senders[id]
-	if folder == "" {
-		if snd != nil && snd.Folder != "" {
-			return fmt.Errorf("it is in the shared inbox folder, but sender %s (%s) delivers through its own folder %s", id, snd.Host, snd.Folder)
-		}
-		if f := folderOfHost(st, host); f != "" {
-			return fmt.Errorf("it is in the shared inbox folder and says it is from %s, but %s delivers through its own folder %s", host, host, f)
-		}
-		return nil
-	}
-	if snd != nil && snd.Folder != "" && !strings.EqualFold(snd.Folder, folder) {
-		return fmt.Errorf("its sender ID %s belongs to the folder %s (%s); if this is a cloned computer, run blackbox send --new-id on it", id, snd.Folder, snd.Host)
-	}
-	if f := folderOfHost(st, host); f != "" && !strings.EqualFold(f, folder) {
-		return fmt.Errorf("it says it is from %s, which delivers through the folder %s, not %s", host, f, folder)
-	}
-	if b := st.State.InboxFolders[strings.ToUpper(folder)]; b != nil && len(b.Hosts) > 0 && !hostIn(b.Hosts, host) {
-		return fmt.Errorf("it says it is from %s, but the folder %s is for %s (if the computer was renamed, run blackbox systems rename %s %s)",
-			host, folder, strings.Join(b.Hosts, ", "), b.Hosts[len(b.Hosts)-1], host)
-	}
-	return nil
-}
-
-// folderOfHost is the inbox folder that host delivers through, or "".
-func folderOfHost(st *store.Store, host string) string {
-	for name, b := range st.State.InboxFolders {
-		if hostIn(b.Hosts, host) {
-			return name
-		}
-	}
-	return ""
-}
-
-// bindFolder records host as the computer of folder, the first time a
-// file from it is accepted (when the folder was made without one).
-func bindFolder(st *store.Store, folder, host string, now time.Time) {
-	if folder == "" || host == "" {
-		return
-	}
-	if st.State.InboxFolders == nil {
-		st.State.InboxFolders = map[string]*store.InboxFolder{}
-	}
-	k := strings.ToUpper(folder)
-	b := st.State.InboxFolders[k]
-	if b == nil {
-		b = &store.InboxFolder{Added: now}
-		st.State.InboxFolders[k] = b
-	}
-	if len(b.Hosts) == 0 {
-		b.Hosts = []string{host}
-	}
-}
 
 // hostIn reports whether host is one of hosts: names are compared without
 // case, and a full name (dc01.example.mil) matches its first part.
@@ -174,7 +116,7 @@ func noteSum(snd *store.SenderState, seq uint64, sum string) {
 
 // noteRejected records a batch that was set aside as missing: its number
 // is a gap until it is sent again (SEC2).
-func noteRejected(st *store.Store, b *Batch, folder string, now time.Time) error {
+func noteRejected(st *store.Store, b *Batch, now time.Time) error {
 	snd := st.State.Senders[b.SenderID]
 	if snd == nil {
 		snd = &store.SenderState{Host: b.Sender, FirstSeen: now}
@@ -232,19 +174,16 @@ func conflictEvent(c store.InboxConflict) *event.Event {
 	e := &event.Event{Time: c.Time, Collected: c.Time, Host: c.Host, Source: "Blackbox", RecordType: "Blackbox",
 		Category: event.CatIntegrity, Severity: event.SevHigh, Action: "blackbox_inbox_conflict", Summary: c.Summary,
 		Fields: map[string]string{"blackbox_inbox": "conflict"}}
+	if c.Severity == "info" {
+		// A note, such as a new sender and its key (DESIGN1).
+		e.Severity, e.Action, e.Fields["blackbox_inbox"] = event.SevInfo, "blackbox_new_sender", "new_sender"
+	}
 	for i := 0; i+1 < len(c.Details); i += 2 {
 		e.AddDetail(c.Details[i], c.Details[i+1])
 	}
 	e.AddDetail("Recorded by", "Blackbox on the collector, importing its inbox")
 	e.DedupeKey = "bbinbox|" + strings.ToLower(c.Host) + "|" + c.Summary
 	return e
-}
-
-func folderName(folder string) string {
-	if folder == "" {
-		return "the shared inbox folder"
-	}
-	return folder
 }
 
 func orUnknown(s string) string {
@@ -263,88 +202,4 @@ func AgainName(name string, n int) string {
 		}
 	}
 	return fmt.Sprintf("%s-%d", name, n)
-}
-
-// SenderFolder is the folder in the inbox this computer delivers into:
-// the one made for it (holding SenderMarker) that it can read, preferring
-// one named after host or whose marker names it. "" means the shared inbox
-// folder, as with collectors set up before SEC1.
-func SenderFolder(inbox, host string) string {
-	entries, err := os.ReadDir(inbox)
-	if err != nil {
-		return ""
-	}
-	var mine []string
-	for _, e := range entries {
-		if !e.IsDir() || e.Name() == rejectedDir || strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		b, err := os.ReadFile(filepath.Join(inbox, e.Name(), SenderMarker))
-		if err != nil {
-			continue
-		}
-		if strings.EqualFold(e.Name(), safeName(host)) || markerHost(string(b), host) {
-			return e.Name()
-		}
-		mine = append(mine, e.Name())
-	}
-	if len(mine) == 1 {
-		return mine[0]
-	}
-	return ""
-}
-
-// markerHost reports whether a sender folder's marker names host.
-func markerHost(text, host string) bool {
-	for _, l := range strings.Split(text, "\n") {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(l), "Computer:"); ok {
-			for _, h := range strings.Split(v, ",") {
-				if hostIn([]string{h}, host) {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-// PrepareSenderFolder makes a sender's folder in the inbox, with its
-// marker, and records which computer it is for (host may be "" to learn
-// it from the first file). Access is set by the caller (install).
-func PrepareSenderFolder(st *store.Store, inbox, folder, account, host string, now time.Time) (string, error) {
-	folder = safeName(folder)
-	if folder == "." || folder == ".." || strings.EqualFold(folder, rejectedDir) {
-		return "", fmt.Errorf("%q can't be a folder name", folder)
-	}
-	dir := filepath.Join(inbox, folder)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return "", err
-	}
-	computer := host
-	if computer == "" {
-		computer = "(the first computer to deliver here)"
-	}
-	text := strings.ReplaceAll(fmt.Sprintf(`Blackbox sender folder
-Account:  %s
-Computer: %s
-Created:  %s
-
-Only this account can write here, and the collector accepts only data from
-this computer from this folder. It imports the files and removes them.
-`, account, computer, now.Format("2006-01-02 15:04")), "\n", "\r\n")
-	if err := os.WriteFile(filepath.Join(dir, SenderMarker), []byte(text), 0o644); err != nil {
-		return "", err
-	}
-	if st.State.InboxFolders == nil {
-		st.State.InboxFolders = map[string]*store.InboxFolder{}
-	}
-	b := &store.InboxFolder{Account: account, Added: now}
-	if host != "" {
-		b.Hosts = []string{host}
-	}
-	if old := st.State.InboxFolders[strings.ToUpper(folder)]; old != nil && host == "" {
-		b.Hosts = old.Hosts
-	}
-	st.State.InboxFolders[strings.ToUpper(folder)] = b
-	return dir, st.Save()
 }

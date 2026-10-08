@@ -256,6 +256,7 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []Che
 	if l, ok := r.scapCheckLine(); ok {
 		lines = append(lines, l)
 	}
+	lines = append(lines, r.deliveryCheckLines()...)
 	if len(r.Removed) > 0 {
 		lines = append(lines, CheckLine{Level: "warn", Icon: "history", Title: "Older reports removed",
 			What: fmt.Sprintf("%s deleted under retention_days = %d, with their original logs: %s", plural(len(r.Removed), "report"), r.RetentionDays, strings.Join(r.Removed, ", ")), Count: ""})
@@ -444,6 +445,12 @@ func checklistLink(l CheckLine) string {
 			return "#health/" + first
 		}
 		return "#health"
+	case "Senders waiting for a decision", "Two computers, one key", "New senders", "Unsigned senders", "Deliveries signed":
+		// DESIGN1: each system's page has its Delivery line.
+		if first != "" && !strings.Contains(l.Who, ", ") {
+			return "#systems/" + first
+		}
+		return "#systems"
 	case "Original logs archived", "Original logs missing", "Original logs not archived", "Original logs not in this report", "Original logs left out of a report":
 		if first != "" {
 			return "#logs/" + first

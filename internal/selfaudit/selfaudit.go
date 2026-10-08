@@ -36,7 +36,7 @@ func Record(dataDir string, c event.SelfChange, now time.Time) error {
 	} else if err := st.AppendEvents(now, []*event.Event{e}); err != nil {
 		errs = append(errs, err)
 	}
-	if err := systemLog(c.Message(), c.Kind == "setting" || c.Kind == "removed"); err != nil {
+	if err := systemLog(c.Message(), c.Kind == "setting" || c.Kind == "removed" || c.Kind == "sender_key", c.Kind == "sender_key"); err != nil {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)

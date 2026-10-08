@@ -143,7 +143,7 @@ set`, setup or an upgrade actually writes a setting, it adds a row of its
 own saying who (the user who ran sudo, or the login user), which setting, and the value before and after,
 High for `exclude_users`, `exclude_processes`, `retention_days`,
 `report_dir`, `send_to`, `inbox` and `scap_results` (others Medium). It
-writes the same record to syslog/the journal with the ident `blackbox` (`journalctl -t blackbox`), so a copy exists outside its own folder.
+writes the same record to syslog/the journal with the ident `blackbox` (`journalctl -t blackbox`), so a copy exists outside its own folder. So does an administrator's decision about a sender's signing key on a collector (`blackbox senders approve`, `rekey` or `forget`, with who and why).
 A scheduled report found missing or changed afterwards ("REPORT MISSING",
 "REPORT CHANGED") is written there too, once per report, as a warning
 (LEDGER4).

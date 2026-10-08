@@ -599,6 +599,20 @@ func (r *Report) attention(checks []CheckLine, systems []SystemRow, cells map[st
 			l.Reason = fmt.Sprintf("%s deleted under retention_days = %d", plural(len(r.Removed), "report"), r.RetentionDays)
 		case "Events arrived late":
 			l.Reason = c.What
+		case "Senders waiting for a decision":
+			who = r.deliveryHosts(func(d *Delivery) bool { return d.Signed && (d.Held || d.NewKeyFP != "") })
+			l.Reason = "deliveries not imported until approved or rekeyed (blackbox senders)"
+		case "Two computers, one key":
+			who = r.deliveryHosts(func(d *Delivery) bool { return d.Signed && d.SharedWith != "" })
+			l.Reason = "one was copied from the other: blackbox send --new-id on the copy"
+		case "New senders":
+			who = r.deliveryHosts(func(d *Delivery) bool { return d.Signed && d.New && !d.Held && d.NewKeyFP == "" })
+			l.Reason = "first delivery: compare each key with blackbox status there"
+		case "Unsigned senders":
+			l.Reason = "Blackbox before 0.24: upgrade them"
+		}
+		if strings.HasPrefix(l.Href, "#systems") && len(who) == 1 {
+			l.Href = "#systems/" + who[0] // its page has the Delivery line
 		}
 		switch {
 		case len(who) == 0:
@@ -647,6 +661,8 @@ func fineName(title string) string {
 		return "No open CAT I findings"
 	case "Audit settings match STIG":
 		return "Audit settings match the STIG"
+	case "Deliveries signed":
+		return "All deliveries signed"
 	}
 	return title
 }

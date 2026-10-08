@@ -16,6 +16,7 @@ import (
 	"github.com/casea1/blackbox/internal/check"
 	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/install"
+	"github.com/casea1/blackbox/internal/lan"
 	"github.com/casea1/blackbox/internal/store"
 )
 
@@ -121,10 +122,8 @@ func Run(o Options) (Result, error) {
 		logf("")
 		logf("This computer no longer receives from other computers. What they sent so far, with their original logs, is in its next report. Set them to send to the new collector.")
 	}
-	if cfg.Inbox != "" {
-		logf("")
-		logf("Other computers can now send to this collector's inbox: %s", cfg.Inbox)
-		logf("Their events appear in reports after their first collection. See: blackbox status")
+	for _, l := range LANLines(cfg) {
+		logf("%s", l)
 	}
 	// Last, so its first look sees the first report. An icon already
 	// running restarts itself into the new version.
@@ -251,7 +250,7 @@ func Current() (a install.Answers, defaultReports string, reinstall bool, err er
 	_, statErr := os.Stat(config.DefaultPath())
 	a = install.Answers{Site: cur.SiteName, ReportEvery: cur.ReportEvery, ReportAt: cur.ReportAt, ReportDir: cur.ReportDir, ArchiveDir: cur.ArchiveDir, ScapResults: cur.ScapResults,
 		CollectEvery: cur.CollectEvery, SendTo: cur.SendTo, ShareUser: cur.ShareUser, Inbox: cur.Inbox,
-		ShareInbox: install.InboxShared(), Tray: install.TrayWanted()}
+		ShareInbox: install.InboxShared(), Tray: install.TrayWanted(), HoldNewSenders: cur.HoldNewSenders}
 	return a, filepath.Join(config.DefaultDataDir(), "reports"), statErr == nil, nil
 }
 
@@ -263,4 +262,25 @@ func ensureDir(dir string) error {
 		return nil
 	}
 	return os.MkdirAll(dir, 0o750)
+}
+
+// LANLines are the last lines of setup on a collector or a sender
+// (DESIGN1): where other computers send and how new ones show up, or the
+// key this computer signs with, to compare with the collector's.
+func LANLines(cfg *config.Config) []string {
+	var out []string
+	if cfg.Inbox != "" {
+		out = append(out, "", fmt.Sprintf("Other computers send to %s. Each one signs what it sends; new ones appear in blackbox status.", cfg.Inbox))
+		if cfg.HoldNewSenders {
+			out = append(out, "A new computer's deliveries wait until you run: blackbox senders approve NAME")
+		}
+		out = append(out, "Their events appear in reports after their first collection.")
+	}
+	if cfg.SendTo != "" {
+		if k, err := lan.LoadKey(cfg.DataDir); err == nil {
+			out = append(out, "", fmt.Sprintf("This computer signs what it sends with the key %s.", k.Fingerprint()),
+				"The collector shows the same key in blackbox senders.")
+		}
+	}
+	return out
 }

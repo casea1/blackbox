@@ -11,8 +11,9 @@
 // Delivery is exactly-once:
 //   - A sender first writes each batch to its own outbox, then records that
 //     the data was batched. A crash in between rewrites the same batch.
-//   - Batches are copied to the inbox under a temporary name and renamed
-//     when complete, so the collector never reads a partial file.
+//   - Batches are written into the drop-only inbox under a name of their
+//     own, made only if it is free (DESIGN1); the collector leaves a file
+//     that is not complete yet until it has not changed for 10 minutes.
 //   - The collector imports each sender's batches in order and ignores
 //     numbers it already has, so a batch delivered twice is imported once.
 //     A number that never arrives is recorded as a gap and shown in the
@@ -82,6 +83,9 @@ type record struct {
 type trailer struct {
 	Records int    `json:"records"`
 	SHA256  string `json:"sha256"` // of every line before the trailer
+	// Sig is the sender's signature (DESIGN1): over SHA256, the sender,
+	// its sender ID and the batch number. Collectors before 0.24 ignore it.
+	Sig *Signature `json:"sig,omitempty"`
 }
 
 // Batch is a decoded batch file.
@@ -93,6 +97,9 @@ type Batch struct {
 	// Sum is the SHA-256 of its contents, from its end marker: the same
 	// batch delivered twice has the same Sum (SEC1).
 	Sum string
+	// Sig is its sender's signature, nil for an unsigned batch (from a
+	// sender before 0.24, DESIGN1).
+	Sig *Signature
 }
 
 // Records is the number of events, runs and checks in the batch.
@@ -168,6 +175,14 @@ func Decode(r io.Reader) (*Batch, error) {
 	first, n := true, 0
 	for sc.Scan() {
 		raw := sc.Bytes()
+		if err := sc.Err(); err != nil {
+			// The last, partial line of a file cut short (DESIGN1): the
+			// reader's error says so, not the line.
+			if first {
+				return nil, fmt.Errorf("reading batch: %w", err)
+			}
+			return head(b), fmt.Errorf("reading batch: %w", err)
+		}
 		if first {
 			if err := json.Unmarshal(raw, &b.Header); err != nil || b.Kind != batchKind {
 				return nil, errors.New("not a Blackbox batch (bad header)")
@@ -197,7 +212,7 @@ func Decode(r io.Reader) (*Batch, error) {
 			if sc.Scan() {
 				return head(b), errors.New("batch has data after its end marker")
 			}
-			b.Sum = rec.End.SHA256
+			b.Sum, b.Sig = rec.End.SHA256, rec.End.Sig
 			return b, nil
 		}
 		h.Write(raw)

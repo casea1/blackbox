@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -64,12 +65,14 @@ func prepareInbox(opt Options, logf func(string, ...any)) error {
 	} else {
 		_ = out
 	}
-	// Folder permissions: full control for Administrators and SYSTEM (by
-	// SID, so any language works), and modify for the senders group.
-	if out, err := hidden.Command("icacls.exe", dir, "/inheritance:r",
-		"/grant:r", "*S-1-5-32-544:(OI)(CI)F", "/grant:r", "*S-1-5-18:(OI)(CI)F",
-		"/grant:r", SendersGroup+":(OI)(CI)M").CombinedOutput(); err != nil {
-		return fmt.Errorf("set permissions on %s: %v: %s", dir, err, strings.TrimSpace(string(out)))
+	// 0.23's per-sender folders: what waits in them moves into the inbox
+	// itself, and the folders go (DESIGN1).
+	if n := lan.MigrateSenderFolders(nil, dir, logf); n > 0 {
+		logf("Inbox:               moved %d file(s) out of 0.23's per-sender folders; they are imported at the next run", n)
+	}
+	// Drop-only (DESIGN1): senders can add files, and do nothing else.
+	if err := DropOnlyInbox(dir, SendersGroup, filepath.Join(dir, lan.MarkerFile)); err != nil {
+		return err
 	}
 	for _, u := range append(append([]string{}, opt.InboxWriters...), opt.ShareWriters...) {
 		out, err := hidden.Command("net.exe", "localgroup", SendersGroup, u, "/add").CombinedOutput()
@@ -78,7 +81,7 @@ func prepareInbox(opt Options, logf func(string, ...any)) error {
 		}
 		logf("Can deliver:         %s (member of %q; takes effect at that account's next sign-in)", u, SendersGroup)
 	}
-	logf("Inbox:               %s (Administrators, SYSTEM and %q)", dir, SendersGroup)
+	logf("Inbox:               %s (members of %q can add files to it, and nothing else: not list, read, change or delete)", dir, SendersGroup)
 
 	shared := hidden.Command("net.exe", "share", ShareName).Run() == nil
 	switch {
@@ -186,26 +189,4 @@ func firewallAdvice(logf func(string, ...any), port int) {
 		}
 		logf("%-20s %s", label, l)
 	}
-}
-
-// SenderFolderAccess lets only account write into a sender's folder in
-// the inbox (SEC1): it can create files and write them, but not delete or
-// rename them, change their permissions, or reach another sender's
-// folder. Administrators and SYSTEM keep full control, and the account
-// joins the senders group, which gives access to the share.
-func SenderFolderAccess(dir, account string) error {
-	const create = "(OI)(CI)(RD,WD,AD,REA,WEA,X,RA,WA,RC,S)"
-	if out, err := hidden.Command("icacls.exe", dir, "/inheritance:r",
-		"/grant:r", "*S-1-5-32-544:(OI)(CI)F", "/grant:r", "*S-1-5-18:(OI)(CI)F",
-		"/grant:r", account+":"+create,
-		// OWNER RIGHTS: the files the account creates are its own, but
-		// owning them gives it nothing more (no changing their permissions).
-		"/grant:r", "*S-1-3-4:(OI)(CI)(RD,REA,X,RA,RC,S)").CombinedOutput(); err != nil {
-		return fmt.Errorf("set permissions on %s: %v: %s", dir, err, strings.TrimSpace(string(out)))
-	}
-	out, err := hidden.Command("net.exe", "localgroup", SendersGroup, account, "/add").CombinedOutput()
-	if err != nil && !strings.Contains(string(out), "1378") { // 1378: already a member
-		return fmt.Errorf("add %s to %q: %v: %s", account, SendersGroup, err, strings.TrimSpace(string(out)))
-	}
-	return nil
 }

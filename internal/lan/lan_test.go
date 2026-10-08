@@ -184,9 +184,9 @@ func TestDuplicateDeliveryAndMissingBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := ws.State.Send.ID
-	one := filepath.Join(in, InboxName("WS-01", id, 1))
+	one := delivered(t, in, "WS-01", id, 1)
 	saved, _ := os.ReadFile(one)
-	os.Remove(filepath.Join(in, InboxName("WS-01", id, 2))) // lost in transit
+	os.Remove(delivered(t, in, "WS-01", id, 2)) // lost in transit
 
 	col, _ := store.Open(t.TempDir())
 	if _, err := Import(col, in, Dirs{}, t0.Add(3*time.Hour), nil); err != nil {
@@ -339,6 +339,8 @@ func TestLogArchivesAreDeliveredAndFiled(t *testing.T) {
 
 	// A damaged archive is set aside, not filed.
 	os.WriteFile(filepath.Join(in, "archive_abc_WS-02_x.zip"), []byte("not a zip"), 0o640)
+	old := t0.Add(-time.Hour) // not one still being written (DESIGN1)
+	os.Chtimes(filepath.Join(in, "archive_abc_WS-02_x.zip"), old, old)
 	res, _ = Import(col, in, Dirs{Archives: archives}, t0, nil)
 	if res.Archives != 0 || len(res.Rejected) != 1 {
 		t.Fatalf("damaged archive: %+v", res)
@@ -362,7 +364,7 @@ func TestLateBatchFillsTheGap(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := ws.State.Send.ID
-	two := filepath.Join(in, InboxName("WS-01", id, 2))
+	two := delivered(t, in, "WS-01", id, 2)
 	held, _ := os.ReadFile(two)
 	os.Remove(two) // delayed
 
@@ -427,7 +429,7 @@ func TestScapResultsTravel(t *testing.T) {
 	if n, _ := QueueScap(ws, files, t0); n != 0 {
 		t.Error("the same result queued twice")
 	}
-	if n, err := DeliverScap(ws, in); err != nil || n != 1 || QueuedScap(ws) != 0 {
+	if n, err := DeliverScap(ws, in, "WS-07"); err != nil || n != 1 || QueuedScap(ws) != 0 {
 		t.Fatalf("delivered %d %v", n, err)
 	}
 	col, _ := store.Open(t.TempDir())
@@ -470,7 +472,7 @@ func TestKeptBatchesResendFillsGap(t *testing.T) {
 		t.Error("kept batches counted as waiting to send")
 	}
 	id := ws.State.Send.ID
-	os.Remove(filepath.Join(in, InboxName("WS-01", id, 2))) // lost on the collector
+	os.Remove(delivered(t, in, "WS-01", id, 2)) // lost on the collector
 
 	col, _ := store.Open(t.TempDir())
 	Import(col, in, Dirs{}, t0.Add(3*time.Hour), nil)

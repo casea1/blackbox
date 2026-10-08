@@ -2,6 +2,8 @@ package report
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/casea1/blackbox/internal/archive"
@@ -71,7 +73,14 @@ func TestDemoReport(t *testing.T) {
 		if s.silent {
 			last = start.Add(-10 * time.Hour)
 		}
-		infos = append(infos, SystemInfo{Name: s.name, OS: s.os, Via: s.via, FirstSeen: start.AddDate(0, -3, 0), LastRun: last})
+		info := SystemInfo{Name: s.name, OS: s.os, Via: s.via, FirstSeen: start.AddDate(0, -3, 0), LastRun: last}
+		if !standalone && s.name != "SRV-DC01" {
+			// DESIGN1: each sender signs its deliveries ("Delivery: signed ·
+			// key SHA256:… since …" on its page); the collector does not.
+			sum := sha256.Sum256([]byte(s.name))
+			info.Delivery = &Delivery{Signed: true, KeyFP: "SHA256:" + base64.RawStdEncoding.EncodeToString(sum[:]), Since: start.AddDate(0, 0, -20)}
+		}
+		infos = append(infos, info)
 		for h := start.Add(time.Hour); !h.After(last); h = h.Add(time.Hour) {
 			runs = append(runs, &store.Run{Time: h, Host: s.name, OS: s.os, Version: "0.9.0"})
 		}

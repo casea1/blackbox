@@ -552,7 +552,7 @@ func (a *App) packLogs(st *store.Store, force bool) {
 	// overwritten one (AR5).
 	for _, g := range info.Gaps {
 		if g.Reason != "" {
-			st.State.LogGaps = append(st.State.LogGaps, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: a.now(), Reason: g.Reason})
+			st.State.LogGaps = addLogGap(st.State.LogGaps, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: a.now(), Reason: g.Reason})
 		}
 	}
 	// A sender, or a run with no report due, saves nothing after this.
@@ -947,7 +947,8 @@ func (a *App) receive(st *store.Store) {
 			return
 		}
 	}
-	res, err := lan.Import(st, a.Cfg.Inbox, lan.Dirs{Archives: a.pendingLogsDir(), Scap: a.scapReceivedDir()}, a.now(), a.Logf)
+	res, err := lan.Import(st, a.Cfg.Inbox, lan.Dirs{Archives: a.pendingLogsDir(), Scap: a.scapReceivedDir(),
+		HoldNew: a.Cfg.HoldNewSenders, RequireSigned: a.Cfg.RequireSigned}, a.now(), a.Logf)
 	if err != nil {
 		a.logf("receiving from %s: %v", a.Cfg.Inbox, err)
 	}
@@ -963,6 +964,9 @@ func (a *App) receive(st *store.Store) {
 	}
 	if res.Archives > 0 {
 		a.logf("received %d log archive(s) from other systems", res.Archives)
+	}
+	if len(res.Held) > 0 {
+		a.logf("%d file(s) held until an administrator decides (blackbox status says why)", len(res.Held))
 	}
 }
 
@@ -1025,7 +1029,7 @@ func (a *App) send(st *store.Store) SendResult {
 				r.ArchivesDelivered, r.Err = lan.DeliverArchives(st, dest)
 			}
 			if r.Err == nil {
-				r.ScapDelivered, r.Err = lan.DeliverScap(st, dest)
+				r.ScapDelivered, r.Err = lan.DeliverScap(st, dest, host)
 			}
 			if errors.Is(r.Err, lan.ErrNoInbox) {
 				// Why, in the mount's own words (L6).
@@ -1548,7 +1552,7 @@ func systemsFor(st *store.Store, start time.Time, collector bool) []report.Syste
 		}
 		out = append(out, report.SystemInfo{Name: s.Name, OS: s.OS, Version: s.Version, Via: s.Via,
 			FirstSeen: s.FirstSeen, LastRun: s.LastRun, LastReceived: s.LastReceived, Former: s.Former, VM: s.VM,
-			Removed: s.Removed, RemovedBy: s.RemovedBy})
+			Removed: s.Removed, RemovedBy: s.RemovedBy, Delivery: delivery(st, s.Name, start)})
 	}
 	return out
 }
@@ -1821,4 +1825,15 @@ func Describe(run *store.Run) string {
 		fmt.Fprintf(&b, "  %-58s %s\n", c.Channel, status)
 	}
 	return b.String()
+}
+
+// addLogGap adds g unless the same gap is already listed: a pack can
+// name one export's gap twice, and status should say it once.
+func addLogGap(gaps []store.LogGap, g store.LogGap) []store.LogGap {
+	for _, o := range gaps {
+		if o.Source == g.Source && o.Reason == g.Reason && o.From.Equal(g.From) && o.To.Equal(g.To) {
+			return gaps
+		}
+	}
+	return append(gaps, g)
 }

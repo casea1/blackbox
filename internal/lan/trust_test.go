@@ -5,6 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,80 +17,141 @@ import (
 	"github.com/casea1/blackbox/internal/store"
 )
 
-// senderFolder makes a sender's own folder in the inbox, as "blackbox
-// inbox add" does (without the permissions, which need an account).
-func senderFolder(t *testing.T, col *store.Store, in, name, host string) string {
+// legacyFolder makes a sender's own folder in the inbox as 0.23's
+// "blackbox inbox add" did, and records it.
+func legacyFolder(t *testing.T, col *store.Store, in, name, host string) string {
 	t.Helper()
-	dir, err := PrepareSenderFolder(col, in, name, "bb-"+strings.ToLower(name), host, t0)
-	if err != nil {
+	dir := filepath.Join(in, name)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatal(err)
 	}
+	os.WriteFile(filepath.Join(dir, legacyMarker), []byte("Blackbox sender folder\r\nComputer: "+host+"\r\n"), 0o644)
+	if col.State.InboxFolders == nil {
+		col.State.InboxFolders = map[string]*store.InboxFolder{}
+	}
+	col.State.InboxFolders[strings.ToUpper(name)] = &store.InboxFolder{Account: "bb-" + strings.ToLower(name), Hosts: []string{host}, Added: t0}
 	return dir
 }
 
-// SEC1: each sender delivers into its own folder, and what a folder holds
-// must be from its computer. One sender can't write as another, in its
-// own folder, in another's or in the shared inbox folder.
-func TestSenderCannotWriteAsAnother(t *testing.T) {
+// DESIGN1, SEC1c: at the collector's upgrade, what waits in a 0.23
+// sender's own folder is imported under the same rules as the inbox, and
+// the folder is removed. The sender's import record is kept by sender
+// ID: batches 431-433, imported from the shared folder before the switch,
+// are imported once, never listed as missing, and not imported again
+// when sent again; 434, waiting in the folder, is not refused.
+func TestSenderFoldersMigrated(t *testing.T) {
 	in := inbox(t)
 	col, _ := store.Open(t.TempDir())
-	dcDir := senderFolder(t, col, in, "DC01", "DC01")
-	wsDir := senderFolder(t, col, in, "WS-02", "")
+	ev := func(n uint64) [][]byte {
+		return [][]byte{[]byte(fmt.Sprintf(`{"host":"ubuntu-server","summary":"batch %d"}`, n))}
+	}
+	batch := func(seq uint64) *Batch {
+		return &Batch{Header: Header{Sender: "ubuntu-server", SenderID: "u1", Seq: seq, Created: t0}, Events: ev(seq)}
+	}
+	for seq := uint64(431); seq <= 433; seq++ {
+		writeBatch(t, in, batch(seq))
+	}
+	// Seen before from 430 on.
+	col.State.Senders["u1"] = &store.SenderState{Host: "ubuntu-server", LastSeq: 430, FirstSeen: t0}
+	res, err := Import(col, in, Dirs{}, t0, t.Logf)
+	if err != nil || res.Batches != 3 {
+		t.Fatalf("shared folder: %+v %v", res, err)
+	}
+	// 0.23: the sender moved to its own folder; 434 waits there.
+	dir := legacyFolder(t, col, in, "ubuntu-server", "ubuntu-server")
+	writeBatch(t, dir, batch(434))
+	other := filepath.Join(in, "not-a-sender-folder")
+	os.MkdirAll(other, 0o750)
+	os.WriteFile(filepath.Join(other, "x.bbx"), []byte("x"), 0o644)
 
-	// Each sender finds its own folder and delivers there.
-	dc := system(t, "DC01", "windows", 2, t0)
-	send(t, dc, "DC01", in, t0)
-	if dc.State.Send.Folder != "DC01" {
-		t.Fatalf("DC01 delivered to %q", dc.State.Send.Folder)
+	// The collector is upgraded.
+	res, err = Import(col, in, Dirs{}, t0.Add(time.Hour), t.Logf)
+	if err != nil || res.Batches != 1 || len(res.Rejected) != 0 {
+		t.Fatalf("after the upgrade: %+v %v", res, err)
 	}
-	ws := system(t, "WS-02", "windows", 1, t0)
-	send(t, ws, "WS-02", in, t0)
-	if ws.State.Send.Folder != "WS-02" {
-		t.Fatalf("WS-02 delivered to %q", ws.State.Send.Folder)
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("the 0.23 sender folder is still there: %v", err)
 	}
-	res, err := Import(col, in, Dirs{}, t0.Add(time.Minute), t.Logf)
-	if err != nil || res.Batches != 2 || len(res.Rejected) != 0 {
-		t.Fatalf("import: %+v %v", res, err)
+	if _, err := os.Stat(filepath.Join(other, "x.bbx")); err != nil {
+		t.Errorf("a folder that is not a sender's was touched: %v", err)
 	}
-	if f := col.State.InboxFolders["WS-02"]; f == nil || len(f.Hosts) != 1 || f.Hosts[0] != "WS-02" {
-		t.Errorf("WS-02's folder did not learn its computer: %+v", f)
+	if col.State.InboxFolders != nil {
+		t.Errorf("0.23 folder record kept: %+v", col.State.InboxFolders)
 	}
+	// 431-433 sent again (send --resend after the move).
+	for seq := uint64(431); seq <= 433; seq++ {
+		writeBatch(t, in, batch(seq))
+	}
+	res, _ = Import(col, in, Dirs{}, t0.Add(2*time.Hour), t.Logf)
+	if res.Batches != 0 || res.Already != 3 || len(res.Rejected) != 0 {
+		t.Errorf("431-433 again: %+v", res)
+	}
+	s := col.State.Senders["u1"]
+	if len(s.Missing) != 0 || s.LastSeq != 434 {
+		t.Errorf("record: missing %+v, last %d", s.Missing, s.LastSeq)
+	}
+	evs, _ := col.ReadEvents(time.Time{})
+	seen := map[string]int{}
+	for _, e := range evs {
+		seen[e.Summary]++
+	}
+	for seq := 431; seq <= 434; seq++ {
+		if n := seen[fmt.Sprintf("batch %d", seq)]; n != 1 {
+			t.Errorf("batch %d imported %d times", seq, n)
+		}
+	}
+}
 
-	// WS-02 writes batches claiming to be DC01: in its own folder, in
-	// DC01's folder (if its permissions were wrong) and in the inbox.
-	forged := func(dir, name string, seq uint64) {
-		b := &Batch{Header: Header{Sender: "DC01", SenderID: dc.State.Send.ID, Seq: seq, Created: t0},
-			Events: [][]byte{[]byte(`{"host":"DC01","summary":"forged"}`)}}
-		writeBatch(t, dir, b)
-		_ = name
+// DESIGN1: a sender writes each file straight under its final name, so
+// the collector may find one half written. It is left alone for 10
+// minutes after it was last written, then refused as incomplete; the
+// complete copy the sender delivers again is imported.
+func TestPartialFileWaitsThenRefused(t *testing.T) {
+	in := inbox(t)
+	col, _ := store.Open(t.TempDir())
+	b := &Batch{Header: Header{Sender: "WS-09", SenderID: "w9", Seq: 1, Created: t0},
+		Events: [][]byte{[]byte(`{"host":"WS-09","summary":"x"}`)}}
+	data, _ := b.Bytes()
+	for _, cut := range []int{0, 5, len(data) / 2, len(data) * 3 / 4} {
+		p := filepath.Join(in, fmt.Sprintf("WS-09_w9_0000000001-%012d.bbx", cut))
+		os.WriteFile(p, data[:cut], 0o640)
+		os.Chtimes(p, t0, t0)
 	}
-	forged(wsDir, "own", 2)
-	forged(in, "shared", 3)
-	wsAsDC := &Batch{Header: Header{Sender: "WS-02", SenderID: ws.State.Send.ID, Seq: 2, Created: t0},
-		Events: [][]byte{[]byte(`{"host":"WS-02","summary":"x"}`)}}
-	writeBatch(t, dcDir, wsAsDC)
-	res, _ = Import(col, in, Dirs{}, t0.Add(time.Hour), t.Logf)
-	if res.Batches != 0 || len(res.Rejected) != 3 {
-		t.Fatalf("forged batches: %+v", res)
+	arch := fakeArchive(t, t.TempDir(), "a.zip", "WS-09", t0, t0.Add(time.Hour), "logs")
+	zip, _ := os.ReadFile(arch)
+	pa := filepath.Join(in, "archive_w9_WS-09_x-0123456789ab.zip")
+	os.WriteFile(pa, zip[:len(zip)/2], 0o640)
+	os.Chtimes(pa, t0, t0)
+	ps := filepath.Join(in, "scap_w9_0123456789abcdef-0123456789ab.xml.gz")
+	gz := gzipBytes(t, "<x/>")
+	os.WriteFile(ps, gz[:len(gz)-4], 0o640)
+	os.Chtimes(ps, t0, t0)
+
+	dirs := Dirs{Archives: t.TempDir(), Scap: t.TempDir()}
+	res, err := Import(col, in, dirs, t0.Add(9*time.Minute), t.Logf)
+	if err != nil || res.Batches != 0 || len(res.Rejected) != 0 {
+		t.Fatalf("still being written: %+v %v", res, err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(in, "*_*")); len(left) != 6 {
+		t.Errorf("files left alone: %v", left)
+	}
+	res, _ = Import(col, in, dirs, t0.Add(11*time.Minute), t.Logf)
+	if len(res.Rejected) != 6 {
+		t.Fatalf("after 10 minutes: %+v", res)
 	}
 	for _, r := range res.Rejected {
 		if !strings.Contains(r, "set aside") {
 			t.Errorf("not set aside: %s", r)
 		}
 	}
-	evs, _ := col.ReadEvents(time.Time{})
-	for _, e := range evs {
-		if e.Summary == "forged" {
-			t.Errorf("a forged event was imported: %+v", e)
-		}
+	if why := strings.Join(Rejected(in), "\n"); strings.Count(why, "incomplete") < 5 {
+		t.Errorf("reasons:\n%s", why)
 	}
-	// Each rejected file has a note saying why and who wrote it.
-	notes, _ := filepath.Glob(filepath.Join(in, "rejected", "*"+whyExt))
-	if len(notes) != 3 {
-		t.Errorf("notes: %v", notes)
-	}
-	if got := Rejected(in); len(got) != 3 || !strings.Contains(strings.Join(got, "\n"), "delivers through") {
-		t.Errorf("Rejected: %v", got)
+	// The complete batch, delivered again, fills the gap.
+	writeBatch(t, in, b)
+	res, _ = Import(col, in, dirs, t0.Add(time.Hour), t.Logf)
+	if res.Batches != 1 || len(col.State.Senders["w9"].Missing) != 0 {
+		t.Errorf("delivered again: %+v %+v", res, col.State.Senders["w9"])
 	}
 }
 
@@ -234,36 +298,66 @@ func TestArchiveClashKeptAndRaised(t *testing.T) {
 func TestFirstSeqWindow(t *testing.T) {
 	st, _ := store.Open(t.TempDir())
 	st.State.Senders = map[string]*store.SenderState{}
-	importBatch(st, &Batch{Header: Header{Sender: "A", SenderID: "a", Seq: 10, FirstSeq: 10}, Sum: "1"}, "", "", t0)
-	importBatch(st, &Batch{Header: Header{Sender: "A", SenderID: "a", Seq: 15, FirstSeq: 15}, Sum: "2"}, "", "", t0)
+	importBatch(st, &Batch{Header: Header{Sender: "A", SenderID: "a", Seq: 10, FirstSeq: 10}, Sum: "1"}, "", t0)
+	importBatch(st, &Batch{Header: Header{Sender: "A", SenderID: "a", Seq: 15, FirstSeq: 15}, Sum: "2"}, "", t0)
 	if s := st.State.Senders["a"]; len(s.Missing) != 0 || s.LastSeq != 15 {
 		t.Errorf("first_seq within the window: %+v", s)
 	}
-	importBatch(st, &Batch{Header: Header{Sender: "A", SenderID: "a", Seq: 500, FirstSeq: 500}, Sum: "3"}, "", "", t0)
+	importBatch(st, &Batch{Header: Header{Sender: "A", SenderID: "a", Seq: 500, FirstSeq: 500}, Sum: "3"}, "", t0)
 	if s := st.State.Senders["a"]; len(s.Missing) != 1 || s.Missing[0].From != 16 || s.Missing[0].To != 499 {
 		t.Errorf("a jump is a gap: %+v", s.Missing)
 	}
 }
 
-// SEC1: on the sender, a file already in the inbox under the next name
-// counts as delivered only if it is the same; otherwise the batch goes
-// under a new name.
+// DESIGN1: the sender never looks in the inbox. Each delivery has a
+// name of its own (HOST_SENDERID_SEQ-RANDOM.bbx), made only if no file has
+// it, so a file someone else put there under the batch's name is never
+// taken for it, overwritten or read.
 func TestDeliverNeverTakesAnotherFile(t *testing.T) {
 	in := inbox(t)
 	ws := system(t, "WS-05", "windows", 1, t0)
 	Export(ws, "WS-05", "test", t0)
-	name := InboxName("WS-05", ws.State.Send.ID, 1)
-	os.WriteFile(filepath.Join(in, name), []byte("someone else's"), 0o644)
+	planted := filepath.Join(in, InboxName("WS-05", ws.State.Send.ID, 1))
+	os.WriteFile(planted, []byte("someone else's"), 0o644)
 	if n, err := Deliver(ws, in, "WS-05", false); err != nil || n != 1 {
 		t.Fatalf("deliver: %d %v", n, err)
 	}
-	if _, err := os.Stat(filepath.Join(in, AgainName(name, 2))); err != nil {
-		t.Errorf("not delivered under a new name: %v", err)
+	if b, _ := os.ReadFile(planted); string(b) != "someone else's" {
+		t.Error("the planted file was changed")
+	}
+	got, _ := filepath.Glob(filepath.Join(in, "WS-05_"+ws.State.Send.ID+"_0000000001-*.bbx"))
+	if len(got) != 1 || len(filepath.Base(got[0])) != len("WS-05_"+ws.State.Send.ID+"_0000000001-0123456789ab.bbx") {
+		t.Fatalf("delivered as %v", got)
 	}
 	col, _ := store.Open(t.TempDir())
 	res, _ := Import(col, in, Dirs{}, t0, nil)
 	if res.Batches != 1 || len(res.Rejected) != 1 {
 		t.Errorf("import: %+v", res)
+	}
+}
+
+// DESIGN1: a name already taken (someone made that file first) is
+// retried under a new random part.
+func TestDropRetriesTakenName(t *testing.T) {
+	in := t.TempDir()
+	src := filepath.Join(t.TempDir(), "b")
+	os.WriteFile(src, []byte("batch"), 0o640)
+	seen := map[string]bool{}
+	for i := 0; i < 20; i++ {
+		name, err := drop(src, in, "H_id_0000000001", batchExt, nil)
+		if err != nil || seen[name] {
+			t.Fatalf("drop %d: %s %v", i, name, err)
+		}
+		seen[name] = true
+		if id, seq, ok := parseInboxName(name); !ok || id != "id" || seq != 1 {
+			t.Errorf("%s parses as %s %d %v", name, id, seq, ok)
+		}
+	}
+	if err := writeNew(filepath.Join(in, "taken"), func(*os.File) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeNew(filepath.Join(in, "taken"), func(*os.File) error { return nil }); !errors.Is(err, fs.ErrExist) {
+		t.Errorf("O_EXCL: %v", err)
 	}
 }
 

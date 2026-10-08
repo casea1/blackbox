@@ -740,3 +740,18 @@ func TestExportByPositionNotTime(t *testing.T) {
 		t.Errorf("mark: %+v", m)
 	}
 }
+
+// A gap named twice in one pack is kept, and shown by status, once.
+func TestAddLogGapOnce(t *testing.T) {
+	from := time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC)
+	g := store.LogGap{Source: collect.AuditLog, From: from, To: from.Add(time.Minute), Reason: "audit serials 86-127 are not in the audit log"}
+	gaps := addLogGap(addLogGap(nil, g), g)
+	if len(gaps) != 1 {
+		t.Fatalf("the same gap kept %d times", len(gaps))
+	}
+	h := g
+	h.Reason = "audit serials 200-210 are not in the audit log"
+	if gaps = addLogGap(gaps, h); len(gaps) != 2 {
+		t.Errorf("a different gap was dropped: %d kept", len(gaps))
+	}
+}
