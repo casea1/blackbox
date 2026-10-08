@@ -1309,6 +1309,7 @@
     finders[f.view] = f;
   });
 
-  window.addEventListener('hashchange', show);
+  // Another page (Back, a bookmark) closes the event panel.
+  window.addEventListener('hashchange', function () { closeEvent(); show(); });
   show();
 })();

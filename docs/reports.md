@@ -166,8 +166,8 @@ and text within a minute) are one row marked **×N**, with the time of
 each in its details ("Recorded: 7 times: …"). Failed logons and log
 clears are never folded: each is an attempt, and each clear is one
 action, so two clears a minute apart are two rows and the detection says
-"2 logs cleared". Every count in the report (the sidebar, the tiles,
-People, Trends) counts rows.
+"2 logs cleared". Every count in the report (the sidebar, the Overview's
+numbers, People, Trends) counts rows.
 
 **Blackbox's own writes.** The Event Log service writing the original-log
 pieces during a Blackbox run is not a row, also in a manual report made
@@ -177,10 +177,8 @@ Blackbox's runs from an hour before its earliest event.
 **Audit integrity kinds.** Each row has its kind: Log cleared, Audit
 policy changed, Logging stopped (the event log or audit service stopping,
 a full log, dropped records), Blackbox (its install, upgrade, settings and
-files), Firewall, Clock, Startup and shutdown, or Other. The **Logging
-stopped** tile counts only stops of Medium severity or above: the event
-log service stopping as Windows shuts down, or auditd as a restart ends,
-is not counted.
+files), Firewall, Clock, Startup and shutdown, or Other; the page's
+**Kind** field counts show how many of each.
 
 **Linux sign-ins and restarts.** One SSH sign-in or sign-out is one row,
 even when it is recorded twice (two audit login records, or the same
@@ -609,25 +607,27 @@ older than `scap_max_age_days` (30 by default) is marked **Stale**, and
 the computers with no scan are named in one **No scan found** line. The
 open-rules CSV still lists every benchmark.
 
-**Where the score is.** Besides the table: the bar at the top of Audit
-health ("lowest score 40% · 1 open CAT I"); each system's own Audit
-health view, as **SCAP score** next to its checks (on a one-computer
-report, that view is the whole of Audit health); and each system's
-health list on the Systems page (**STIG compliance (SCAP)**, or **Open
-CAT I findings (SCAP)** when it has them). Each uses the system's
-operating-system scan.
+**Where the score is.** Besides the table (Audit health's **SCAP** tab):
+the **SCAP** card at the top of Audit health ("lowest · 4 open CAT I on 4
+systems"); each system's own Audit health view, as **SCAP score** next to
+its checks (on a one-computer report, that view is the whole of Audit
+health); and on the Systems page, the **SCAP** square in each row and the
+**SCAP** fact and check line on the system's own page. Each uses the
+system's operating-system scan.
 
 - CAT comes from each rule's severity: high is CAT I, medium CAT II, low
   CAT III. Open means `fail` or `error`, as STIG Viewer and SCC count
   them.
-- **Overview:** open CAT I findings are a red line in the checklist;
-  computers with no scan, or a stale one, are amber.
+- **Overview:** open CAT I findings are a red **CAT I findings** line
+  under Needs attention; computers with no scan, or a stale one, are an
+  amber line.
 - **Open rules:** each open CAT I, II or III count in the table opens
   that computer's open rules on Audit health, CAT I first, then by STIG
   ID, with each rule's title, Vuln ID and rule ID. Each computer's
   settings list also has a **STIG compliance (SCAP)** line (score and open
   counts; a gap when CAT I findings are open) linking to the same list.
-- **Systems:** each computer's header adds "SCAP 94% · 1 CAT I".
+- **Systems:** a system's page has its SCAP score and open CAT I among
+  its six facts ("94% · 1 CAT I").
 - **Report folder:** each result shown is copied into `scap/` and listed
   in `manifest.sha256`, so the report proves which scan it showed.
   `scap-open-rules.csv` lists every open rule (computer, benchmark, CAT,
@@ -637,7 +637,7 @@ operating-system scan.
 
 ## Inventory
 
-The **Inventory** page (under Audit) lists what each system is, read with
+The **Inventory** page (under More) lists what each system is, read with
 its daily settings check by Blackbox 0.13 or later. Setup also keeps the
 check it shows, with the inventory, at every install and upgrade (UX10b),
 so an upgrade's settings and inventory are in `status` (**Settings
@@ -783,10 +783,9 @@ setting's STIG ID goes under its name.
 The report is checked with axe-core for the accessibility rules on
 names and structure (UI19): every filter (Search, and the filters
 on each event page) has a name; each chart is an image named for what it
-shows, the activity heatmap a named group (its hours are links), and
-icons are hidden from screen readers; Inventory's rows open with a
-button; each menu has its own name; headings never skip a level; and on
-the narrow icon menu each page's name is still read out.
+shows, and icons are hidden from screen readers; each menu has its own
+name; headings never skip a level; and in a narrow window the **Menu**
+button says whether the page list is open.
 Systems that match on every check are folded under **Show the N systems
 that match on every check**. In the **Antivirus** table, systems with
 current definitions are folded the same way. The CSV of Audit health (Export
@@ -820,9 +819,9 @@ a day with `Get-MpComputerStatus`.
 tab, one row per system, out-of-date ones first: the antivirus, the
 date its definitions were made, how old they are, the version, real-time
 protection (or the ClamAV service), and the result. The Overview's
-checklist has an **Antivirus definitions** line with the oldest date and
-any system that is out of date; each system's health list on the Systems
-page has its own date. All three link to the table (`#health/@av`).
+Needs attention has an **Antivirus out of date** line with the systems
+that are; each system's page on Systems has an Antivirus check line with
+its own date. Both link to the tab (`#health/@av`).
 
 On Linux the same column shows **ClamAV**: the daily database version and
 when it was built (from `clamscan --version`), and whether its scanner
@@ -883,7 +882,7 @@ page's name such as `privileged`), `user` (a person), `host` (a system),
 `role` (`server`, `workstation` or `vm`; `host=@server` also works),
 `sev` (`high`, `medium`, `hm` for high or medium, `li` for low or info),
 `when` (a day `20261007`, an hour `2026100714`, `@after` for outside
-working hours, or `@slot:D-H`, a weekday hour from People), `at` and
+working hours, or `@slot:D-H`, a weekday hour), `at` and
 `span` (a time in Unix seconds and the seconds either side of it:
 "±10 min"), `text`, `event` (an action, e.g. `log_cleared`), `sub` (an
 event page's kind, e.g. `Admin logon`), `flag` (e.g. `New device`), `not`
@@ -1029,7 +1028,7 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
   to fix as a count that links to Audit health, which lists them. A
   system that sent nothing says so once.
 - **Short and empty periods.** A page with no events is one line.
-  "Not enough history" is said once, and trend tiles appear once there is
+  "Not enough history" is said once, and trend charts appear once there is
   history.
 - **A manual report** says so in a banner on the Overview, and in a
   "Manual" chip by the title on every other page.
@@ -1045,7 +1044,7 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
 
 ### People
 
-![People: a person](testing/2026-10-02-v0.10.1/shots/ui/uir1-people-after-1440.png)
+![People: a person](testing/2026-10-02-v0.10.1/shots/ui/uir1-final-people-after-1440.png)
 
 **People** lists every account that did something this period. With local
 accounts (no domain) the same person has a separate account on each
@@ -1263,6 +1262,6 @@ be split and is left out, except for its detections, which carry their
 times.
 
 **Clicking through.** On an event page or Search, a value in the field
-counts or a bar of the chart filters the results. On a person's page, each hour of **When they were active** can be clicked: a
-red hour shows only the detections in that hour; any other hour opens
-Search with that person's events in that hour of the week.
+counts or a bar of the chart filters the results. On a person's page,
+each system's name in **Where and when** opens Search with that person's
+events on that system, and each red mark opens its detection.

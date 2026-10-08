@@ -1102,3 +1102,8 @@ table.lt td.lnote{color:#22304F;min-width:200px}
 .invmore{display:flex;justify-content:space-between;padding:10px 0 0;border-top:1px solid rgba(0,30,98,.07)}
 .invmore button{font:600 13px 'Public Sans',sans-serif;color:#0B5FFF;background:none;border:0;padding:0;cursor:pointer}
 @media (max-width:900px){.invg{grid-template-columns:1fr}.invl{max-height:340px;overflow-y:auto}}
+/* UI-R1: final check */
+.sq-text input{min-width:64px}.sq-hint{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.pacc td.mono:first-child{white-space:normal}.pacc .an{white-space:nowrap}
+.dl .dc .b{min-width:0}.dl .dc .b span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+table.lt td.mute{color:#5A6785}

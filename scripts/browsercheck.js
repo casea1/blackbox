@@ -106,6 +106,9 @@ try { pw = require('playwright-core'); } catch (e) { pw = require('playwright');
   if (ev) {
     await ev.click();
     await page.waitForSelector('.drawer:not([hidden]) h3', { timeout: 10000 }).catch(() => fail('a link to an event did not open its panel'));
+    // Going to another page (the Back button, a bookmark) closes the panel.
+    await page.evaluate(() => { location.hash = '#overview'; });
+    await page.waitForSelector('.drawer[hidden]', { state: 'attached', timeout: 5000 }).catch(() => fail('the event panel stayed open on another page'));
   }
 
   // Every page fits a narrow window (half a 1440p screen, a small laptop)
