@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -281,7 +282,9 @@ func (a *App) Status(w io.Writer) error {
 		}
 		waiting := 0
 		if list, err := filepath.Glob(filepath.Join(a.Cfg.Inbox, "*.bbx")); err == nil {
-			waiting = len(list)
+			own, _ := filepath.Glob(filepath.Join(a.Cfg.Inbox, "*", "*.bbx")) // senders' own folders (SEC1)
+			own = slices.DeleteFunc(own, func(p string) bool { return filepath.Base(filepath.Dir(p)) == "rejected" })
+			waiting = len(list) + len(own)
 		}
 		// A shared inbox the firewall keeps closed (N2): reported, never changed.
 		if runtime.GOOS == "windows" && install.InboxShared() {
