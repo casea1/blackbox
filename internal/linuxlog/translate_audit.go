@@ -72,6 +72,11 @@ func (t *Translator) Audit(ev *Event) *event.Event {
 	e.Source = "auditd"
 	e.RecordType = main.Type
 	e.RecordID = ev.Serial
+	if e.Outcome == "" {
+		// auditd's success= or res=, where the translation did not
+		// already say (AU3).
+		e.Outcome = auditOutcome(ev)
+	}
 	if e.Severity == "" {
 		e.Severity = event.SevInfo
 	}
@@ -368,3 +373,28 @@ func orUnknownProg(s string) string {
 
 // The translations by kind of record are in translate_*.go: logon,
 // commands, account, config (the audit system itself), syscall and files.
+
+// auditOutcome is an auditd event's outcome: the system call's success=
+// (yes or no), or a user-space record's res= (success or failed, 1 or 0),
+// main record first. "" when the event records neither (AU3).
+func auditOutcome(ev *Event) string {
+	recs := append([]*Record{ev.Main()}, ev.Records...)
+	for _, r := range recs {
+		if r == nil {
+			continue
+		}
+		switch strings.ToLower(r.Fields["success"]) {
+		case "yes":
+			return "success"
+		case "no":
+			return "failure"
+		}
+		switch strings.ToLower(r.Fields["res"]) {
+		case "success", "1", "yes":
+			return "success"
+		case "failed", "failure", "0", "no":
+			return "failure"
+		}
+	}
+	return ""
+}

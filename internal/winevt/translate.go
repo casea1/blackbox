@@ -58,6 +58,11 @@ func (t *Translator) Translate(r *Raw) *event.Event {
 	e.Source = r.Channel
 	e.EventID = r.EventID
 	e.RecordID = r.RecordID
+	if e.Outcome == "" {
+		// The Audit Success / Audit Failure keyword, where the
+		// translation did not already say (AU3).
+		e.Outcome = r.Outcome()
+	}
 	if e.Severity == "" {
 		e.Severity = event.SevInfo
 	}

@@ -296,7 +296,7 @@ func (r *Report) writeCSV(w io.Writer) error {
 			eventID = ""
 		}
 		cw.Write(csvSafe([]string{e.Time.In(r.Location).Format("2006-01-02 15:04:05 -07:00"), e.Host, e.Category.Info().Title,
-			string(e.Severity), e.Summary, e.User, e.Target, e.SourceIP, e.Process, e.Command, e.Outcome,
+			string(e.Severity), e.Summary, e.User, e.Target, e.SourceIP, e.Process, e.Command, outcomeCSV(e.Outcome),
 			e.Action, e.Source, eventID, e.RecordType, rec, map[bool]string{true: "yes", false: ""}[e.Late],
 			e.Time.UTC().Format("2006-01-02 15:04:05Z")}))
 	}
@@ -947,4 +947,13 @@ func (r *Report) readme(scap map[string]string) []byte {
 	line("    (the LocaleMetaData folders let other computers show the messages)")
 	line("  Linux audit.log: ausearch -if audit.log   (syslog, auth.log: plain text)")
 	return []byte(b.String())
+}
+
+// outcomeCSV is the events CSV's outcome: success or failure, or "not
+// recorded" when the source log does not say (AU3).
+func outcomeCSV(o string) string {
+	if o == "" {
+		return "not recorded"
+	}
+	return o
 }

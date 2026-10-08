@@ -774,7 +774,7 @@ Every report is a folder containing:
 | `report.html` | The report. Open it in any browser; it works offline |
 | `data/` | The events the report's pages list, compressed, one file per page and day. `report.html` reads them only when a page needs them; keep them next to it |
 | `logs-COMPUTER.zip` | The original logs, one per computer (see above) |
-| `events.zip` | Every event as `events.csv`, for Excel. Double-click to open. Times are local with their offset (`2026-10-05 06:28:28 -07:00`), and `time_utc` gives them in UTC, like the archive names. A field that starts with `=`, `+`, `-` or `@` gets a `'` in front, so Excel shows it as text and never runs it as a formula |
+| `events.zip` | Every event as `events.csv`, for Excel. Double-click to open. `outcome` is `success` or `failure` as the source recorded it (the Audit Success or Audit Failure keyword of a Windows Security event, auditd's `success=` or `res=`), or `not recorded` where the source does not say (other Windows logs, syslog lines) (AU-3). Times are local with their offset (`2026-10-05 06:28:28 -07:00`), and `time_utc` gives them in UTC, like the archive names. A field that starts with `=`, `+`, `-` or `@` gets a `'` in front, so Excel shows it as text and never runs it as a formula |
 | `summary.json` | Counts and period, used by the report list |
 | `README.txt` | For someone who receives only the folder: what each file is, how to check them without Blackbox (`sha256sum -c manifest.sha256`, or `Get-FileHash` in PowerShell), how to open the original logs (`Get-WinEvent -Path …`, `ausearch -if audit.log`) and the time zone |
 | `manifest.sha256` | SHA-256 hash of each file |

@@ -27,8 +27,8 @@
 2026-09-28T08:30:01Z medium ubu-ws12 removable_media usb_connected  | USB storage connected: SanDisk Cruzer Blade (serial 4C530001231109115405), 15.6 GB.
 2026-09-28T08:30:03Z medium WS-07 removable_media usb_connected  | USB storage connected: SanDisk Cruzer Blade (serial 4C530001231109115405), 15.6 GB.
 2026-09-28T08:30:05Z medium ubu-ws12 removable_media removable_mounted  | uid 1001 opened removable storage: /dev/sdb1 was mounted at /media/jsmith/CRUZER.
-2026-09-28T08:41:15Z medium WS-07 removable_media removable_write  | jsmith wrote to removable media: \Device\HarddiskVolume7\Projects\budget-2027.xlsx (using EXCEL.EXE).
-2026-09-28T08:42:02Z low WS-07 removable_media removable_read  | jsmith read from removable media: \Device\HarddiskVolume7\tools\keygen.exe (using explorer.exe).
+2026-09-28T08:41:15Z medium WS-07 removable_media removable_write success | jsmith wrote to removable media: \Device\HarddiskVolume7\Projects\budget-2027.xlsx (using EXCEL.EXE).
+2026-09-28T08:42:02Z low WS-07 removable_media removable_read success | jsmith read from removable media: \Device\HarddiskVolume7\tools\keygen.exe (using explorer.exe).
 2026-09-28T08:42:05Z high WS-07 other_security malware_detected  | Microsoft Defender detected malware: HackTool:Win32/Keygen in E:\tools\keygen.exe.
 2026-09-28T08:42:09Z medium WS-07 other_security malware_action  | Microsoft Defender took action on HackTool:Win32/Keygen: Quarantine.
 2026-09-28T08:55:38Z info ubu-ws12 removable_media removable_unmounted  | uid 1001 unmounted /dev/sdb1.
@@ -47,23 +47,23 @@
 2026-09-28T11:15:20Z low WS-07 failed_logon logon_failed failure | Failed logon for mjones at the keyboard — wrong password.
 2026-09-28T11:15:41Z low WS-07 failed_logon logon_failed failure | Failed logon for mjones at the keyboard — wrong password.
 2026-09-28T11:15:41Z medium WS-07 failed_logon account_locked failure | Account mjones was locked out after too many failed logon attempts.
-2026-09-28T11:30:00Z low WS-07 account_changes account_unlocked  | admin_jd unlocked the user account mjones.
+2026-09-28T11:30:00Z low WS-07 account_changes account_unlocked success | admin_jd unlocked the user account mjones.
 2026-09-28T11:32:10Z info WS-07 logon_activity logon success | mjones logged on at the keyboard.
-2026-09-28T11:58:02Z info ubu-audit audit_integrity system_start  | The system started.
-2026-09-28T11:58:02Z info ubu-audit audit_integrity audit_started  | The audit service (auditd) started.
+2026-09-28T11:58:02Z info ubu-audit audit_integrity system_start success | The system started.
+2026-09-28T11:58:02Z info ubu-audit audit_integrity audit_started success | The audit service (auditd) started.
 2026-09-28T12:02:11Z info ubu-audit logon_activity logon success | jsmith logged on at the graphical console.
-2026-09-28T13:01:05Z low WS-07 privileged elevated_process  | admin_jd ran with administrator rights: "C:\Windows\system32\cmd.exe"
-2026-09-28T13:01:40Z low WS-07 privileged elevated_process  | admin_jd ran with administrator rights: net  user tempuser ******** /add
-2026-09-28T13:01:41Z medium WS-07 account_changes account_created  | admin_jd created the user account tempuser.
-2026-09-28T13:01:41Z medium WS-07 account_changes account_enabled  | admin_jd enabled the user account tempuser.
-2026-09-28T13:01:41Z low WS-07 account_changes account_changed  | admin_jd changed the user account tempuser.
-2026-09-28T13:02:05Z low WS-07 privileged elevated_process  | admin_jd ran with administrator rights: net  localgroup administrators tempuser /add
-2026-09-28T13:02:05Z high WS-07 account_changes group_member_added  | admin_jd added tempuser to the privileged group Administrators.
-2026-09-28T13:10:00Z medium WS-07 other_security scheduled_task_created  | Scheduled task \Updater was created by admin_jd.
+2026-09-28T13:01:05Z low WS-07 privileged elevated_process success | admin_jd ran with administrator rights: "C:\Windows\system32\cmd.exe"
+2026-09-28T13:01:40Z low WS-07 privileged elevated_process success | admin_jd ran with administrator rights: net  user tempuser ******** /add
+2026-09-28T13:01:41Z medium WS-07 account_changes account_created success | admin_jd created the user account tempuser.
+2026-09-28T13:01:41Z medium WS-07 account_changes account_enabled success | admin_jd enabled the user account tempuser.
+2026-09-28T13:01:41Z low WS-07 account_changes account_changed success | admin_jd changed the user account tempuser.
+2026-09-28T13:02:05Z low WS-07 privileged elevated_process success | admin_jd ran with administrator rights: net  localgroup administrators tempuser /add
+2026-09-28T13:02:05Z high WS-07 account_changes group_member_added success | admin_jd added tempuser to the privileged group Administrators.
+2026-09-28T13:10:00Z medium WS-07 other_security scheduled_task_created success | Scheduled task \Updater was created by admin_jd.
 2026-09-28T13:12:00Z medium WS-07 other_security service_installed  | A new service was installed: UpdaterSvc (C:\Users\Public\svc.exe) by admin_jd.
 2026-09-28T13:15:30Z info ubu-audit logon_activity logon success | admin_jd logged on via SSH from 10.1.1.20.
-2026-09-28T13:20:00Z high WS-07 audit_integrity audit_policy_changed  | Audit policy for "Removable Storage" was changed by admin_jd: success auditing removed, failure auditing removed.
-2026-09-28T13:25:30Z high WS-07 audit_integrity time_changed  | System time was changed by admin_jd, moving the clock 2.0 hours back.
+2026-09-28T13:20:00Z high WS-07 audit_integrity audit_policy_changed success | Audit policy for "Removable Storage" was changed by admin_jd: success auditing removed, failure auditing removed.
+2026-09-28T13:25:30Z high WS-07 audit_integrity time_changed success | System time was changed by admin_jd, moving the clock 2.0 hours back.
 2026-09-28T14:02:01Z low ubu-audit failed_logon logon_failed failure | Failed logon for root via SSH from 10.1.1.99 — wrong password or key.
 2026-09-28T14:02:09Z low ubu-audit failed_logon logon_failed failure | Failed logon for root via SSH from 10.1.1.99 — wrong password or key.
 2026-09-28T14:02:17Z low ubu-audit failed_logon logon_failed failure | Failed logon for root via SSH from 10.1.1.99 — wrong password or key.
@@ -77,9 +77,9 @@
 2026-09-28T15:15:41Z low ubu-audit failed_logon logon_failed failure | Failed logon for mjones at the text console — wrong password.
 2026-09-28T15:15:41Z medium ubu-audit failed_logon account_locked failure | Account mjones was locked after too many failed logon attempts.
 2026-09-28T15:32:10Z info ubu-audit logon_activity logon success | mjones logged on at the text console.
-2026-09-28T15:40:12Z medium WS-07 privileged explicit_credentials  | jsmith used the credentials of admin_jd (RunAs / alternate credentials).
+2026-09-28T15:40:12Z medium WS-07 privileged explicit_credentials success | jsmith used the credentials of admin_jd (RunAs / alternate credentials).
 2026-09-28T16:38:00Z high WS-07 audit_integrity log_cleared  | The Application log was cleared by admin_jd.
-2026-09-28T16:40:00Z high WS-07 audit_integrity log_cleared  | The Security log was cleared by admin_jd.
+2026-09-28T16:40:00Z high WS-07 audit_integrity log_cleared success | The Security log was cleared by admin_jd.
 2026-09-28T16:50:00Z medium WS-07 removable_media virtual_disk_mounted  | A virtual disk (ISO/VHD file) was mounted: Msft Virtual DVD-ROM, 4.7 GB.
 2026-09-28T16:55:10Z medium ubu-ws12 removable_media usb_connected  | USB storage connected: Kingston DataTraveler 3.0 (serial E0D55EA573DCF450E97C0A7F), 30.9 GB.
 2026-09-28T16:55:10Z medium WS-07 removable_media usb_connected  | USB storage connected: Kingston DataTraveler 3.0 (serial E0D55EA573DCF450E97C0A7F), 32.0 GB.
@@ -89,34 +89,34 @@
 2026-09-28T16:58:21Z high ubu-ws12 removable_media usb_network_adapter  | A USB network adapter was connected: Google Pixel 7 (usb0, driver rndis_host) — this can bridge the system to another network (for example a phone's USB tethering or a Wi-Fi adapter).
 2026-09-28T17:00:01Z low WS-07 failed_logon logon_failed failure | Failed logon for jsmith at the keyboard — wrong password.
 2026-09-28T17:00:09Z info WS-07 logon_activity logon success | jsmith logged on by unlocking the screen.
-2026-09-28T17:01:40Z low ubu-audit privileged sudo_command  | admin_jd ran with sudo: useradd -m tempuser
-2026-09-28T17:01:41Z low ubu-audit account_changes group_created  | admin_jd created the group tempuser.
-2026-09-28T17:01:41Z medium ubu-audit account_changes account_created  | admin_jd created the user account tempuser.
-2026-09-28T17:02:05Z low ubu-audit privileged sudo_command  | admin_jd ran with sudo: usermod -aG sudo tempuser
-2026-09-28T17:02:05Z high ubu-audit account_changes group_member_added  | admin_jd added tempuser to the privileged group sudo.
+2026-09-28T17:01:40Z low ubu-audit privileged sudo_command success | admin_jd ran with sudo: useradd -m tempuser
+2026-09-28T17:01:41Z low ubu-audit account_changes group_created success | admin_jd created the group tempuser.
+2026-09-28T17:01:41Z medium ubu-audit account_changes account_created success | admin_jd created the user account tempuser.
+2026-09-28T17:02:05Z low ubu-audit privileged sudo_command success | admin_jd ran with sudo: usermod -aG sudo tempuser
+2026-09-28T17:02:05Z high ubu-audit account_changes group_member_added success | admin_jd added tempuser to the privileged group sudo.
 2026-09-28T17:05:00Z info WS-07 logon_activity logoff success | jsmith logged off.
-2026-09-28T17:05:12Z low ubu-audit privileged sudo_command  | admin_jd ran with sudo: tee /etc/sudoers.d/tempuser
-2026-09-28T17:05:12Z high ubu-audit privileged sudoers_changed  | admin_jd changed the sudo rules: /etc/sudoers.d/tempuser (using tee).
+2026-09-28T17:05:12Z low ubu-audit privileged sudo_command success | admin_jd ran with sudo: tee /etc/sudoers.d/tempuser
+2026-09-28T17:05:12Z high ubu-audit privileged sudoers_changed success | admin_jd changed the sudo rules: /etc/sudoers.d/tempuser (using tee).
 2026-09-28T17:06:00Z info WS-07 audit_integrity shutdown_initiated  | admin_jd initiated a restart using shutdown.exe — Other (Planned).
 2026-09-28T17:06:30Z info WS-07 audit_integrity system_stop  | The system shut down cleanly (event log service stopped).
-2026-09-28T17:10:00Z low ubu-audit privileged root_shell  | admin_jd opened a root shell with sudo (commands run in it are listed as "ran as root").
-2026-09-28T17:12:30Z high ubu-audit account_changes account_db_edited  | admin_jd edited /etc/passwd directly (using vim.basic) instead of with the standard account tools.
-2026-09-28T17:20:04Z medium ubu-audit other_security module_loaded  | admin_jd loaded a kernel module: modprobe wireguard
-2026-09-28T17:25:30Z medium ubu-audit audit_integrity time_changed  | admin_jd changed the system time (using date): date -s 11:25
+2026-09-28T17:10:00Z low ubu-audit privileged root_shell success | admin_jd opened a root shell with sudo (commands run in it are listed as "ran as root").
+2026-09-28T17:12:30Z high ubu-audit account_changes account_db_edited success | admin_jd edited /etc/passwd directly (using vim.basic) instead of with the standard account tools.
+2026-09-28T17:20:04Z medium ubu-audit other_security module_loaded success | admin_jd loaded a kernel module: modprobe wireguard
+2026-09-28T17:25:30Z medium ubu-audit audit_integrity time_changed success | admin_jd changed the system time (using date): date -s 11:25
 2026-09-28T17:30:02Z medium ubu-audit other_security promiscuous_mode  | Network interface eth0 was put into promiscuous mode (packet capture) by admin_jd.
-2026-09-28T17:40:00Z high ubu-audit privileged audit_tamper_command  | admin_jd used sudo to run a command that can stop or weaken auditing: systemctl stop auditd
-2026-09-28T17:40:01Z high ubu-audit audit_integrity audit_stopped  | The audit service (auditd) was stopped by admin_jd (systemctl stop auditd) — events are not recorded while it is stopped.
-2026-09-28T17:52:10Z info ubu-audit audit_integrity audit_started  | The audit service (auditd) started.
-2026-09-28T17:53:05Z high ubu-audit audit_integrity audit_rule_removed  | admin_jd removed an audit rule (identity) — activity it covered is no longer recorded.
-2026-09-28T18:10:00Z low ubu-audit privileged privileged_program  | jsmith ran the privileged program passwd.
-2026-09-28T18:10:20Z low ubu-audit account_changes password_change  | jsmith changed their own password.
+2026-09-28T17:40:00Z high ubu-audit privileged audit_tamper_command success | admin_jd used sudo to run a command that can stop or weaken auditing: systemctl stop auditd
+2026-09-28T17:40:01Z high ubu-audit audit_integrity audit_stopped success | The audit service (auditd) was stopped by admin_jd (systemctl stop auditd) — events are not recorded while it is stopped.
+2026-09-28T17:52:10Z info ubu-audit audit_integrity audit_started success | The audit service (auditd) started.
+2026-09-28T17:53:05Z high ubu-audit audit_integrity audit_rule_removed success | admin_jd removed an audit rule (identity) — activity it covered is no longer recorded.
+2026-09-28T18:10:00Z low ubu-audit privileged privileged_program success | jsmith ran the privileged program passwd.
+2026-09-28T18:10:20Z low ubu-audit account_changes password_change success | jsmith changed their own password.
 2026-09-28T18:20:03Z low ubu-audit failed_logon logon_failed failure | jsmith failed to switch to root with su — wrong password.
 2026-09-28T18:21:40Z medium ubu-audit privileged sudo_denied failure | jsmith tried to run a command with sudo but was not permitted: apt install nmap
 2026-09-28T18:30:00Z low ubu-audit other_security mac_denied  | AppArmor blocked cupsd from open on /etc/shadow.
 2026-09-28T21:05:00Z info ubu-audit logon_activity logoff success | jsmith logged off.
-2026-09-28T21:06:00Z low ubu-audit privileged sudo_command  | admin_jd ran with sudo: reboot
-2026-09-28T21:06:05Z info ubu-audit audit_integrity system_stop  | The system shut down.
-2026-09-28T21:06:06Z low ubu-audit audit_integrity audit_stopped  | The audit service (auditd) stopped (normal during a system shutdown).
+2026-09-28T21:06:00Z low ubu-audit privileged sudo_command success | admin_jd ran with sudo: reboot
+2026-09-28T21:06:05Z info ubu-audit audit_integrity system_stop success | The system shut down.
+2026-09-28T21:06:06Z low ubu-audit audit_integrity audit_stopped success | The audit service (auditd) stopped (normal during a system shutdown).
 2026-10-02T13:50:01Z info ubu-audit logon_activity logon success | austin logged on via SSH from 192.168.1.20.
 2026-10-02T13:52:30Z info ubu-audit logon_activity logoff success | austin logged off.
 

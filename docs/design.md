@@ -75,7 +75,9 @@ with no runtime to install: no Python, .NET, Java or Node.
     serial number.
 - **Normalize**
   - Put every event into one schema: time, host, OS, category, severity,
-    actor (user and SID/UID), target, action, outcome, source IP, process,
+    actor (user and SID/UID), target, action, outcome (success or failure,
+    from the Security event's audit keywords or auditd's success=/res=;
+    "not recorded" in events.csv when the source has none), source IP, process,
     command line, raw event.
 - **Classify and translate**
   - A built-in catalog (`internal/winevt/translate*.go`) maps each raw event
