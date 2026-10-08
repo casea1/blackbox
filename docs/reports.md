@@ -801,7 +801,7 @@ period.
 holds, as CSV: "Detections shown (12)" (only the severity chosen), the
 rows an event page or Search shows, Systems, every audit setting on Audit
 health, Inventory's systems, drives and accounts, the original-log zips. A
-page with nothing to list (the Overview, People, Trends) has no This page
+page with nothing to list (the Overview, Trends) has no This page
 part. **Whole report** has the printable **Summary** (print it or save it
 as PDF), **All events (n)** (`events.zip`), **Systems and drives** (each
 system with its make, model and serial number, one row per drive with the
@@ -820,6 +820,63 @@ the title says so in red ("This report's original logs do not match",
 "Reports are missing or have a gap", "This report has been changed"), the
 failing check comes first with the file to blame, and the report card's
 line turns red. Then: "Check it yourself: `blackbox verify`".
+
+### People
+
+![People: a person](testing/2026-10-02-v0.10.1/shots/ui/uir1-people-after-1440.png)
+
+**People** lists every account that did something this period. With local
+accounts (no domain) the same person has a separate account on each
+system: accounts with the same name are **one row** ("jlee" on 9 systems),
+whatever system or domain prefix the logs give them. A different spelling
+("j.lee") is a different row unless the `people_aliases` setting names it
+([configuration](configuration.md)): `blackbox config set people_aliases
+"jlee=j.lee,jlee2"`.
+
+- **The list** has "Find a person or account" (it also finds the
+  spellings people_aliases merges) and **All / Detections / Admins** with
+  their counts, then three groups: **Administrators** (an administrator in
+  a system's inventory, or someone who used administrator rights),
+  **Users**, and **Shared and service accounts** (root, Administrator and
+  service accounts). Each name has one line ("admin on 9 systems", "3
+  systems", "built-in, Linux · on 15 systems") and a badge with its
+  detections. People with a detection come first; after ten in a group the
+  rest are folded ("+293 more administrators with no detections · Show").
+  The footnote says how many other local accounts on the systems were not
+  used this period, with a link to Inventory.
+- **A person** has a summary line ("Local account on 9 systems ·
+  administrator on all 9 · used on 5 this period") and a detection chip;
+  six facts (systems used, of those with the account; logons, with how many
+  by Remote Desktop and SSH; failed logons; privileged actions; after
+  hours; detections); **Where and when**, one lane per system they used
+  across the period, with their sessions as bars and a red mark at each
+  detection (six lanes, the rest in one "… N more" lane); **Notable
+  actions**, the high and medium ones, one line each, and "all N in
+  Search →"; and **Accounts named jlee**, one row per system's account
+  (`SRV-DC02\jlee`) with its rights, logons this period and when it was
+  last used, then "+ 4 systems where jlee exists but wasn't used" (from the
+  inventory) and a note that these are separate accounts shown as one
+  person. A spelling merged by people_aliases is marked on its row. Below:
+  the detections involving them and **Over time**.
+- **Sessions** come from logon and logoff events: a logon opens one, the
+  logoff with the same logon ID (or the next logoff) closes it, and a
+  session with no logoff in the period ends at the last thing done in it.
+  Activity outside any session (sudo with no logon in the period, a
+  scheduled job) is a short bar, events within 20 minutes joined.
+- **A shared or built-in account** (root, Administrator, a service account)
+  is labelled "Shared built-in account · a separate account on each of 15
+  Linux systems · not one person". **Who acted as root** splits what was
+  done as it: by the person who ran sudo, su or pkexec (Linux) or RunAs
+  (Windows), each with systems and count, since Blackbox lists those
+  actions under that person; **Jobs and services**, actions by the account
+  itself with no person behind them; and **Direct logon** (console, SSH or
+  Remote Desktop as the account itself). A box says plainly whether anyone
+  logged on as it directly ("No one logged on as root directly", or in red
+  "Administrator logged on directly once on WS-LAB-01 (1 console): the
+  person is not recorded"), and how many attempts to log on as it failed.
+  Then its six facts and the Where and when lanes.
+- **Export CSV** gives one row per person per system's account: person,
+  kind, account, rights, logons this period, last used, detections.
 
 - **Overview.** Four headline numbers for this report (systems
   reporting, detections, events, and systems whose audit settings match

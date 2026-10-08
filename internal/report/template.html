@@ -53,7 +53,7 @@
 <section class="view" data-view="systems">{{template "head" (head . "Systems" "")}}{{with .SystemsPage}}{{template "systems" .}}{{end}}</section>
 <section class="view" data-view="detections">{{template "head" (head . "Detections" (detectionsCrumb .) "csv")}}{{template "detections" .}}</section>
 <section class="view" data-view="search">{{template "head" (head . "Search" (searchCrumb .))}}{{template "search" .}}</section>
-<section class="view" data-view="people">{{template "head" (head . "People" (peopleCrumb .))}}{{with .PeoplePage}}{{template "people" .}}{{else}}<div class="panel"><p class="pm" style="margin:0">No one's account did anything in this report.</p></div>{{end}}</section>
+<section class="view" data-view="people">{{template "head" (head . "People" (peopleCrumb .) "csv")}}{{with .PeoplePage}}{{template "people" .}}{{else}}<div class="panel"><p class="pm" style="margin:0">No one's account did anything in this report.</p></div>{{end}}</section>
 {{range .Pages}}
 <section class="view" data-view="{{.ID}}">
   {{template "head" (head $ .Title (eventsCrumb $ .))}}
@@ -116,21 +116,42 @@
 <div class="panel" id="sysdet-{{.Name}}"><div class="ph"><h2>{{icon "shield-alert" 17}}Detections on {{.Name}}</h2><span class="pm">{{len .Detections}} this period</span></div>{{if .Detections}}<div class="dl">{{range .Detections}}<a class="dc {{.Severity}}" href="#detections/{{.Index}}"><div class="b"><b>{{.Title}}</b><span>{{.Detail}}</span></div><div class="m2">{{.Day}}<small>{{.Time}}</small></div></a>{{end}}</div>{{else}}<p class="pm" style="margin:0">No detections on this system.</p>{{end}}</div>
 </div>{{end}}{{end}}</div></div>{{end}}
 
-{{define "people"}}<div class="md2" style="grid-template-columns:280px 1fr"><div class="panel plist slist" data-picklist>
-<label class="search">{{icon "search" 14}}<input type="search" placeholder="Find a person" data-find></label>
-{{range .Groups}}<div class="grp2">{{.Title}} · {{len .People}}</div>{{range .People}}<a data-pick="{{.Key}}" href="#people/{{.Key}}"><div class="av {{.Level}}">{{.Initials}}</div><div><b>{{.Name}}</b><span>{{.Kind}}</span></div><small>{{.Systems}} sys</small></a>{{end}}{{end}}</div>
-<div style="min-width:0">{{range .Groups}}{{range .People}}<div data-pane="{{.Key}}" hidden>
-<div class="panel" style="margin-bottom:12px"><div class="dh"><div class="ph2"><div class="av {{.Level}}">{{.Initials}}</div><div><h2>{{.Name}}</h2><p>{{.Line}}</p></div></div>{{if .Level}}<span class="sv {{if eq .Level "bad"}}high{{else}}medium{{end}}">Needs a look</span>{{end}}</div>
-<div class="facts4">{{range .Facts}}{{template "fact" .}}{{end}}</div></div>
-<div class="row" style="grid-template-columns:1.2fr 1fr;margin-bottom:12px">
-<div class="panel"><div class="ph"><h2>{{icon "triangle-alert" 17}}High and Medium actions</h2><span class="pm">{{.NotableCount}} this period</span></div>{{if .Notable}}{{range .Notable}}{{template "ck" .}}{{end}}{{else}}<p class="pm" style="margin:0">No High or Medium actions this period.</p>{{end}}</div>
-<div style="display:grid;gap:12px;align-content:start"><div class="panel"><div class="ph"><h2>{{icon "activity" 17}}When they were active</h2><span class="pm">Red = detection · click an hour</span></div>{{.Heat}}</div>
-<div class="panel" id="pused-{{.Key}}"><div class="ph"><h2>{{icon "server" 17}}Systems used</h2><span class="pm">Events</span></div><div class="mini">{{range .Used}}<div><a class="link" style="color:inherit" href="#systems/{{.Label}}">{{.Label}}</a><s style="width:{{.Pct}}%"></s><b>{{commas .N}}</b></div>{{end}}</div></div></div></div>
-{{with .Trend}}<div class="panel" style="margin-bottom:12px"><div class="ph"><h2>{{icon "trending-up" 17}}Over time</h2><span class="pm">{{if gt .Weeks 1}}This week so far against the average of {{.Weeks}} complete weeks · bars = privileged actions by week{{else}}By calendar week{{end}}</span></div>
+{{define "people"}}<div class="ppl"><div class="panel ppl-l" data-plist>
+<label class="search">{{icon "search" 14}}<input type="search" placeholder="Find a person or account" aria-label="Find a person or account" data-pfind></label>
+<div class="ptabs" role="group" aria-label="Show"><button type="button" class="on" data-ptab="" aria-pressed="true">All <b>{{.Count}}</b></button><button type="button" data-ptab="det" aria-pressed="false">Detections <b>{{.DetN}}</b></button><button type="button" data-ptab="adm" aria-pressed="false">Admins <b>{{.AdminN}}</b></button></div>
+{{range .Groups}}<div class="pg" data-pg><div class="grp2">{{.Title}} · {{len .People}}</div>{{range .Shown}}{{template "pitem" .}}{{end}}{{if .Folded}}{{template "foldrow" .Fold}}<div data-folded="{{.Fold.ID}}" hidden>{{range .Folded}}{{template "pitem" .}}{{end}}</div>{{end}}</div>{{end}}
+<p class="pnone" data-pnone hidden>No one matches.</p>
+<p class="pfoot">Same name on several systems = one row{{if .Example}} (e.g. <b>{{.Example}}</b> on {{.ExampleN}}){{end}}.{{if .HasInventory}} {{commas .Unused}} other local accounts on the {{.Systems}} systems were not used this period: <a class="link" href="#inventory">see Inventory →</a>{{end}}</p></div>
+<div style="min-width:0">{{range .Groups}}{{range .People}}<div data-pane="{{.Key}}" hidden>{{template "pdetail" .}}</div>{{end}}{{end}}</div></div>{{end}}
+
+{{define "pitem"}}<a data-pick="{{.Key}}" href="#people/{{.Key}}" class="pi" data-pt="{{if .Det}}det {{end}}{{if eq .Group "admin"}}adm{{end}}"{{if .Find}} data-alias="{{.Find}}"{{end}}><span><b>{{.Name}}</b><small>{{.Sub}}</small></span>{{if .Det}}<em class="pb {{.Level}}" title="{{.Chip}}"><span class="vh0">detections: </span>{{.Det}}</em>{{end}}</a>{{end}}
+
+{{define "pdetail"}}<div class="panel ppl-h"><div class="pt"><div><h2 class="pn">{{.Name}}</h2><p>{{.Line}}</p></div>{{if .Chip}}<a class="pchip {{.Level}}" href="#" data-scroll="ppd-{{.Key}}">{{.Chip}}</a>{{end}}</div>
+{{if .Shared}}<div class="pcall{{if .CallBad}} bad{{end}}"><b>{{.CallLead}}</b> {{.CallText}} <b>{{.CallEnd}}</b></div>{{end}}
+<div class="pfacts">{{range .Facts}}{{if .Href}}<a href="{{.Href}}">{{else}}<div>{{end}}<span>{{.Label}}</span><b{{if .Bad}} class="bad"{{end}}>{{.Value}}</b>{{if .Note}}<small>{{.Note}}</small>{{end}}{{if .Href}}</a>{{else}}</div>{{end}}{{end}}</div></div>
+{{if .Shared}}<div class="prow sh">
+<div class="panel"><div class="ph"><h2>Who acted as {{.Name}}</h2></div><div class="tw"><table class="pact"><thead><tr><th>Person</th><th>How</th><th>Systems</th><th class="n">Actions</th></tr></thead><tbody>{{range .Acted}}{{template "pactrow" .}}{{end}}{{if .ActedMore}}<tr><td colspan="4">{{template "foldrow" .ActedFold}}</td></tr>{{end}}</tbody>{{if .ActedMore}}<tbody data-folded="{{.ActedFold.ID}}" hidden>{{range .ActedMore}}{{template "pactrow" .}}{{end}}</tbody>{{end}}<tbody>{{range .ActedFixed}}{{template "pactrow" .}}{{end}}</tbody></table></div></div>
+<div class="panel">{{template "lanes" .}}</div></div>
+{{if .Notable}}<div class="panel" style="margin-bottom:12px">{{template "pnotable" .}}</div>{{end}}
+{{else}}<div class="prow">
+<div class="panel">{{template "lanes" .}}{{template "pnotable" .}}</div>
+<div class="panel"><div class="ph"><h2>Accounts named {{.Name}}</h2><span class="pm">{{add (len .Accounts) (len .AcctMore)}} used of {{.AcctAll}}</span></div>
+{{if .Accounts}}<div class="tw"><table class="pacc"><thead><tr><th>Account</th><th>Rights</th><th class="n">Logons</th><th>Last</th></tr></thead><tbody>{{range .Accounts}}{{template "paccrow" .}}{{end}}{{if .AcctMore}}<tr><td colspan="4">{{template "foldrow" .AcctFold}}</td></tr>{{end}}</tbody>{{if .AcctMore}}<tbody data-folded="{{.AcctFold.ID}}" hidden>{{range .AcctMore}}{{template "paccrow" .}}{{end}}</tbody>{{end}}</table></div>{{else}}<p class="pm" style="margin:0">Not used on any system this period.</p>{{end}}
+{{if .Unused}}<details class="punused"><summary>+ {{len .Unused}} {{if eq (len .Unused) 1}}system{{else}}systems{{end}} where {{.Name}} exists but wasn't used</summary><table class="pacc"><tbody>{{range .Unused}}<tr><td class="mono">{{.Account}}{{if .Note}}<small>{{.Note}}</small>{{end}}</td><td>{{.Rights}}</td><td class="mono">{{.Last}}</td></tr>{{end}}</tbody></table></details>{{end}}
+<div class="pnote">{{if .Merged}}These are separate local accounts, shown as one person: the same name, and the spellings people_aliases lists ({{range $i, $m := .Merged}}{{if $i}}, {{end}}<b>{{$m}}</b>{{end}}).{{else}}These are separate local accounts with the same name, shown as one person. A different spelling{{if .Example}} (e.g. <b>{{.Example}}</b>){{end}} is not merged unless the people_aliases setting lists it.{{end}}</div></div></div>{{end}}
+{{if .Detections}}<div class="panel" id="ppd-{{.Key}}" style="margin-bottom:12px"><div class="ph"><h2>Detections involving {{.Name}}</h2><span class="pm">{{len .Detections}} this period</span></div><div class="dl">{{range .Detections}}<a class="dc {{.Severity}}" href="#detections/{{.Index}}"><div class="b"><b>{{.Title}}</b><span>{{.Detail}}</span></div><div class="m2">{{.Host}}<small>{{.Day}} {{.Time}}</small></div></a>{{end}}</div></div>{{end}}
+{{with .Trend}}<div class="panel"><div class="ph"><h2>Over time</h2><span class="pm">{{if gt .Weeks 1}}This week so far against the average of {{.Weeks}} complete weeks · bars = privileged actions by week{{else}}By calendar week{{end}}</span></div>
 <div class="otime">{{if gt .Weeks 1}}<div class="otc">{{.Chart}}</div>{{end}}<table class="stig"><thead><tr><th>Activity</th><th>This week so far</th><th>Average week</th><th>Change</th></tr></thead><tbody>{{range .Rows}}<tr><td><a class="link" style="color:inherit" href="{{.Href}}">{{.Label}}</a></td><td><b>{{.Now}}</b></td><td>{{.Avg}}</td><td><span class="tdelta {{.Class}}">{{or .Delta "—"}}</span></td></tr>{{end}}</tbody></table></div>
-{{if le .Weeks 1}}<p class="pm" style="margin:8px 0 0">Not enough history yet: trends start after 2 full weeks.</p>{{end}}</div>{{end}}
-<div class="panel" id="pdet-{{.Key}}"><div class="ph"><h2>{{icon "shield-alert" 17}}Detections involving {{.Name}}</h2><span class="pm" data-slotnote>{{len .Detections}} this period</span></div>{{if .Detections}}<div class="dl">{{range .Detections}}<a class="dc {{.Severity}}" href="#detections/{{.Index}}"{{if .Slots}} data-slots="{{.Slots}}"{{end}}><div class="b"><b>{{.Title}}</b><span>{{.Detail}}</span></div><div class="m2">{{.Host}}<small>{{.Day}} {{.Time}}</small></div></a>{{end}}</div>{{else}}<p class="pm" style="margin:0">None.</p>{{end}}</div>
-</div>{{end}}{{end}}</div></div>{{end}}
+{{if le .Weeks 1}}<p class="pm" style="margin:8px 0 0">Not enough history yet: trends start after 2 full weeks.</p>{{end}}</div>{{end}}{{end}}
+
+{{define "paccrow"}}<tr><td class="mono"><a class="link" style="color:inherit" href="{{.Href}}">{{.Account}}</a>{{if .Note}}<small>{{.Note}}</small>{{end}}</td><td>{{.Rights}}</td><td class="n mono">{{.Logons}}</td><td class="mono">{{.Last}}</td></tr>{{end}}
+
+{{define "pactrow"}}<tr{{if .Quiet}} class="q"{{end}}><td>{{if .Href}}<a class="link" style="color:inherit" href="{{.Href}}">{{.Person}}</a>{{else}}{{.Person}}{{end}}</td><td>{{.How}}</td><td class="mono">{{.Systems}}</td><td class="n mono">{{commas .N}}</td></tr>{{end}}
+
+{{define "pnotable"}}<div class="ph pnh"><h2>Notable actions</h2>{{if .AllEvents}}<a class="link pm" href="{{.AllHref}}">all {{commas .AllEvents}} in Search →</a>{{end}}</div>{{if .Notable}}{{range .Notable}}<a class="pnl {{.Level}}" href="#"{{if .Ev}} data-ev="{{.Ev}}"{{end}}><i aria-hidden="true"></i><time class="mono">{{.Time}}</time><b>{{.Host}}</b><span>{{.Text}}</span></a>{{end}}{{if gt .NotableCount (len .Notable)}}<p class="pm" style="margin:6px 0 0">{{len .Notable}} of {{.NotableCount}} shown.</p>{{end}}{{else}}<p class="pm" style="margin:0">No high or medium actions this period.</p>{{end}}{{end}}
+
+{{define "lanes"}}{{with .Lanes}}<div class="ph"><h2>Where and when</h2><span class="pm"><i class="lgm" aria-hidden="true"></i>detection</span></div><div class="lanes">{{range .Rows}}<div class="ln"><a class="lh" href="{{.Href}}">{{.Label}}</a><div class="lt"><span class="vh0">{{.Note}}</span>{{range .Segs}}<i style="left:{{.Left}}%;width:{{.Width}}%" title="{{.Title}}"></i>{{end}}{{range .Marks}}<a class="lm {{.Level}}" style="left:{{.Left}}%" href="{{.Href}}" title="{{.Title}}" aria-label="Detection: {{.Title}}"></a>{{end}}</div></div>{{end}}
+<div class="ln lax" aria-hidden="true"><span></span><div class="lt0">{{range .Ticks}}<span style="left:{{.Left}}%">{{.Label}}</span>{{end}}</div></div></div>{{end}}{{end}}
 
 {{define "search"}}<div class="panel" style="margin-bottom:12px"><div class="builder" data-q>Show
 <label class="pick">{{icon "layers" 15}}<select data-q="page" aria-label="Kind of events"><option value="">All events</option>{{range .Pages}}{{if .Total}}<option value="{{.ID}}">{{.Title}}</option>{{end}}{{end}}</select></label> by

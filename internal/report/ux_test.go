@@ -43,7 +43,8 @@ func TestHighRowsAreDetections(t *testing.T) {
 	if len(r.Findings) != 1 || r.Findings[0].Title != "Log cleared on WS-07" || r.Findings[0].Severity != event.SevHigh {
 		t.Fatalf("findings: %+v", r.Findings)
 	}
-	for _, gone := range []string{"Flagged this week", "Notable actions", "something unusual", "Red = flagged"} {
+	// "Notable actions" is back on People (UI-R1 §5, image 06).
+	for _, gone := range []string{"Flagged this week", "something unusual", "Red = flagged"} {
 		if strings.Contains(h, gone) {
 			t.Errorf("report still says %q", gone)
 		}
