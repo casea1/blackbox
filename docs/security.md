@@ -34,8 +34,15 @@ use.
   - a VirtualBox shared folder, which needs no network at all
 
   See [LAN security](#lan-security).
-- **It never modifies logs.** It never clears, rotates, deletes or forwards
-  them.
+- **It never alters or clears log records.** It never clears, rotates,
+  deletes or forwards them. It does write its own change records: when a
+  setting is changed, or Blackbox is installed, upgraded or removed, it
+  adds an event to the Windows Application log (source Blackbox, event ID
+  100) or a line to the Linux journal (identifier `blackbox`), so a copy
+  exists outside its own folder.
+- **It cannot stop a full log overwriting events.** It collects often
+  (every 15 minutes by default), and detects and reports any loss: in
+  `blackbox status` (exit code 4) and in the report.
 - **It never changes audit settings.** `check` only reports; the fixes it
   suggests are for administrators to apply.
 - **It needs no other software:** no runtime, service, database or
@@ -150,8 +157,22 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
   report needs that is missing. `blackbox verify` also fails on any file
   added anywhere in the folder, and on a listed file it can't read. It detects accidental damage, not
   deliberate editing: someone who can change the report can also
-  rewrite its manifest. Keep reports where only administrators can
+  rewrite its manifest. So it supports AU-9 b (detecting unauthorized
+  modification), not AU-9 a (protecting the records) or AU-9(3)
+  (cryptographic protection), until reports are signed; Blackbox does
+  not sign them yet. Keep reports where only administrators can
   write, and copy them off the system for long-term evidence.
+- **AU-5.** Blackbox notices auditing stopped, a log cleared or events
+  lost at each collection, and reports them in `blackbox status` and the
+  next report. Beyond the status icon on Windows it sends no alert, so it
+  supports AU-5 only within that interval, and only when `blackbox
+  status` (exit code 4 when something needs attention) is run by your
+  monitoring.
+- **AU-8.** The time checks are basic: a time service running (Windows
+  Time synchronising, or chrony or systemd-timesyncd). They do not check
+  the STIG's time rules (for example UBTU-24-600160 and UBTU-24-600180,
+  how often the clock is compared and how much drift is corrected), and
+  they are Blackbox's advice, not STIG rules.
 - Collected events are only marked as read after they are safely written
   to disk, so a crash cannot lose them.
 
@@ -209,4 +230,6 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
 ## Retention
 
 Reports and collected events are kept forever by default. Set
-`retention_days` to prune them ([configuration](configuration.md)).
+`retention_days` to prune them ([configuration](configuration.md)). The
+period (AU-11) comes from your site's records schedule, not from
+Blackbox.

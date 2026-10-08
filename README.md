@@ -23,16 +23,20 @@ whole air-gapped LAN can be covered by one report.
   privileged activity, USB, failed logons, account changes, and audit
   integrity. Each category is tagged with the NIST SP 800-53 controls it
   supports.
-- **Nothing lost.** Logs are read every 15 minutes, so busy systems can't
-  overwrite events before they're collected. The report says when events
-  were lost, a log was cleared, or auditing was switched off.
+- **Losses are reported.** Blackbox collects often (every 15 minutes by
+  default), and detects and reports any loss: the report and `blackbox
+  status` say when a log overwrote events before they were collected, a
+  log was cleared, or auditing was switched off.
 - **Flags what matters.** Blackbox detects password guessing, new USB
   devices, users added to admin groups, audit tampering and more, and
   lists them first.
 - **Easy to approve.** It's one small program with no third-party code. It
-  only reads logs and never writes to them. It opens no ports and never
-  listens on the network; on a LAN it only copies files to a shared folder.
-  Every report is SHA-256 hashed so tampering can be detected.
+  never alters or clears log records; the only thing it writes to the
+  system's logs is its own change records (Application log event 100 on
+  Windows, journal identifier `blackbox` on Linux). It opens no ports and
+  never listens on the network; on a LAN it only copies files to a shared
+  folder. Every report has a SHA-256 manifest that detects accidental
+  damage (not deliberate editing: reports are not signed yet).
 
 ## Supported systems
 

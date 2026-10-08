@@ -93,7 +93,7 @@ func EvaluateAuditLogPerms(file, dir os.FileMode, fileErr, dirErr error) Result 
 // from several computers only line up if their clocks agree (AU-8).
 // active maps a service name to its `systemctl is-active` answer.
 func EvaluateTimeSync(active map[string]string) Result {
-	r := Result{Area: "Time", Item: "Time synchronisation", Want: "chrony or systemd-timesyncd active",
+	r := Result{Area: "Time", Item: "Time synchronisation", Want: "chrony or systemd-timesyncd active (a basic AU-8 check: the STIG's time rules, such as UBTU-24-600160/600180, are not checked)",
 		Affects: "Every section: event times from different computers only line up if their clocks agree"}
 	for _, svc := range []string{"chronyd", "chrony", "systemd-timesyncd", "ntpd", "ntp"} {
 		if active[svc] == "active" {
@@ -183,7 +183,7 @@ func firstLineOf(s string) string {
 // Time service running, synchronising from a domain or an NTP server.
 // state is `sc query w32time` output, typ the Parameters\Type value.
 func EvaluateW32Time(state, typ string) Result {
-	r := Result{Area: "Time", Item: "Windows Time service", Want: "running, synchronising (NT5DS or NTP)",
+	r := Result{Area: "Time", Item: "Windows Time service", Want: "running, synchronising from the domain (NT5DS) or NTP (a basic AU-8 check: how often and how closely the clock is corrected is not checked)",
 		Affects: "Every section: event times from different computers only line up if their clocks agree"}
 	running := strings.Contains(strings.ToUpper(state), "RUNNING")
 	t := strings.ToUpper(strings.TrimSpace(typ))

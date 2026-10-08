@@ -6,8 +6,17 @@ Blackbox **collects** every 15 minutes (by default) and **reports** on the sched
 choose:
 
 - **Collecting:** each run copies only the security-relevant events out of
-  the logs and remembers where it stopped. Events are captured before a
-  busy log overwrites them, and the copy stays small.
+  the logs and remembers where it stopped, so the copy stays small.
+  Collecting often keeps ahead of a busy log, but Blackbox cannot stop a
+  full log from overwriting events: it detects and reports any loss
+  (Audit health shows it as "Events lost to log rollover").
+- **Watching between reports (AU-5).** Auditing stopped, a log cleared or
+  events lost are seen at the next collection and shown by `blackbox
+  status` (which exits 4 when something needs attention) and in the next
+  report. Blackbox sends no alert of its own beyond the status icon on
+  Windows, so for AU-5 run `blackbox status` from your monitoring (for
+  example a scheduled task or a monitoring agent's check) and alert on
+  exit code 4.
 - **Reporting:**
   - The first report is produced at install time. Installing again (to
     upgrade or change settings) does not produce one, so the schedule is
@@ -779,7 +788,7 @@ Every report is a folder containing:
 | `README.txt` | For someone who receives only the folder: what each file is, how to check them without Blackbox (`sha256sum -c manifest.sha256`, or `Get-FileHash` in PowerShell), how to open the original logs (`Get-WinEvent -Path …`, `ausearch -if audit.log`) and the time zone |
 | `manifest.sha256` | SHA-256 hash of each file |
 
-To confirm a report has not been altered, run
+To check a report for damage or changes, run
 `blackbox verify <report folder>`, or `sha256sum -c manifest.sha256`.
 The report also checks each data file as it loads it: if one was changed,
 **Verified** at the top of every page turns red.
@@ -808,9 +817,12 @@ when it doesn't; the CSV a page downloads has it after each time, and
 **What this proves, and what it doesn't.** The manifest is not signed, so
 it finds accidental damage, a copy that went wrong, and careless edits.
 Someone who edits a file and also rewrites its hash in the manifest is not
-caught. For that, keep the reports where only administrators can change
-them (the default report folder is), or copy each report to write-once
-storage when it is made.
+caught. In AU-9 terms, the manifest supports detecting a change (AU-9 b);
+it does not protect the reports (AU-9 a) or give cryptographic
+protection (AU-9(3)) until reports are signed, which Blackbox does not do
+yet. For protection, keep the reports where only administrators can
+change them (the default report folder is), or copy each report to
+write-once storage when it is made.
 
 **Large networks.** A report lists up to 2,000,000 events. Above that,
 routine Info events (mostly logons) are counted and charted but not
