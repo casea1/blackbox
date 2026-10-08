@@ -77,7 +77,8 @@ type wizard struct {
 	password     func(prompt string) (string, error)
 	findInboxes  func() []string                     // collector inboxes this computer can already see
 	tryInbox     func(sendTo, user, pw string) error // can the collector's inbox be reached?
-	defaultInbox string                              // suggested inbox folder for a collector
+	setupSFTP    func(remote string, p *SFTPPrompts, logf func(string, ...any)) (string, error)
+	defaultInbox string // suggested inbox folder for a collector
 	isWindows    bool
 	virtualBox   func() bool // is VirtualBox installed here? (S12)
 }
@@ -97,7 +98,7 @@ func newWizard(in io.Reader, out io.Writer) *wizard {
 		br = bufio.NewReader(in)
 	}
 	w := &wizard{in: br, out: out, dirExists: dirExists, dirWritable: CheckWritable,
-		findInboxes: FindInboxes, tryInbox: TryInbox, defaultInbox: DefaultInbox(), isWindows: isWindows,
+		findInboxes: FindInboxes, tryInbox: TryInbox, setupSFTP: SetupSFTP, defaultInbox: DefaultInbox(), isWindows: isWindows,
 		virtualBox: VirtualBoxInstalled}
 	w.password = func(prompt string) (string, error) {
 		w.printf("%s", prompt)
@@ -543,6 +544,14 @@ func (w *wizard) askSendTo(a *Answers) error {
 			continue
 		}
 		def = s // offered again if this attempt does not work
+		if !w.isWindows && IsSFTP(s) {
+			mp, err := w.setupSFTP(s, &SFTPPrompts{Yes: w.yes}, func(f string, a ...any) { w.note(fmt.Sprintf(f, a...)) })
+			if err != nil {
+				w.note(err.Error())
+				continue
+			}
+			s = mp
+		}
 		if config.IsShare(s) {
 			w.printf("   Account on the collector to connect with")
 			if w.isWindows {

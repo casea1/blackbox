@@ -236,26 +236,43 @@ Blackbox checks for the collector's `BLACKBOX-INBOX.txt` marker before
 every delivery, so a mount that is down is never mistaken for the inbox.
 The data simply waits until the mount is back.
 
-**SFTP (sshfs) from a Linux sender.**
+**SFTP (sshfs) from a Linux sender.** This works in FIPS mode.
 
 1. On the Windows collector, turn on the **OpenSSH Server** optional
    feature. On an air-gapped system, install it from the Features on
    Demand media.
-2. Give an account (the same one as for SMB is fine) access to the
-   inbox through **Blackbox Senders** (on a Linux collector,
-   **blackbox-senders**), and use key-based sign-in.
-3. On the Linux sender, install `sshfs` from the installation media and
-   mount the inbox at boot. For example, in `/etc/fstab`:
+2. Give an account access to the inbox through **Blackbox Senders** (on a
+   Linux collector, **blackbox-senders**). Make it a standard user, not an
+   administrator: OpenSSH reads an administrator's keys from
+   `C:\ProgramData\ssh\administrators_authorized_keys`, shared by every
+   administrator.
+3. On the Linux sender, install `sshfs` from the installation media
+   (Ubuntu: `apt install sshfs`; AlmaLinux: `dnf install fuse-sshfs`).
+4. Run `sudo ./install.sh`, choose **Send to a collector**, and enter the
+   inbox as `ACCOUNT@COLLECTOR:/PATH`, for example
+   `bbsend@COLLECTOR:/C:/BlackboxInbox`. Setup then:
+   - makes this computer's SSH key, `/etc/blackbox/ssh/id_ecdsa`
+     (ECDSA P-384: FIPS mode refuses ed25519 keys);
+   - shows the collector's host key fingerprint to compare with
+     `ssh-keygen -lf C:\ProgramData\ssh\ssh_host_ecdsa_key.pub` on the
+     collector, and keeps it in Blackbox's own
+     `/etc/blackbox/ssh/known_hosts` once you accept it;
+   - writes a mount unit for `/mnt/blackbox-inbox` (no `/etc/fstab`
+     line), which uses only that key and that host key;
+   - offers to install the key on the collector over SSH, asking for the
+     account's Windows password once (the collector must accept a
+     password for that sign-in). Otherwise, or if that fails, it prints a
+     line to run on the collector as an administrator:
+     `blackbox senders add-ssh-key ACCOUNT "restrict ecdsa-sha2-… blackbox HOST"`.
 
-   ```
-   bbsend@COLLECTOR:/C:/BlackboxInbox  /mnt/blackbox-inbox  fuse.sshfs  _netdev,nofail,reconnect,IdentityFile=/root/.ssh/blackbox,ServerAliveInterval=15  0 0
-   ```
+   Either way the key is added with `restrict`: it can transfer files
+   and nothing else. Unattended installs (`--send-to
+   ACCOUNT@COLLECTOR:/PATH --yes`) accept the host key they show and print
+   the collector line. Removing the role (or uninstalling) removes the
+   mount unit; the key stays.
 
-   `nofail` lets the computer start when the collector is down. You can
-   add `x-systemd.automount` as well.
-
-4. Run `sudo ./install.sh`, choose **Send to a collector**, and enter
-   `/mnt/blackbox-inbox`.
+You can still mount the inbox yourself (for example from `/etc/fstab`)
+and enter the folder instead.
 
 For a folder like this, collection and delivery are separate (L8):
 
@@ -268,7 +285,7 @@ For a folder like this, collection and delivery are separate (L8):
   `/etc/fstab` line), so a mount that failed at boot, or dropped, is tried
   again at every run, as Blackbox does for an SMB share. systemd mounts it
   outside the service's sandbox, which has no network of its own, and the
-  mount stays after the send. The folder needs its `/etc/fstab` line.
+  mount stays after the send. The folder needs its `/etc/fstab` line or mount unit.
 - If delivery fails, the data waits; see
   [When the collector can't be reached](#when-the-collector-cant-be-reached).
 
