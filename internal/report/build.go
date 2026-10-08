@@ -105,6 +105,9 @@ type Options struct {
 	// original logs, since the last scheduled report (A9).
 	Removed       []string
 	RetentionDays int
+	// Overdue are original logs in no report whose period ended more than
+	// retention_days ago: kept, never pruned, and pointed out (RET1).
+	Overdue []OverdueLogs
 
 	// SCAP scan results to show (docs/design.md 13a): the latest and
 	// previous scan of each computer and benchmark. ScapEnabled shows the
@@ -323,12 +326,14 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	formerRuns(runs, opt.Systems)
 	events = r.exclude(events)
 	events = sshAttempts(events)
+	events = sshdLines(events)
 	unknownNames(events)
 	events = mergeAdminLogons(events)
 	events = sshLogonPairs(events)
 	events = sshSources(events)
 	events = r.dedupe(events)
 	events = foldClearCommands(events)
+	events = foldPolicyCommands(events)
 	own := runs
 	if opt.OwnRuns != nil {
 		own = opt.OwnRuns
@@ -422,6 +427,25 @@ func (l LeftOutLogs) Text(stamp func(time.Time) string) string {
 		l.Host, stamp(l.From), stamp(l.To), in, strings.TrimRight(l.Reason, ". "), l.SetAside)
 }
 
+// OverdueLogs is Host's original logs from From to To, in Archives
+// daily archives in no report, the oldest waiting Days days in Dir, more
+// than RetentionDays (RET1).
+type OverdueLogs struct {
+	Host          string
+	From, To      time.Time
+	Archives      int
+	Days          int
+	Dir           string
+	RetentionDays int
+}
+
+// Text is the overdue logs in one sentence.
+func (o OverdueLogs) Text(stamp func(time.Time) string) string {
+	return fmt.Sprintf("%s: original logs from %s to %s have waited %d days and were never put in a report (%s in %s). "+
+		"retention_days = %d does not remove them: they may be the only copy of those logs.",
+		o.Host, stamp(o.From), stamp(o.To), o.Days, plural(o.Archives, "daily archive"), o.Dir, o.RetentionDays)
+}
+
 // leftOutHosts are the computers with original logs left out (AR7).
 func (r *Report) leftOutHosts() []string {
 	var out []string
@@ -443,6 +467,9 @@ func (r *Report) checkArchives() {
 	}
 	for _, l := range r.LeftOut {
 		r.Health.Warnings = append(r.Health.Warnings, "ORIGINAL LOGS NOT IN REPORT: "+l.Text(r.stamp))
+	}
+	for _, o := range r.Overdue {
+		r.Health.Warnings = append(r.Health.Warnings, "ORIGINAL LOGS NEVER REPORTED: "+o.Text(r.stamp))
 	}
 	if !r.ArchivesKept {
 		return

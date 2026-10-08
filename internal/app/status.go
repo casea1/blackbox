@@ -94,6 +94,13 @@ func (a *App) Status(w io.Writer) error {
 		p("ORIGINAL LOGS NOT IN REPORT "+l.Report+":", "%s's logs for %s to %s: %s. The archive was set aside in %s; its events are in the report, the original copy of them only in that file.",
 			l.Host, stampLocal(l.From, a.loc()), stampLocal(l.To, a.loc()), strings.TrimRight(l.Reason, ". "), l.SetAside)
 	}
+	// Kept past retention_days because no report holds them (RET1).
+	if a.Cfg.MakesReports() {
+		for _, o := range a.overdueLogs(now, nil) {
+			attention = append(attention, "original logs were never put in a report")
+			p("ORIGINAL LOGS NEVER REPORTED:", "%s Find why no scheduled report took them (blackbox.log); keep them until your records schedule lets them go.", o.Text(func(t time.Time) string { return stampLocal(t, a.loc()) }))
+		}
+	}
 	losses := lostSince(st, s.LastWindowEnd, now, a.Cfg.CollectEvery)
 	// Overwritten parts, one line per log (LOG1c), with the same advice
 	// as its "Events lost" line.

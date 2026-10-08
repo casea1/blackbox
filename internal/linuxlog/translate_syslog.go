@@ -3,6 +3,7 @@ package linuxlog
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/casea1/blackbox/internal/event"
@@ -72,6 +73,8 @@ func (t *Translator) Syslog(l Line, source string) *event.Event {
 		}
 	case t.AuthFromSyslog:
 		e = t.auth(l)
+	case t.SSHFromSyslog && isSSHD(l.Prog):
+		e = t.sshd(l)
 	case t.SudoFromSyslog && (l.Prog == "sudo" || l.Prog == "sudo-rs"):
 		e = t.auth(l)
 	}
@@ -242,8 +245,9 @@ func (t *Translator) udisks(l Line) *event.Event {
 // ---------------------------------------------------------------- auth.log / secure (no auditd)
 
 var (
-	sshFailRE     = regexp.MustCompile(`^Failed (\S+) for (invalid user )?(\S+) from (\S+) port \d+`)
-	sshOkRE       = regexp.MustCompile(`^Accepted (\S+) for (\S+) from (\S+) port \d+`)
+	sshFailRE     = regexp.MustCompile(`^Failed (\S+) for (invalid user )?(\S+) from (\S+) port (\d+)`)
+	sshOkRE       = regexp.MustCompile(`^Accepted (\S+) for (\S+) from (\S+) port \d+(?: ssh2)?(?:: (\S+) (\S+))?`)
+	sshClosedRE   = regexp.MustCompile(`^(?:Connection closed by|Disconnected from) authenticating user (\S+) (\S+) port (\d+)`)
 	sessCloseRE   = regexp.MustCompile(`^pam_unix\((sshd|login|gdm-password|lightdm|sddm):session\): session closed for user (\S+)`)
 	sessOpenRE    = regexp.MustCompile(`^pam_unix\((login|gdm-password|lightdm|sddm):session\): session opened for user ([^\s(]+)`)
 	consoleFailRE = regexp.MustCompile(`^pam_unix\((login|gdm-password|lightdm|sddm):auth\): authentication failure;.*\buser=(\S+)`)
@@ -265,22 +269,7 @@ func (t *Translator) auth(l Line) *event.Event {
 	m := l.Msg
 	switch l.Prog {
 	case "sshd", "sshd-session", "sshd-auth":
-		if x := sshFailRE.FindStringSubmatch(m); x != nil {
-			acct, reason := x[3], "wrong password"
-			if x[2] != "" {
-				reason = "the user name does not exist"
-			} else if x[1] == "publickey" {
-				reason = "key not accepted"
-			}
-			return t.failedLogon(acct, "via SSH", "SSH", cleanAddr(x[4]), "ssh", "sshd", reason, 2)
-		}
-		if x := sshOkRE.FindStringSubmatch(m); x != nil {
-			addr := cleanAddr(x[3])
-			e := &event.Event{Category: event.CatLogon, Action: "logon", User: x[2], Outcome: "success", SourceIP: addr,
-				Interactive: true, Summary: fmt.Sprintf("%s logged on via SSH%s.", x[2], fromAddr(addr)), DedupeKey: logonKey(x[2], addr)}
-			e.AddDetail("Logon type", "SSH")
-			e.AddDetail("Source address", addr)
-			e.AddDetail("Authentication", x[1])
+		if e := t.sshd(l); e != nil {
 			return e
 		}
 	case "sudo", "sudo-rs":
@@ -382,6 +371,61 @@ func (t *Translator) auth(l Line) *event.Event {
 			Summary: fmt.Sprintf("%s logged off.", x[2]), DedupeKey: "lxlogoff|" + x[2]}
 	}
 	return nil
+}
+
+func isSSHD(prog string) bool {
+	return prog == "sshd" || prog == "sshd-session" || prog == "sshd-auth"
+}
+
+// sshd translates sshd's sign-in lines: "Accepted", "Failed", and a
+// connection closed while signing in with no "Failed" line before it,
+// which is how a refused key shows at sshd's usual log level.
+func (t *Translator) sshd(l Line) *event.Event {
+	m := l.Msg
+	if x := sshFailRE.FindStringSubmatch(m); x != nil {
+		acct, reason := x[3], "wrong password"
+		if x[2] != "" {
+			reason = "the user name does not exist"
+		} else if x[1] == "publickey" {
+			reason = "key not accepted"
+		}
+		addr := cleanAddr(x[4])
+		t.sshFailed(l.Host + "|" + addr + "|" + x[5])
+		e := t.failedLogon(acct, "via SSH", "SSH", addr, "ssh", "sshd", reason, 2)
+		e.AddDetail("Authentication", x[1])
+		return e
+	}
+	if x := sshClosedRE.FindStringSubmatch(m); x != nil {
+		addr := cleanAddr(x[2])
+		if !t.sshFailed(l.Host + "|" + addr + "|" + x[3]) {
+			return nil // the failed tries of this connection are already rows
+		}
+		return t.failedLogon(x[1], "via SSH", "SSH", addr, "ssh", "sshd",
+			"no key or password was accepted before the connection closed", 1)
+	}
+	if x := sshOkRE.FindStringSubmatch(m); x != nil {
+		addr := cleanAddr(x[3])
+		e := logon(x[2], "via SSH", "SSH", addr, "", "")
+		e.AddDetail("Authentication", x[1])
+		if x[4] != "" {
+			e.AddDetail("Key", x[4]+" "+x[5])
+		}
+		return e
+	}
+	return nil
+}
+
+// sshFailed notes a failed SSH try on a connection (host|addr|port) and
+// reports whether it is the connection's first.
+func (t *Translator) sshFailed(conn string) bool {
+	if slices.Contains(t.sshFails, conn) {
+		return false
+	}
+	t.sshFails = append(t.sshFails, conn)
+	if len(t.sshFails) > 64 {
+		t.sshFails = t.sshFails[len(t.sshFails)-64:]
+	}
+	return true
 }
 
 // logonKey merges the records of one sign-in: the same line read from two

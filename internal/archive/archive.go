@@ -512,26 +512,6 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
-// Prune removes archives whose period ended more than days ago.
-func Prune(dir string, days int, now time.Time) error {
-	if days <= 0 {
-		return nil
-	}
-	list, err := List(dir)
-	if err != nil {
-		return err
-	}
-	cutoff := now.AddDate(0, 0, -days)
-	for _, a := range list {
-		if a.To.Before(cutoff) {
-			if err := os.Remove(a.Path); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 // Bundled describes a bundle: the period it covers, its SHA-256, and
 // what its daily archives say about gaps and coverage.
 type Bundled struct {

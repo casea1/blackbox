@@ -11,6 +11,8 @@
 //  2. sshAttempts: sshd's password check (USER_AUTH) and its failed logon
 //     (USER_LOGIN) for one try are one row, matched by process ID in either
 //     order; the name tried comes from the check (U5).
+//     sshdLines: sshd's own line about a failed SSH try (auth.log or the
+//     journal) is joined to the audit record of the same try (LNX1).
 //     unknownNames: a Linux "wrong password" for a name sshd then calls
 //     unknown says "the user name does not exist" (U6).
 //  3. mergeAdminLogons: an administrator's 4624 and 4672 (one logon ID) are one
@@ -18,6 +20,9 @@
 //  4. dedupe: records with the same DedupeKey on one computer within
 //     dedupeWindow are one row, keeping the highest Priority; two failed
 //     logons of the same kind (recordKind) are two attempts, never merged.
+//     A Linux sign-in's row keeps the details of every record of it: the
+//     audit log's USER_LOGIN or USER_START and sshd's "Accepted" line,
+//     which alone says how the person signed in (LNX1).
 //  4b. selfChanges: a "blackbox config set" command line is joined to
 //     Blackbox's own record of the change it made (A15); with no record,
 //     on a computer whose Blackbox records its changes, the command
@@ -199,6 +204,15 @@ func (r *Report) dedupe(in []*event.Event) []*event.Event {
 			if strings.HasPrefix(e.DedupeKey, "bbreport|") && kept.Fields != nil {
 				mergeReportFiles(kept, e)
 			}
+			// One sign-in: sshd's line has the method and key, the
+			// audit record the program and terminal (LNX1).
+			if strings.HasPrefix(e.DedupeKey, "lxlogon|") {
+				for _, d := range e.Details {
+					if detail(kept, d.Label) == "" {
+						kept.AddDetail(d.Label, d.Value)
+					}
+				}
+			}
 			// One service, recorded under its service name and its
 			// display name: show both.
 			if strings.HasPrefix(e.DedupeKey, "svc|") && e.Target != "" && !strings.EqualFold(e.Target, kept.Target) {
@@ -303,6 +317,74 @@ func sshAttempts(events []*event.Event) []*event.Event {
 		// One try: never merged with another try by dedupe.
 		keep.DedupeKey = ""
 		keep.AddDetail("Process ID", keep.Fields["pid"])
+	}
+	out := events[:0]
+	for _, e := range events {
+		if !drop[e] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// sshdLines joins sshd's own line about a failed SSH try ("Failed
+// password for claude from …", read from auth.log or the journal) to the
+// audit record of the same try, so a try is one row (LNX1). The audit
+// record (USER_AUTH, USER_LOGIN, or the two joined by sshAttempts) is
+// kept, with sshd's reason, which says whether a password or a key was
+// refused and whether the name exists. They match on the computer, the
+// source address and the account (or an audit record that does not know
+// the name), within 5 seconds, and each audit record takes at most one
+// line. A line with no audit record of its try is a row of its own.
+func sshdLines(events []*event.Event) []*event.Event {
+	const near = 5 * time.Second
+	isLine := func(e *event.Event) bool {
+		return e.OS == "linux" && e.Action == "logon_failed" && e.Source != "auditd" && strings.HasPrefix(e.RecordType, "sshd")
+	}
+	isAudit := func(e *event.Event) bool {
+		return e.OS == "linux" && e.Action == "logon_failed" && e.Source == "auditd" &&
+			strings.HasPrefix(filepath.Base(strings.ReplaceAll(e.Fields["exe"], "\\", "/")), "sshd")
+	}
+	used := map[*event.Event]bool{}
+	drop := map[*event.Event]bool{}
+	for i, l := range events {
+		if !isLine(l) {
+			continue
+		}
+		match := func(a *event.Event) bool {
+			return isAudit(a) && !used[a] && a.Host == l.Host && a.SourceIP == l.SourceIP &&
+				(a.User == l.User || strings.HasPrefix(a.User, "("))
+		}
+		var best *event.Event
+		var gap time.Duration
+		for j := i - 1; j >= 0 && l.Time.Sub(events[j].Time) <= near; j-- {
+			if match(events[j]) {
+				best, gap = events[j], l.Time.Sub(events[j].Time)
+				break
+			}
+		}
+		for j := i + 1; j < len(events) && events[j].Time.Sub(l.Time) <= near; j++ {
+			if match(events[j]) {
+				if best == nil || events[j].Time.Sub(l.Time) < gap {
+					best = events[j]
+				}
+				break
+			}
+		}
+		if best == nil {
+			continue
+		}
+		used[best], drop[l] = true, true
+		best.User, best.Target, best.Summary = l.User, l.Target, l.Summary
+		for k := range best.Details {
+			if best.Details[k].Label == "Reason" {
+				best.Details[k].Value = detail(l, "Reason")
+			}
+		}
+		best.AddDetail("Authentication", detail(l, "Authentication"))
+	}
+	if len(drop) == 0 {
+		return events
 	}
 	out := events[:0]
 	for _, e := range events {
@@ -941,7 +1023,8 @@ func sshSources(events []*event.Event) []*event.Event {
 // second, which are not always linked to each other. Two SSH logons of
 // one account on one computer within 2 seconds are joined (each row takes
 // at most one other), keeping the one with administrator rights, and the
-// other's logon ID in its details.
+// other's logon ID in its details. Only when their source addresses match,
+// or one has none (DUP3): sign-ins from two addresses are two sign-ins.
 func sshLogonPairs(events []*event.Event) []*event.Event {
 	const near = 2 * time.Second
 	gone := map[*event.Event]bool{}
@@ -952,7 +1035,8 @@ func sshLogonPairs(events []*event.Event) []*event.Event {
 		}
 		for j := i + 1; j < len(events) && events[j].Time.Sub(l.Time) <= near; j++ {
 			m := events[j]
-			if !isSSHLogon(m) || gone[m] || paired[m] || m.Host != l.Host || !strings.EqualFold(accountName(m.User), accountName(l.User)) {
+			if !isSSHLogon(m) || gone[m] || paired[m] || m.Host != l.Host || !strings.EqualFold(accountName(m.User), accountName(l.User)) ||
+				m.SourceIP != "" && l.SourceIP != "" && !strings.EqualFold(m.SourceIP, l.SourceIP) {
 				continue
 			}
 			keep, drop := l, m
@@ -989,24 +1073,25 @@ func isSSHLogon(e *event.Event) bool {
 	return e.OS == "windows" && e.Action == "logon" && detail(e, "Logon type") == "SSH (OpenSSH)"
 }
 
-// consoleHosts are the programs Windows starts for a console program:
-// part of what started them, not something a person ran (UX1).
-var consoleHosts = map[string]bool{"conhost.exe": true, "openconsole.exe": true}
+// consoleHostPath is the console host Windows starts for a console
+// program: part of what started it, not something a person ran (UX1).
+const consoleHostPath = `c:\windows\system32\conhost.exe`
 
 // foldConsoleHosts folds the console host Windows starts for each console
 // program run with administrator rights ("conhost.exe 0xffffffff
 // -ForceV1") into the row of the program that started it, when that row
-// is there: a count and the times in its details. One with no such row
-// stays.
+// is there: a count and the times in its details. One started by sshd
+// (which is not a row) is folded into that person's latest logon, or left
+// out. Only the real console host started the usual way is folded
+// (DUP3): another program named conhost.exe, one with arguments a person
+// chose, one with no command line recorded, or one started by anything
+// else stays a row.
 func (r *Report) foldConsoleHosts(events []*event.Event) []*event.Event {
-	type folded struct {
-		n     int
-		times []string
-	}
-	into := map[*event.Event]*folded{}
+	into := map[*event.Event]int{}
+	var order []*event.Event
 	out := events[:0]
 	for i, e := range events {
-		if e.Category != event.CatPrivileged || e.OS != "windows" || !consoleHosts[strings.ToLower(baseName(e.Process))] {
+		if e.Category != event.CatPrivileged || e.OS != "windows" || !plainConsoleHost(e) {
 			out = append(out, e)
 			continue
 		}
@@ -1014,16 +1099,15 @@ func (r *Report) foldConsoleHosts(events []*event.Event) []*event.Event {
 		var p *event.Event
 		for j := i - 1; j >= 0 && e.Time.Sub(events[j].Time) <= 10*time.Second; j-- {
 			x := events[j]
-			if x.Host == e.Host && x.User == e.User && x != e && parent != "" && strings.EqualFold(x.Process, parent) && !consoleHosts[strings.ToLower(baseName(x.Process))] {
+			if x.Host == e.Host && x.User == e.User && x != e && parent != "" && strings.EqualFold(x.Process, parent) && !strings.EqualFold(x.Process, consoleHostPath) {
 				p = x
 				break
 			}
 		}
-		if p == nil && plainConsoleHost(e) {
-			// Started by a program that is not a row (sshd, for an SSH
-			// session's console): part of that person's session, folded
-			// into their latest logon on that computer, or left out
-			// (UX1b).
+		if p == nil && startedBySSHD(parent) {
+			// Started by sshd for an SSH session's console: part of that
+			// person's session, folded into their latest logon on that
+			// computer, or left out (UX1b).
 			for j := i - 1; j >= 0; j-- {
 				x := events[j]
 				if x.Host == e.Host && x.Action == "logon" && strings.EqualFold(accountName(x.User), accountName(e.User)) {
@@ -1040,39 +1124,66 @@ func (r *Report) foldConsoleHosts(events []*event.Event) []*event.Event {
 			out = append(out, e)
 			continue
 		}
-		f := into[p]
-		if f == nil {
-			f = &folded{}
-			into[p] = f
+		if into[p] == 0 {
+			order = append(order, p)
 		}
-		f.n++
+		into[p]++
 		r.Folded++
 	}
-	for p, f := range into {
+	for _, p := range order {
 		what := "1 console window (conhost.exe)"
-		if f.n > 1 {
-			what = fmt.Sprintf("%d console windows (conhost.exe)", f.n)
+		if n := into[p]; n > 1 {
+			what = fmt.Sprintf("%d console windows (conhost.exe)", n)
 		}
 		p.AddDetail("Also started", what+", not shown as rows of their own")
 	}
 	return out
 }
 
-// plainConsoleHost is a console host started the usual way
-// ("conhost.exe 0xffffffff -ForceV1"), with nothing in its command line a
-// person chose.
-func plainConsoleHost(e *event.Event) bool {
-	cmd := strings.ToLower(e.Command)
-	if i := strings.Index(cmd, "conhost.exe"); i >= 0 {
-		cmd = cmd[i+len("conhost.exe"):]
-	} else if i := strings.Index(cmd, "openconsole.exe"); i >= 0 {
-		cmd = cmd[i+len("openconsole.exe"):]
+// startedBySSHD says whether a parent program is OpenSSH's server.
+func startedBySSHD(parent string) bool {
+	switch strings.ToLower(baseName(parent)) {
+	case "sshd.exe", "sshd-session.exe":
+		return true
 	}
-	for _, f := range strings.Fields(strings.Trim(cmd, `" `)) {
+	return false
+}
+
+// plainConsoleHost is Windows' console host (C:\Windows\System32\conhost.exe)
+// started the usual way: its command line names that program (or its
+// \??\C:\WINDOWS\system32\conhost.exe form) with only the arguments
+// Windows gives it ("0xffffffff -ForceV1"), nothing a person chose. One
+// with no command line recorded is not known to be plain.
+func plainConsoleHost(e *event.Event) bool {
+	if !strings.EqualFold(strings.TrimPrefix(e.Process, `\??\`), consoleHostPath) {
+		return false
+	}
+	cmd := strings.TrimSpace(strings.ToLower(e.Command))
+	var prog string
+	if strings.HasPrefix(cmd, `"`) {
+		end := strings.Index(cmd[1:], `"`)
+		if end < 0 {
+			return false
+		}
+		prog, cmd = cmd[1:1+end], cmd[2+end:]
+	} else {
+		f := strings.Fields(cmd)
+		if len(f) == 0 {
+			return false
+		}
+		prog, cmd = f[0], strings.Join(f[1:], " ")
+	}
+	if strings.TrimPrefix(prog, `\??\`) != consoleHostPath {
+		return false
+	}
+	for _, f := range strings.Fields(cmd) {
 		switch f {
 		case "0xffffffff", "-forcev1", "--headless", "--server":
 		default:
 			if !strings.HasPrefix(f, "0x") {
+				return false
+			}
+			if _, err := strconv.ParseUint(f[2:], 16, 64); err != nil {
 				return false
 			}
 		}
@@ -1090,10 +1201,12 @@ func baseName(p string) string {
 // repeatWindow is how close identical records must be to share a row.
 const repeatWindow = time.Minute
 
-// foldRepeats shows identical records (same system, person, action and
-// text, within a minute of the first) as one row with "×N" (UX1), each
+// foldRepeats shows identical records (same system, person, action,
+// address and text, within a minute of the first) as one row with "×N" (UX1), each
 // one's time kept in its details. Failed logons are left as they are:
-// each is an attempt, and the detections count them.
+// each is an attempt, and the detections count them. So are log clears
+// (DUP3): each clear is a separate action (one wevtutil run, one 104 or
+// 1102), however close together.
 func (r *Report) foldRepeats(events []*event.Event) []*event.Event {
 	type group struct {
 		first *event.Event
@@ -1103,11 +1216,11 @@ func (r *Report) foldRepeats(events []*event.Event) []*event.Event {
 	var all []*group
 	out := events[:0]
 	for _, e := range events {
-		if e.Category == event.CatFailedLogon || e.Outcome == "failure" && e.Category == event.CatLogon {
+		if e.Category == event.CatFailedLogon || e.Outcome == "failure" && e.Category == event.CatLogon || e.Action == "log_cleared" {
 			out = append(out, e)
 			continue
 		}
-		k := e.Host + "\x00" + e.User + "\x00" + e.Action + "\x00" + e.Summary
+		k := e.Host + "\x00" + e.User + "\x00" + e.Action + "\x00" + e.SourceIP + "\x00" + e.Summary
 		if g := open[k]; g != nil && e.Time.Sub(g.first.Time) <= repeatWindow && e.Late == g.first.Late {
 			g.times = append(g.times, e.Time)
 			r.Folded++
@@ -1313,12 +1426,19 @@ func foldClearCommands(events []*event.Event) []*event.Event {
 		if log == "" {
 			log = "Security"
 		}
-		for j := range events {
-			x := events[j]
-			if gone[x] || (x.Action != "audit_tamper_command" && x.Action != "powershell_tamper") || x.Host != c.Host ||
-				accountName(x.User) != accountName(c.User) || absDur(x.Time.Sub(c.Time)) > time.Minute || !clearsLog(x, log) {
+		// The nearest matching command: two clears of one log a minute
+		// apart each keep their own (DUP3).
+		var x *event.Event
+		for _, y := range events {
+			if gone[y] || (y.Action != "audit_tamper_command" && y.Action != "powershell_tamper") || y.Host != c.Host ||
+				accountName(y.User) != accountName(c.User) || absDur(y.Time.Sub(c.Time)) > time.Minute || !clearsLog(y, log) {
 				continue
 			}
+			if x == nil || absDur(y.Time.Sub(c.Time)) < absDur(x.Time.Sub(c.Time)) {
+				x = y
+			}
+		}
+		if x != nil {
 			gone[x] = true
 			cmd := detail(x, "Command line")
 			if cmd == "" {
@@ -1331,7 +1451,6 @@ func foldClearCommands(events []*event.Event) []*event.Event {
 			if p := detail(x, "Program"); p != "" {
 				c.AddDetail("Program", p)
 			}
-			break
 		}
 	}
 	out := events[:0]
@@ -1360,6 +1479,63 @@ func clearsLog(e *event.Event, log string) bool {
 		}
 	}
 	return false
+}
+
+// auditpolChange matches an auditpol command that changes audit policy.
+var auditpolChange = regexp.MustCompile(`(^|[\s\\/])auditpol(\.exe)?\s+/(set|clear|remove)\b`)
+
+// policyWindow is how close an auditpol command and the policy change it
+// made must be.
+const policyWindow = 5 * time.Second
+
+// foldPolicyCommands makes one audit policy change one row (DUP4): the
+// auditpol command (/set, /clear, /remove; a 4688) and Windows' record of
+// the change it made (4719, or 4912 for a per-user policy) were two High
+// rows. Each change record takes the nearest such command by the same
+// account (domain ignored) on the same computer within a few seconds,
+// shown under "Changed with"; a command that made a change is then not a
+// row. A command with no change recorded stays.
+func foldPolicyCommands(events []*event.Event) []*event.Event {
+	var cmds []*event.Event
+	for _, e := range events {
+		if e.Action == "audit_tamper_command" && auditpolChange.MatchString(strings.ToLower(strings.ReplaceAll(e.Command+" "+detail(e, "Command line"), `"`, ""))) {
+			cmds = append(cmds, e)
+		}
+	}
+	if len(cmds) == 0 {
+		return events
+	}
+	gone := map[*event.Event]bool{}
+	for _, c := range events {
+		if c.Action != "audit_policy_changed" && !(c.EventID == 4912 && c.OS == "windows") {
+			continue
+		}
+		var x *event.Event
+		for _, y := range cmds {
+			if y.Host != c.Host || accountName(y.User) != accountName(c.User) || absDur(y.Time.Sub(c.Time)) > policyWindow {
+				continue
+			}
+			if x == nil || absDur(y.Time.Sub(c.Time)) < absDur(x.Time.Sub(c.Time)) {
+				x = y
+			}
+		}
+		if x == nil {
+			continue
+		}
+		gone[x] = true
+		cmd := x.Command
+		if cmd == "" {
+			cmd = detail(x, "Command line")
+		}
+		c.AddDetail("Changed with", cmd)
+	}
+	out := events[:0]
+	for _, e := range events {
+		if !gone[e] {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // mergeReportFiles adds e's report files to kept's, and says them again.

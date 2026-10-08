@@ -130,26 +130,6 @@ func TestAuditOffInStatus(t *testing.T) {
 	}
 }
 
-// A9: pruning says which reports it removed, so the next report can list
-// them; only report folders (with a manifest) are removed.
-func TestPruneReportsSaysWhat(t *testing.T) {
-	dir := t.TempDir()
-	now := time.Date(2026, 10, 2, 15, 0, 0, 0, time.UTC)
-	for _, n := range []string{"old", "new", "notreport"} {
-		os.MkdirAll(filepath.Join(dir, n), 0o750)
-		if n != "notreport" {
-			os.WriteFile(filepath.Join(dir, n, "manifest.sha256"), []byte("x"), 0o640)
-		}
-	}
-	old := now.AddDate(0, 0, -40)
-	os.Chtimes(filepath.Join(dir, "old"), old, old)
-	os.Chtimes(filepath.Join(dir, "notreport"), old, old)
-	removed, err := pruneReports(dir, 30, now)
-	if err != nil || len(removed) != 1 || removed[0] != "old" {
-		t.Errorf("removed %v %v", removed, err)
-	}
-}
-
 // L10: data waiting more than a day to be sent is pointed out, with the
 // oldest item's age, and status says it needs attention (exit code 4).
 func TestWaitingTooLong(t *testing.T) {

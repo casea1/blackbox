@@ -26,12 +26,20 @@ type Translator struct {
 	// as well: sudo-rs (Ubuntu 26.04's sudo) writes no audit record of
 	// them (O1).
 	SudoFromSyslog bool
+	// SSHFromSyslog makes SSH sign-ins and failed sign-ins come from
+	// sshd's lines in auth.log or the journal as well. Set it with auditd:
+	// Ubuntu 26.04's sshd-session writes no USER_LOGIN record of a
+	// sign-in, and only sshd's own lines say how someone signed in
+	// (password or key). The report merges them with the audit records of
+	// the same sign-in (LNX1).
+	SSHFromSyslog bool
 
 	usb      map[string]*usbDevice // host|port → device being set up
 	scsiHost map[string]string     // host|scsi host number → USB port
 	recent   []recentCmd           // latest commands, to name groups usermod does not record
 	groupPID map[string]string     // host|pid → group just created by useradd
 	tried    []triedName           // account names in recent failed SSH password checks
+	sshFails []string              // host|addr|port of recent connections with a failed SSH try
 	starting map[string]startup    // host|session → login scripts running in it
 	motdPIDs map[string]time.Time  // host|pid → a login message process, when seen
 }
