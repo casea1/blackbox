@@ -529,6 +529,32 @@ The 0.23.0 live check and the owner's report redesign led to worker prompts 12 (
 
 All are covered by unit tests and CI only.
 
+## 0.24.0 pre-production test (8 Oct 2026)
+
+0.24.0 was tested before production on 8 Oct 2026. **Verdict: go;** none of the findings below blocks deployment. They led to worker prompt 13 (#119). The full finding text and the screenshots (`v0.24.0/`) are in this section of the testing repo's findings.md (PR #29); the rows below are short, written from #119 and the PRs.
+
+**Confirmed live:** the upgrade order (senders first) and emptying the 0.23 folders; the drop-only inbox ACL; signing, pinning and the "New sender" line; forgeries refused; key change → held → `senders rekey` (event 102) → imported; a Windows sender over SMB; the scheduled report's `verify`, `sha256sum -c` and README; the redesign on real data, with no console errors, no overflow at 1440 or 390 px, and the old links redirected.
+
+| # | Finding | Status | Fixed in |
+|---|---|---|---|
+| SEC1e | **Must fix: a false gap after the collector upgrade.** A batch waiting in a 0.23 folder at the upgrade was imported, then listed as missing by the next delivery, and `send --resend` imported it again (472). Cause: setup saved state it had read before waiting for the upgrade's first run, undoing that run's import. Blackbox now reads the state again once it holds the lock; no gap, a resend is "already imported", the key is pinned (tests). | Fixed | 0.25.0 (#120) |
+| OS1 | **Must fix: the Linux OS label showed "Blackbox's advice"** (the settings baseline). Overview, Systems and each system's page now show the inventory's OS ("Ubuntu 26.04.1 LTS"), then the STIG's OS, then Windows/Linux. | Fixed | 0.25.0 (#122) |
+| PPL1 | **Must fix: People said "Domain account win11-test\claude" for local accounts** on a network with no domain. An account whose prefix is one of the report's computers (short or DNS name, any case) is now "Local account on N systems". | Fixed | 0.25.0 (#122) |
+| DET1 | **Must fix: a refused delete was a High "deleted Blackbox's files … 3 times".** A delete the OS refused (Linux `success=no` with a non-zero exit; Windows 4656/4663 failure by the same process) is now "tried to delete Blackbox's files (refused)", Medium, and not counted as a removal or a covering-of-tracks step (tests with a refused unlink audit record). | Fixed | 0.25.0 (#121) |
+| SEC1f | Backlog: (a) files in the inbox that aren't deliveries are set aside in `inbox/rejected` after 10 minutes, never deleted, and listed by `status`; (b) batches emptied from 0.23 folders pin the key at once (the SEC1e fix); (c) an unsigned exact copy of an imported batch counts as "already imported". | Fixed | 0.25.0 (#120) |
+| UI22 | Backlog: a first-time sender's Reporting square was grey ("no data") although it delivered; it is now green, "first delivery received HH:MM". Overview's summary printed two full key fingerprints; they are shortened (`SHA256:LuoiZpT8…`). | Fixed | 0.25.0 (#122) |
+
+**Not verified live (0.25.0):**
+- a real 0.23 → 0.25 collector upgrade with batches waiting in the 0.23 folders (SEC1e), on Windows and Linux: no gap at the next delivery, a resend "already imported", and the key pinned at once;
+- stray files (such as `probe.txt` or a hidden file) set aside after 10 minutes in a real inbox, with the `.why.txt` and the `status` line (SEC1f);
+- an unsigned copy from a real sender's `outbox\sent` put back in the inbox, counted as "already imported" (SEC1f);
+- a real refused delete producing the Medium "tried to delete Blackbox's files (refused)" line: on Linux (`sudo rm` as a non-permitted user) and on Windows (`del` denied, with failure auditing on `C:\ProgramData\Blackbox`) (DET1);
+- OS names from real Ubuntu, AlmaLinux, RHEL and Windows inventories (OS1);
+- local and domain accounts told apart on a real domain-joined network (PPL1);
+- the green first-delivery Reporting square for a real new sender (UI22).
+
+All are covered by unit tests and CI only.
+
 ## ISSO / ISSM review: audit coverage (AU-2, AU-6, AU-12)
 
 Looked at as an ISSO doing the weekly audit review, and as an assessor checking that what the STIG makes you audit is actually reviewed. Owner decisions respected and not re-raised: no review/sign-off section (reviews are recorded on a separate platform) and no classification banner (`design.md` §13).
