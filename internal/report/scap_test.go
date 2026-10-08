@@ -86,7 +86,7 @@ func TestScapInReport(t *testing.T) {
 		t.Errorf("csv:\n%s", csv)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-	for _, want := range []string{"STIG compliance (SCAP)", "No scan found", "Open SCAP findings as CSV"} {
+	for _, want := range []string{"STIG compliance (SCAP)", "No scan found", "<b>Open SCAP findings</b><small>CSV</small>"} {
 		if !strings.Contains(string(html), want) {
 			t.Errorf("report.html lacks %q", want)
 		}

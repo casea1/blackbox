@@ -11,28 +11,37 @@
 </head>
 <body>
 <aside aria-label="Report menu">
-  <div class="brand"><img src="{{logo}}" alt=""><div><b>Blackbox</b></div></div>
-  <div class="site"><span>{{if .IsLAN}}Network{{else}}System{{end}}</span><b>{{if .Site}}{{.Site}}{{else}}{{.MainSystem}}{{end}}</b></div>
-  <nav aria-label="Pages">
+  <div class="brand"><img src="{{logo}}" alt=""><div><b>Blackbox</b><span>{{if .Site}}{{.Site}}{{else}}{{.MainSystem}}{{end}}</span></div>
+  <button type="button" class="menubtn" data-menu aria-expanded="false" aria-controls="sidemenu">{{icon "list" 18}}<span>Menu</span></button></div>
+  <div class="side" id="sidemenu">
+  <div class="grp" aria-hidden="true">Review</div>
+  <nav aria-label="Review">
     <a href="#overview" data-nav="overview">{{icon "layout-dashboard" 17}}<span>Overview</span></a>
     <a href="#detections" data-nav="detections">{{icon "shield-alert" 17}}<span>Detections</span>{{with len .Findings}}<em>{{.}}</em>{{end}}</a>
     <a href="#search" data-nav="search">{{icon "search" 17}}<span>Search</span></a>
-    <a href="#systems" data-nav="systems">{{icon "server" 17}}<span>Systems</span>{{if .SystemsNeedingAttention}}<em>!</em>{{end}}</a>
+  </nav>
+  <div class="grp" aria-hidden="true">Who and what</div>
+  <nav aria-label="Who and what">
+    <a href="#systems" data-nav="systems">{{icon "server" 17}}<span>Systems</span>{{if .SystemsNeedingAttention}}<em title="{{plural .SystemsNeedingAttention "system"}} need a look">!</em>{{end}}</a>
     <a href="#people" data-nav="people">{{icon "user-round" 17}}<span>People</span></a>
+  </nav>
+  <div class="grp" aria-hidden="true">Evidence</div>
+  <nav aria-label="Evidence">
     <a href="#health" data-nav="health">{{icon "shield-check" 17}}<span>Audit health</span></a>
     <a href="#logs" data-nav="logs">{{icon "scroll-text" 17}}<span>Original logs</span></a>
-    {{if .InReportsDir}}<a href="../index.html">{{icon "history" 17}}<span>All reports</span></a>{{end}}
   </nav>
-  <div class="grp tog" data-tog="events" role="button" tabindex="0">Events by kind <i>▸</i></div>
-  <nav class="fold shut" data-fold="events" aria-label="Events by kind">
+  <div class="grp" aria-hidden="true">Events by kind</div>
+  <nav aria-label="Events by kind">
     {{range .Pages}}{{if .Total}}<a href="#{{.ID}}" data-nav="{{.ID}}">{{icon .Icon 17}}<span>{{.Title}}</span><small>{{commas .Total}}</small></a>
     {{end}}{{end}}
   </nav>
-  <div class="grp tog" data-tog="more" role="button" tabindex="0">More <i>▸</i></div>
-  <nav class="fold shut" data-fold="more" aria-label="More pages">
+  <div class="grp" aria-hidden="true">More</div>
+  <nav aria-label="More">
     <a href="#inventory" data-nav="inventory">{{icon "cpu" 17}}<span>Inventory</span></a>
     <a href="#trends" data-nav="trends">{{icon "trending-up" 17}}<span>Trends</span></a>
   </nav>
+  {{template "reportcard" .}}
+  </div>
 </aside>
 <main>
 
@@ -42,7 +51,7 @@
   {{template "overview" .Overview}}
 </section>
 <section class="view" data-view="systems">{{template "head" (head . "Systems" "")}}{{with .SystemsPage}}{{template "systems" .}}{{end}}</section>
-<section class="view" data-view="detections">{{template "head" (head . "Detections" (detectionsCrumb .))}}{{template "detections" .}}</section>
+<section class="view" data-view="detections">{{template "head" (head . "Detections" (detectionsCrumb .) "csv")}}{{template "detections" .}}</section>
 <section class="view" data-view="search">{{template "head" (head . "Search" (searchCrumb .))}}{{template "search" .}}</section>
 <section class="view" data-view="people">{{template "head" (head . "People" (peopleCrumb .))}}{{with .PeoplePage}}{{template "people" .}}{{else}}<div class="panel"><p class="pm" style="margin:0">No one's account did anything in this report.</p></div>{{end}}</section>
 {{range .Pages}}
@@ -54,8 +63,8 @@
 {{end}}
 <section class="view" data-view="health">{{template "head" (head . "Audit health" (healthCrumb .))}}{{with .HealthPage}}{{template "health" .}}{{else}}<div class="panel"><p class="pm" style="margin:0">No systems in this report.</p></div>{{end}}</section>
 <section class="view" data-view="trends">{{with .TrendsPage}}{{template "head" (head $ "Trends" .Crumb)}}{{template "trends" .}}{{end}}</section>
-<section class="view" data-view="inventory">{{template "head" (head . "Inventory" "Each system's make, model and serial number, its drives and its user accounts, from its latest settings check · Blackbox only reads these")}}{{template "inventory" .Inventory}}</section>
-<section class="view" data-view="logs">{{template "head" (head . "Original logs" (printf (or (and .Interim (not .Archives) "%s · the raw Windows and Linux logs wait for the next scheduled report, which keeps them in its folder") "%s · the raw Windows and Linux logs this report was built from, saved in this report's folder") .Kind))}}{{with .LogsPage}}{{template "logs" .}}{{end}}</section>
+<section class="view" data-view="inventory">{{template "head" (head . "Inventory" "each system's make, model and serial number, its drives and its user accounts, from its latest settings check · Blackbox only reads these")}}{{template "inventory" .Inventory}}</section>
+<section class="view" data-view="logs">{{template "head" (head . "Original logs" (or (and .Interim (not .Archives) "the raw Windows and Linux logs wait for the next scheduled report, which keeps them in its folder") "the raw Windows and Linux logs this report was built from, saved in this report's folder"))}}{{with .LogsPage}}{{template "logs" .}}{{end}}</section>
 {{template "popovers" .}}
 {{template "printout" .Print}}
 </main>
@@ -68,7 +77,28 @@
 {{end}}
 
 {{define "head"}}<div class="head"><div><div class="crumb">{{.Crumb}}</div><h1>{{.Title}}{{if .Manual}} <span class="chip-manual" title="Run by hand between scheduled reports; it does not change the schedule">{{.Manual}}</span>{{end}}</h1></div>
-<div class="tools"><span class="btn static" title="The period this report covers">{{icon "calendar-range" 16}}{{.Range}}</span>{{if .Index}}<a class="btn" href="../index.html" title="Every report in this folder, newest first">{{icon "history" 16}}All reports</a>{{end}}<button class="btn verified" data-open="verified">{{icon "fingerprint" 16}}<span>Verified</span></button><button class="btn primary" data-open="export">Export</button></div></div>{{end}}
+<div class="tools">{{if .CSV}}<button type="button" class="btn" data-act="pagecsv">Export CSV</button>{{end}}<button type="button" class="btn primary" data-open="export" aria-haspopup="menu">Export</button></div></div>{{end}}
+
+{{/* The sidebar's report card (UI-R1): the report, its period, systems
+     and when it was made; Verified opens the pop-up (red when a check
+     failed, or when app.js finds a changed data file). */}}
+{{define "reportcard"}}{{with .Card}}<div class="rcard"><b>{{.Kind}}</b><span>{{.Period}}</span><span>{{.Systems}} · {{.Generated}}</span>{{end}}
+<button type="button" class="vline {{if .Verify.OK}}ok{{else}}bad{{end}}" data-open="verified" data-vline aria-haspopup="dialog"><i aria-hidden="true">{{if .Verify.OK}}✓{{else}}✕{{end}}</i> <span>{{if .Verify.OK}}Verified{{else}}Not verified{{end}} · {{.Verify.Short}}</span></button>
+{{if .Card.Index}}<a class="allrep" href="../index.html" title="Every report in this folder, newest first">All reports →</a>{{end}}</div>{{end}}
+
+{{/* ---- Shared components (UI-R1; see components.go) ---- */}}
+{{/* cell: one check square, CheckCell. */}}
+{{define "cell"}}{{if .Href}}<a class="cell {{.Class}}" href="{{.Href}}" title="{{.Label}}: {{if .Title}}{{.Title}}{{else}}{{.Word}}{{end}}"><span class="sr">{{.Label}}: {{.Word}}</span></a>{{else}}<span class="cell {{.Class}}" title="{{.Label}}: {{if .Title}}{{.Title}}{{else}}{{.Word}}{{end}}"><span class="sr">{{.Label}}: {{.Word}}</span></span>{{end}}{{end}}
+{{/* cellkey: the legend of the check squares. */}}
+{{define "cellkey"}}<span class="cellkey"><span><i class="cell ok"></i>ok</span><span><i class="cell warn"></i>warning</span><span><i class="cell bad"></i>problem</span><span><i class="cell na"></i>no data</span></span>{{end}}
+{{/* foldrow: "22 more systems with no problems … · Show", FoldRow; the
+     folded items are in an element with data-folded="ID" hidden. In a
+     table, put it in a <tr><td colspan=…>. */}}
+{{define "foldrow"}}<div class="foldrow"><span>{{.Text}}</span> · <button type="button" class="link" data-foldbtn="{{.ID}}" aria-expanded="false" data-hide="Hide">Show</button></div>{{end}}
+{{/* grouphead: a group's heading, "Servers · 5 with problems" (Group). */}}
+{{define "grouphead"}}<div class="grph">{{.Label}}</div>{{end}}
+{{/* li1: a one-line list item, ListItem. */}}
+{{define "li1"}}<a class="li1 {{.Level}}" href="{{if .Href}}{{.Href}}{{else}}#{{end}}"{{if .Ev}} data-ev="{{.Ev}}"{{end}}><i aria-hidden="true"></i><span class="t"><b>{{.Title}}</b>{{if .Reason}}<small>{{.Reason}}</small>{{end}}</span><span class="s">{{.System}}</span><span class="w">{{.Time}}</span></a>{{end}}
 
 {{define "soon"}}<div class="panel"><p class="pm" style="margin:0">{{.}}</p></div>{{end}}
 
@@ -197,18 +227,21 @@
 <div class="panel"><div class="ph"><h2>{{icon "circle-check" 17}}How to use them</h2></div>{{template "howlogs"}}</div>
 </div>{{end}}</div></div></div>{{end}}{{end}}{{end}}
 
-{{define "popovers"}}<div class="pop" data-pop="export" hidden>
-<a href="#" data-act="print">{{icon "printer" 18}}<div><b>Print or save as PDF</b><span>A clean printable summary: totals, detections and the audit trail</span></div></a>
-<a href="#" data-act="detcsv">{{icon "list-filter" 18}}<div><b>Detections as CSV</b><span>{{plural (len .Findings) "row"}} · for a POA&amp;M or ticket</span></div></a>
-<a href="events.zip" download>{{icon "layers" 18}}<div><b>All events as CSV</b><span>{{commas (len .Events)}} rows in events.zip · for Excel</span></div></a>
-<a href="#" data-act="invcsv">{{icon "cpu" 18}}<div><b>Inventory as CSV</b><span>Each system, its drives and accounts, with serial numbers</span></div></a>
-<a href="#" data-act="healthcsv">{{icon "shield-check" 18}}<div><b>Audit health as CSV</b><span>Each system's audit settings against the STIG</span></div></a>
-{{if .HasScapScans}}<a href="scap-open-rules.csv" download>{{icon "list-checks" 18}}<div><b>Open SCAP findings as CSV</b><span>{{plural .ScapOpenRules "open rule"}} · CAT, Vuln ID, rule · for a POA&amp;M</span></div></a>{{end}}
-<a href="./" target="_blank">{{icon "folder-open" 18}}<div><b>Open the report folder</b><span>Original logs, manifest, summary.json</span></div></a></div>
-<div class="pop vpop" data-pop="verified" hidden><div class="vh {{if .Verify.OK}}ok{{else}}bad{{end}}" data-vhead>{{icon "circle-check" 16}}<b>{{if .Verify.OK}}This report has not been changed{{else}}Something does not match{{end}}</b></div>
-<p>Every file in the report folder is listed in manifest.sha256 with the SHA-256 it had when the report was written.</p>
-<ul data-vlist>{{range .Verify.Lines}}<li class="{{if .Bad}}bad{{else}}ok{{end}}">{{if .Bad}}{{icon "circle-x" 14}}{{else}}{{icon "circle-check" 14}}{{end}}<span>{{.Text}}</span></li>{{end}}</ul>
-<p class="pm">To check it yourself: <code>blackbox verify</code> in the report folder.</p></div>{{end}}
+{{/* The Export menu (design 15): this page's CSV (filled in by app.js
+     for the page shown), then the whole report's files. */}}
+{{define "popovers"}}<div class="pop xpop" data-pop="export" role="menu" aria-label="Export" hidden>
+<div data-xpage hidden><div class="xh">This page</div><a href="#" role="menuitem" data-act="pagecsv"><b data-xlabel>This page</b><small>CSV</small></a></div>
+<div class="xh">Whole report</div>
+<a href="#" role="menuitem" data-act="print" title="A clean printable summary: totals, detections and the audit trail. Print it, or save it as a PDF."><b>Summary</b><small>PDF</small></a>
+<a href="events.zip" download role="menuitem" title="Every event in this report as a spreadsheet (events.csv in events.zip), times with their zone"><b>All events ({{commas (len .Events)}})</b><small>CSV</small></a>
+<a href="#" role="menuitem" data-act="syscsv" title="Each system, its make, model and serial number, and its drives with their serial numbers"><b>Systems and drives</b><small>CSV</small></a>
+<a href="#" role="menuitem" data-act="fixcsv" title="Every audit setting that does not match the STIG, on every system, with how to fix it"><b>Audit settings to fix</b><small>CSV</small></a>
+{{if .HasScapScans}}<a href="scap-open-rules.csv" download role="menuitem" title="{{plural .ScapOpenRules "open rule"}} from the latest SCAP scans: CAT, Vuln ID, rule · for a POA&amp;M"><b>Open SCAP findings</b><small>CSV</small></a>{{end}}
+<a href="./" target="_blank" role="menuitem" title="Original logs, manifest, summary.json"><b>Open the report folder</b><small aria-hidden="true">↗</small></a></div>
+{{/* The Verified pop-up (design 14): three checks, the failing first. */}}
+<div class="pop vpop" data-pop="verified" role="dialog" aria-labelledby="vtitle" hidden><div class="vh {{if .Verify.OK}}ok{{else}}bad{{end}}" data-vhead><i aria-hidden="true">{{if .Verify.OK}}✓{{else}}✕{{end}}</i><b id="vtitle">{{.Verify.Title}}</b></div>
+<ul data-vlist>{{range .Verify.Lines}}<li class="{{.State}}"><i aria-hidden="true">{{if eq .State "ok"}}✓{{else if eq .State "bad"}}✕{{else}}–{{end}}</i><span>{{.Text}}{{if and .Bad .File}}<small>{{.File}}</small>{{end}}</span></li>{{end}}</ul>
+<p class="vcheck">Check it yourself: <code>blackbox verify</code></p><p class="vfoot">{{.Verify.Written}}</p></div>{{end}}
 
 {{define "printout"}}<section class="printout"><div class="pt-head"><div><div class="pt-kicker">{{.Kicker}}</div><h1>{{.Title}}</h1><p>{{.Sub}}</p></div><img src="{{logo}}" alt=""></div>
 <div class="pt-tot">{{range .Totals}}<div>{{.Label}}<b>{{.Value}}</b></div>{{end}}</div>
@@ -220,7 +253,7 @@
 
 {{define "ck"}}{{if .Href}}<a class="ck2 {{.Level}}" href="{{.Href}}">{{else if .Ev}}<a class="ck2 {{.Level}}" href="#" data-ev="{{.Ev}}" title="Open this event">{{else}}<div class="ck2 {{.Level}}">{{end}}<div class="i">{{icon .Icon 14}}</div><div><b>{{.Title}}</b><span>{{if .Who}}<em>{{.Who}}</em>: {{end}}{{.What}}</span></div><div class="r">{{.Count}}</div>{{if or .Href .Ev}}</a>{{else}}</div>{{end}}{{end}}
 
-{{define "stat"}}{{if .Filter}}<a class="panel ec {{.Level}}" href="#" data-cardfilter="{{if ne .Filter "all"}}{{.Filter}}{{end}}" title="Show these below">{{else if .Href}}<a class="panel ec {{.Level}}" href="{{.Href}}">{{else if .Scroll}}<a class="panel ec {{.Level}}" href="#" data-scroll="{{.Scroll}}">{{else}}<div class="panel ec {{.Level}}">{{end}}<div class="l">{{icon .Icon 15}}{{.Label}}</div><div class="v">{{.Value}}</div><div class="d">{{.Note}}</div>{{if or .Filter .Href .Scroll}}</a>{{else}}</div>{{end}}{{end}}
+{{define "stat"}}{{if .Filter}}<a class="panel ec {{.Level}}" href="#" data-cardfilter="{{if ne .Filter "all"}}{{.Filter}}{{end}}" title="Show these below">{{else if .Href}}<a class="panel ec {{.Level}}" href="{{.Href}}">{{else if .Scroll}}<a class="panel ec {{.Level}}" href="#" data-scroll="{{.Scroll}}">{{else}}<div class="panel ec {{.Level}}">{{end}}<div class="l">{{icon .Icon 15}}{{.Label}}</div><div class="v">{{.Value}}</div><div class="d" title="{{.Note}}">{{.Note}}</div>{{if or .Filter .Href .Scroll}}</a>{{else}}</div>{{end}}{{end}}
 
 {{define "detections"}}{{if not .Detections}}<div class="panel"><div class="clean"><div class="ic">{{icon "shield-check" 22}}</div><div><b>Nothing unusual this {{lower (periodWord .)}}</b><span>No activity matched a detection rule. All {{commas (len .Events)}} events are still on the event pages and in Search.</span></div></div></div>{{else}}
 <div class="md2" style="grid-template-columns:300px 1fr"><div class="panel dlist" data-picklist style="padding:4px 0 10px"><div class="chips" data-detsev style="padding:12px 16px 0"><span class="on" data-sev="">All<i>{{len .Detections}}</i></span><span data-sev="high">High<i>{{sevCount .Detections "high"}}</i></span><span data-sev="medium">Medium<i>{{sevCount .Detections "medium"}}</i></span></div>

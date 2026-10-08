@@ -54,7 +54,7 @@ func TestAntivirusTable(t *testing.T) {
 }
 
 // Stat cards above an event table filter it; the People heatmap links its
-// hours; the date range is not a link and All reports is its own button.
+// hours; All reports is a link in the sidebar's report card.
 func TestClickableCardsAndHeatmap(t *testing.T) {
 	end := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	at := time.Date(2026, 10, 5, 9, 30, 0, 0, time.UTC) // a Monday
@@ -74,14 +74,15 @@ func TestClickableCardsAndHeatmap(t *testing.T) {
 		`data-cardfilter=""`,                    // the total card shows everything
 		`href="#search?page=failed&amp;sort=src"`,
 		`href="../index.html" title="Every report in this folder, newest first"`,
-		`<span class="btn static"`,
 		`href="#search?user=admin_jd&amp;when=%40slot%3A0-9"`, // a heatmap hour opens Search
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("report lacks %s", want)
 		}
 	}
-	if strings.Contains(html, `<a class="btn" href="../index.html" title="All reports">`) {
-		t.Error("the date range still opens the list of reports")
+	// UI-R1: the period and All reports are in the sidebar's report card,
+	// not the page header.
+	if strings.Contains(html, `<a class="btn" href="../index.html"`) || strings.Contains(html, `<span class="btn static"`) {
+		t.Error("the page header still has the period or All reports")
 	}
 }
