@@ -377,13 +377,35 @@ func demo30Network(t testing.TB) *demo30Net {
 			}
 			switch {
 			case r < 55:
+				// Each logon is followed by its logoff (People's sessions),
+				// 15 minutes to 2¾ hours later; no one logs on as root: its
+				// turns are root's scheduled jobs.
+				dur := time.Duration(15+int(rec[s.Name]*37%150)) * time.Minute
 				if s.OS == "windows" {
+					id := fmt.Sprintf("0x%x", 0x3e7000+rec[s.Name])
 					e := add(at, s, event.CatLogon, event.SevInfo, "logon", u, fmt.Sprintf("%s logged on (Remote Desktop) from %s.", u, ip))
 					e.EventID, e.SourceIP, e.Interactive = 4624, ip, true
 					e.AddDetail("Logon type", "10 (Remote Desktop)")
+					e.AddDetail("Logon ID", id)
+					if at.Add(dur).Before(end) {
+						e = add(at.Add(dur), s, event.CatLogon, event.SevInfo, "logoff", u, fmt.Sprintf("%s logged off.", u))
+						e.EventID = 4647
+						e.AddDetail("Logon ID", id)
+					}
 				} else {
-					e := add(at, s, event.CatLogon, event.SevInfo, "logon", u, fmt.Sprintf("%s logged on over SSH from %s port %d.", u, ip, 40000+rnd.Intn(20000)))
+					port := 40000 + rnd.Intn(20000)
+					if u == "root" {
+						job := []string{"/usr/local/sbin/backup.sh", "/usr/sbin/logrotate /etc/logrotate.conf", "/usr/lib/apt/apt.systemd.daily"}[port%3]
+						e := add(at, s, event.CatPrivileged, event.SevLow, "root_command", u, fmt.Sprintf("root ran as root: %s (cron)", job))
+						e.Command, e.Process = job, "/usr/sbin/cron"
+						continue
+					}
+					e := add(at, s, event.CatLogon, event.SevInfo, "logon", u, fmt.Sprintf("%s logged on over SSH from %s port %d.", u, ip, port))
 					e.Source, e.SourceIP, e.Interactive, e.RecordType = "auth", ip, true, "sshd"
+					if at.Add(dur).Before(end) {
+						e = add(at.Add(dur), s, event.CatLogon, event.SevInfo, "logoff", u, fmt.Sprintf("%s's SSH session from %s ended.", u, ip))
+						e.Source = "auth"
+					}
 				}
 			case r < 85:
 				if s.OS == "windows" {
@@ -469,6 +491,24 @@ func demo30Network(t testing.TB) *demo30Net {
 	e.AddDetail("Privileges", "SeDebugPrivilege, SeBackupPrivilege")
 	e = add(at(10, 20), sys["SRV-APP01"], event.CatOther, event.SevMedium, "service_installed", "kpatel", `kpatel installed the service UpdaterSvc (C:\ProgramData\upd\svc.exe).`)
 	e.EventID = 4697
+	// Acting as the built-in accounts (People's shared accounts): su to
+	// root, RunAs Administrator, and one direct logon as Administrator at
+	// a lab workstation's keyboard.
+	e = add(at(15, 40), sys["ubu-git01"], event.CatPrivileged, event.SevLow, "switch_user", "kpatel", "kpatel switched to root with su (a root shell: commands run in it are listed as \"ran as root\").")
+	e.Target = "root"
+	for _, x := range []struct {
+		host, who string
+		h, m      int
+	}{{"SRV-DC01", "jlee", 10, 12}, {"SRV-DC01", "jlee", 16, 3}, {"SRV-FS01", "jlee", 11, 47}, {"WS-LAB-01", "tlopez", 8, 50}} {
+		e = add(at(x.h, x.m), sys[x.host], event.CatPrivileged, event.SevMedium, "explicit_credentials", x.who,
+			fmt.Sprintf("%s used the credentials of Administrator to run mmc.exe (RunAs / alternate credentials).", x.who))
+		e.Target, e.Process, e.EventID = "Administrator", `C:\Windows\System32\mmc.exe`, 4648
+	}
+	e = add(at(8, 41), sys["WS-LAB-01"], event.CatLogon, event.SevInfo, "logon", "Administrator", "Administrator logged on at the keyboard.")
+	e.EventID, e.Interactive = 4624, true
+	e.AddDetail("Logon type", "Keyboard")
+	e = add(at(9, 6), sys["WS-LAB-01"], event.CatLogon, event.SevInfo, "logoff", "Administrator", "Administrator logged off.")
+	e.EventID = 4647
 
 	// The previous daily report, so this one continues with no gap.
 	var history []Summary

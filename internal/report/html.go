@@ -215,7 +215,11 @@ func funcs(loc *time.Location) template.FuncMap {
 			if p.PeoplePage != nil {
 				n = p.PeoplePage.Count
 			}
-			return fmt.Sprintf("%s active on %s", plural(n, "account"), plural(len(p.Hosts), "system"))
+			who := commas(n) + " people and accounts"
+			if n == 1 {
+				who = "1 person or account"
+			}
+			return fmt.Sprintf("%s active on %s", who, plural(len(p.Hosts), "system"))
 		},
 		"detectionsCrumb": func(p pageData) string {
 			// High and medium are counted on the page's severity filter (UI-R1).
@@ -469,6 +473,12 @@ func (r *Report) WriteHTML(w io.Writer, pages []*EventPage) error {
 	// made here (the event pages and Search add their tables' rows in
 	// app.js), and the whole report's.
 	meta["pagecsv"], meta["reportcsv"] = r.pageCSVs(health, inv), r.reportCSVs(health)
+	if people != nil {
+		meta["pagecsv"].(map[string]CSVFile)["people"] = people.csv()
+	}
+	if len(r.PeopleAliases) > 0 {
+		meta["palias"] = r.PeopleAliases // people_aliases, for links to a person
+	}
 	b, err := json.Marshal(meta)
 	if err != nil {
 		return err

@@ -175,7 +175,7 @@ func (r *Report) inventoryPage() *InventoryPage {
 			row.DrivesNote += fmt.Sprintf(" · %d removable seen", removable)
 		}
 		for _, a := range inv.Accounts {
-			ia := InvAccount{Name: a.Name, Key: personKey(a.Name), ID: a.ID, Kind: a.Kind, Admin: a.Admin, Disabled: !a.Enabled, Status: "Enabled", lastLogon: a.LastLogon, Role: "user"}
+			ia := InvAccount{Name: a.Name, Key: r.pkey(a.Name), ID: a.ID, Kind: a.Kind, Admin: a.Admin, Disabled: !a.Enabled, Status: "Enabled", lastLogon: a.LastLogon, Role: "user"}
 			if !a.Enabled {
 				ia.Status = "Disabled"
 			}
@@ -186,7 +186,7 @@ func (r *Report) inventoryPage() *InventoryPage {
 				ia.LastLogon = a.LastLogon.In(r.Location).Format("2 Jan 2006 15:04")
 			}
 			last := a.LastLogon
-			if t, ok := used[h][ia.Key]; ok {
+			if t, ok := used[h][personKey(a.Name)]; ok {
 				ia.Used = true
 				row.Used++
 				if t.After(last) {

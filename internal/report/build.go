@@ -68,6 +68,11 @@ type Options struct {
 	// WorkingHours: administrator activity outside them is detected.
 	WorkingHours config.WorkingHours
 
+	// PeopleAliases merges differently spelled accounts into one person on
+	// the People page: other spelling → name shown, lower case
+	// (config people_aliases).
+	PeopleAliases map[string]string
+
 	// Archives are the original logs for this period, one zip per
 	// computer, stored in the report folder. ArchivesKept says logs are
 	// archived, so a computer without them is pointed out.

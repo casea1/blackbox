@@ -92,39 +92,48 @@
   var SEV = { high: 'High', medium: 'Medium' };
   function sevCell(s) { return SEV[s] ? '<span class="sv ' + s + '">' + SEV[s] + '</span>' : '<span class="mute">—</span>'; }
 
-  // "0-17" (a People heatmap cell) as "Mondays 17:00–18:00".
+  // ---- People (UI-R1): the list's search box and All / Detections /
+  // Admins; a person named in a link by any spelling ("SRV-DC02\jlee",
+  // a people_aliases spelling) opens their row ----
+  // "0-17" (a weekday-hour in a Search link) as "Mondays 17:00–18:00".
   function slotLabel(slot) {
     var p = slot.split('-'), h = +p[1];
     return ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'][+p[0]] + ' ' + pad(h) + ':00–' + pad((h + 1) % 24) + ':00';
   }
-
-  // People heatmap: a red hour shows the person's detections in it.
-  document.addEventListener('click', function (ev) {
-    var a = ev.target.closest && ev.target.closest('[data-hslot]');
-    if (!a) return;
-    ev.preventDefault();
-    var slot = a.getAttribute('data-hslot'), box = document.getElementById('pdet-' + a.getAttribute('data-person'));
-    if (!box) return;
-    var n = 0;
-    box.querySelectorAll('.dc').forEach(function (c) {
-      var on = (' ' + (c.getAttribute('data-slots') || '') + ' ').indexOf(' ' + slot + ' ') >= 0;
-      c.hidden = !on;
-      if (on) n++;
-    });
-    var note = box.querySelector('[data-slotnote]');
-    if (note) {
-      if (!note.hasAttribute('data-all')) note.setAttribute('data-all', note.textContent);
-      note.innerHTML = esc(n + ' at ' + slotLabel(slot)) + ' · <a href="#" class="link" data-slotall>Show all</a>';
+  BB.personKey = function (u) {
+    u = (u || '').toLowerCase();
+    var i = u.lastIndexOf('\\');
+    if (i >= 0) u = u.slice(i + 1);
+    i = u.indexOf('@');
+    if (i > 0) u = u.slice(0, i);
+    return (meta.palias && meta.palias[u]) || u;
+  };
+  document.querySelectorAll('[data-plist]').forEach(function (list) {
+    var box = list.querySelector('[data-pfind]'), tab = '';
+    function apply() {
+      var q = box.value.trim().toLowerCase(), any = false;
+      list.classList.toggle('pfx', !!(q || tab));
+      list.querySelectorAll('[data-pick]').forEach(function (a) {
+        var text = (a.textContent + ' ' + (a.getAttribute('data-alias') || '')).toLowerCase();
+        a.hidden = !!(q && text.indexOf(q) < 0) || !!(tab && (' ' + a.getAttribute('data-pt') + ' ').indexOf(' ' + tab + ' ') < 0);
+      });
+      list.querySelectorAll('[data-pg]').forEach(function (g) {
+        g.hidden = !g.querySelector('[data-pick]:not([hidden])');
+        if (!g.hidden) any = true;
+      });
+      list.querySelector('[data-pnone]').hidden = any;
     }
-    box.scrollIntoView({ block: 'start' });
-  });
-  document.addEventListener('click', function (ev) {
-    var a = ev.target.closest && ev.target.closest('[data-slotall]');
-    if (!a) return;
-    ev.preventDefault();
-    var box = a.closest('.panel'), note = box.querySelector('[data-slotnote]');
-    box.querySelectorAll('.dc').forEach(function (c) { c.hidden = false; });
-    note.textContent = note.getAttribute('data-all');
+    box.addEventListener('input', apply);
+    list.querySelectorAll('[data-ptab]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        tab = b.getAttribute('data-ptab');
+        list.querySelectorAll('[data-ptab]').forEach(function (x) {
+          x.classList.toggle('on', x === b);
+          x.setAttribute('aria-pressed', x === b ? 'true' : 'false');
+        });
+        apply();
+      });
+    });
   });
 
   // ---- Sidebar (UI-R1): its groups are always open. On a narrow window
@@ -174,7 +183,9 @@
     if (id === 'systems') showSystem(view, decodeURIComponent(location.hash.split('/').slice(1).join('/')));
     else if (id === 'health' || id === 'logs') to = showHealth(view, decodeURIComponent(location.hash.split('/').slice(1).join('/')));
     else if (view.querySelector('[data-pick]')) {
-      showPick(view, decodeURIComponent(location.hash.split('/').slice(1).join('/')));
+      var pk = decodeURIComponent(location.hash.split('/').slice(1).join('/'));
+      if (id === 'people' && pk) pk = BB.personKey(pk);
+      showPick(view, pk);
     }
     if (id === 'inventory') inv.load();
     if (to) to.scrollIntoView();
@@ -399,8 +410,8 @@
   var TOO_OLD = 'This browser is too old to show the events. Open events.zip in this report\'s folder instead, or use a current version of Edge, Chrome or Firefox.';
 
   // A person's key, as People and summary.json have it: lower case,
-  // without a domain or host.
-  function key(u) { u = (u || '').toLowerCase(); var i = u.lastIndexOf('\\'); if (i >= 0) u = u.slice(i + 1); i = u.indexOf('@'); return i > 0 ? u.slice(0, i) : u; }
+  // without a domain or host, with people_aliases applied (BB.personKey).
+  function key(u) { return BB.personKey(u); }
   function actLabel(a) { a = (a || '').replace(/_/g, ' '); return a.charAt(0).toUpperCase() + a.slice(1); }
   function sevBucket(s) { return s === 'high' || s === 'medium' ? s : 'li'; }
   var SEVWORD = { high: 'High', medium: 'Medium', li: 'Low / info' };
@@ -845,6 +856,7 @@
     });
     this.reset();
     if (p.host && p.host.charAt(0) === '@') { p.role = p.host.slice(1); p.host = ''; }
+    if (p.user) p.user = key(p.user); // any spelling: "SRV-DC02\\jlee", an alias
     if (p.sort === 'host') { p.group = 'host'; p.sort = ''; }
     ['page', 'user', 'host', 'role', 'sev', 'when', 'text'].forEach(function (k) { self.set(k, p[k]); });
     this.q.group.value = Array.prototype.some.call(this.q.group.options, function (o) { return o.value === p.group; }) ? p.group : '';
