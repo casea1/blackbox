@@ -241,12 +241,30 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 	}
 	var gaps []archive.Gap
 	clears := a.noteClears(st, run, states, from)
+	// cleared labels a gap in a log with a clear still open as the clear
+	// (LC2b), with who and when; false when the clear's gap is recorded
+	// already, so this one is dropped (LC2c). It is kept as recorded only
+	// once the piece is saved.
+	cleared := func(g *archive.Gap) bool {
+		k := strings.ToLower(g.Source)
+		c, ok := clears[k]
+		if !ok || g.Reason != "" {
+			return true
+		}
+		if c.Gap {
+			return false
+		}
+		g.Cleared = clearedText(c)
+		c.Gap = true
+		clears[k] = c
+		return true
+	}
 	if !first {
 		// A log cleared since it last had a record exported reaches back
 		// only to the clear: that is the clear (a High row), not an
 		// overwrite (LC2). Its file keeps its size, so it still looks
 		// full. The gap is labelled as the clear, with who and when
-		// (LC2b), even when the log stayed empty until a later run.
+		// (LC2b).
 		reset := map[string]bool{}
 		for _, c := range run.Channels {
 			if c.Reset && !c.Cleared {
@@ -258,13 +276,12 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 			if _, ok := st.State.ExportMarks[g.Source]; ok && runtime.GOOS == "windows" {
 				continue // its gaps are found by record ID (AR9)
 			}
-			if c, ok := clears[k]; ok && !c.At.After(g.To) {
-				g.Cleared = clearedText(c)
-				delete(st.State.Clears, k)
-			} else if reset[k] {
+			if _, ok := clears[k]; !ok && reset[k] {
 				continue
 			}
-			gaps = append(gaps, g)
+			if cleared(&g) {
+				gaps = append(gaps, g)
+			}
 		}
 	}
 	// A log this collection read nothing new from has nothing new to
@@ -300,17 +317,42 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 					g = append(g, x)
 				}
 			}
-			for i := range g {
-				k := strings.ToLower(g[i].Source)
-				if c, ok := clears[k]; ok && g[i].Reason == "" && !c.At.After(g[i].To) {
-					g[i].Cleared = clearedText(c)
-					delete(st.State.Clears, k)
-				}
-			}
 			return s, n, g
 		}
 	}
-	piece, err := archive.SavePiece(a.piecesDir(), info, export, skip)
+	withClears := func(dir string, from, to time.Time, skip func(string) bool) ([]archive.Source, []string, []archive.Gap) {
+		s, n, all := export(dir, from, to, skip)
+		var g []archive.Gap
+		for _, x := range all {
+			if cleared(&x) {
+				g = append(g, x)
+			}
+		}
+		// LC2c: a clear seen since the last export is a gap whatever
+		// the log's size. Windows truncates a cleared file, so a log
+		// cleared well short of full does not wrap, and by position
+		// its record numbers just start again: neither left a gap
+		// above. Its events from the last export to the clear are not
+		// in the saved logs.
+		for _, k := range sortedKeys(clears) {
+			c := clears[k]
+			if c.Gap {
+				continue
+			}
+			end := c.At
+			if end.Before(from) {
+				end = from // read late: cleared before the last export ended
+			}
+			if end.After(to) {
+				end = to
+			}
+			x := archive.Gap{Source: c.Channel, From: from, To: end}
+			cleared(&x)
+			g = append(g, x)
+		}
+		return s, n, g
+	}
+	piece, err := archive.SavePiece(a.piecesDir(), info, withClears, skip)
 	if err != nil {
 		a.logf("exporting the original logs: %v; will try again next run", err)
 		return
@@ -320,6 +362,12 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 	}
 	for k, m := range pos.Next {
 		st.State.ExportMarks[k] = m
+	}
+	for k, c := range clears {
+		if cur, ok := st.State.Clears[k]; ok && c.Gap && cur.At.Equal(c.At) {
+			cur.Gap = true
+			st.State.Clears[k] = cur
+		}
 	}
 	gaps = piece.Info.Gaps
 	var kept []store.LogGap
@@ -332,6 +380,7 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 		if g.Cleared != "" {
 			a.logf("original logs: %s was cleared %s; its events before that are not in the saved original logs", g.Source, g.Cleared)
 			c := clears[strings.ToLower(g.Source)]
+			c.Gap = false
 			kept = append(kept, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: now, Cleared: &c})
 			continue
 		}
@@ -346,6 +395,15 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 	st.State.LogGaps = kept
 	st.State.ArchivedUntil = now
 	st.State.ArchiveRestart = time.Time{}
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // noteClears keeps the logs this run found cleared (LC2b), and forgets

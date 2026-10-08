@@ -590,6 +590,10 @@ type LogClear struct {
 	Channel string    `json:"channel"`
 	At      time.Time `json:"at"`
 	By      string    `json:"by,omitempty"`
+	// Gap is set once an export has recorded the clear as a gap (LC2c):
+	// the clear stays open, so the cleared file, still "full" or with its
+	// record numbers started again, is not then taken for an overwrite.
+	Gap bool `json:"gap,omitempty"`
 }
 
 // LeftOutLogs is a daily archive of original logs left out of a

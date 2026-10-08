@@ -361,12 +361,18 @@ collects less often than every 15 minutes and whose log holds more than
 that, collecting more often.
 
 A log cleared since it last had a record exported is not an overwrite:
-the clear is its own High row. The part it leaves out is labelled with
-who cleared it and when, also when the log stayed empty until a later
-collection: the Original logs page says "Cleared by claude at …: its
-events from before then are not in this archive", `archive.json` has
-`cleared` on that gap, and `blackbox status` has a "Log cleared:" line
-with no size advice and no exit code 4.
+the clear is its own High row. Every clear seen since the last export is
+a gap, whatever the log's size: Windows empties a cleared log's file, so
+a log cleared at 1% of its size never looks full, and its record numbers
+just start again. The gap runs from the last export to the clear and is
+labelled with who cleared it and when, also when the log is still empty:
+the Original logs page says "Cleared by claude at …: its events from
+before then are not in this archive", `archive.json` has `cleared` on
+that gap, and `blackbox status` has a "Log cleared:" line with no size
+advice and no exit code 4. Until a record written after the clear has
+been exported, the log is not taken for one that overwrote itself, and
+`blackbox.log` does not say its records "were overwritten before they
+could be collected".
 
 **Exports lost or changed before packing.** Each export's files are
 hashed when they are written (`piece.json`). When they are packed, a file
