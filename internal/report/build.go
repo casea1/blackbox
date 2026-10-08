@@ -506,7 +506,7 @@ func (r *Report) checkArchives() {
 		}
 	}
 	if len(r.NoArchive) > 0 {
-		r.Health.Warnings = append(r.Health.Warnings, "No archive of the original logs for this period from: "+strings.Join(r.NoArchive, ", ")+". See Audit health.")
+		r.Health.Warnings = append(r.Health.Warnings, "No archive of the original logs for this period from: "+strings.Join(r.NoArchive, ", ")+". See Original logs.")
 	}
 	for _, a := range r.Archives {
 		for _, f := range a.Changed {

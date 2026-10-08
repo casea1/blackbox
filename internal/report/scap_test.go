@@ -159,14 +159,14 @@ func TestScapScoreShown(t *testing.T) {
 	if f := facts["ubu-01"]; f.Value != "67%" || f.Bad {
 		t.Errorf("ubu-01 fact: %+v", f)
 	}
-	var jump string
-	for _, j := range hp.Jump {
-		if j.Target == "h-scap" {
-			jump = j.Note
+	var card HealthCard
+	for _, c := range hp.Cards {
+		if c.Tab == "scap" {
+			card = c
 		}
 	}
-	if jump != "lowest score 40% · 1 open CAT I" {
-		t.Errorf("jump: %q", jump)
+	if card.Value != "40%" || card.Note != "lowest · 1 open CAT I on 1 system" || card.Level != "bad" {
+		t.Errorf("SCAP card: %+v", card)
 	}
 	lines := map[string]CheckLine{}
 	for _, g := range r.systemsPage().Groups {

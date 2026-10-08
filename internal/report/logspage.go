@@ -23,6 +23,11 @@ type LogArchive struct {
 	// Issues are logs that do not cover the whole period (AR2), and Notes
 	// what the archives say about the period, e.g. a clock change (AR1).
 	Issues, Notes []string
+
+	// UI-R1 (design 09): the status chip (Complete, Gap, Missing, Set
+	// aside, Hash mismatch) and its level, a short note (Brief; NoteFull
+	// on hover), and what is inside ("3 .evtx · 3 pieces").
+	Chip, ChipLevel, Brief, NoteFull, Inside string
 }
 
 // LogFile is one log inside a zip.
@@ -33,11 +38,15 @@ type LogFile struct {
 
 // LogsPage is the Original logs page.
 type LogsPage struct {
-	Stats    []EventCard
+	Cards    []HealthCard
 	Archives []*LogArchive
 	Groups   []LogGroup
-	Range    string
-	Kept     bool
+	// Table is every system's line, grouped Servers / Workstations, gaps
+	// and missing first (UI-R1); AllN and GapsN count them for the switch.
+	Table       []Group[*LogArchive]
+	AllN, GapsN int
+	Range       string
+	Kept        bool
 	// Manual: a manual report keeps no original logs; Waiting says where
 	// they wait instead (UI5).
 	Manual  bool
@@ -93,6 +102,23 @@ func (r *Report) logsPage() *LogsPage {
 	for _, o := range r.Overdue {
 		lp.Failing = append(lp.Failing, o.Text(r.stamp))
 	}
+	// Earlier reports deleted or changed hold the only copy of their
+	// period's original logs (on Audit health before UI-R1).
+	if len(r.MissingReports) > 0 {
+		t := "Earlier reports missing or changed: a scheduled report holds the only copy of its period's original logs and their hashes. These were deleted, moved or changed after they were written:"
+		for _, m := range r.MissingReports {
+			what := "missing"
+			if m.Problem == "changed" {
+				what = "changed (its manifest no longer matches)"
+				if m.What != "" {
+					what = "changed (" + m.What + ")"
+				}
+			}
+			t += fmt.Sprintf(" %s (%s to %s), %s;", m.Name, r.stamp(m.From), r.stamp(m.To), what)
+		}
+		t = strings.TrimSuffix(t, ";") + ". Restore them from the backup. If they were moved or removed on purpose, record why: blackbox reports accept <name> \"why\"."
+		lp.Failing = append(lp.Failing, t)
+	}
 	if r.Interim && len(r.Archives) == 0 {
 		lp.Manual, lp.Waiting = true, r.waitingText()
 		return lp
@@ -114,6 +140,27 @@ func (r *Report) logsPage() *LogsPage {
 			k := strings.ToLower(row.Host + "|" + log)
 			cleared[k] = append(cleared[k], row.Time)
 		}
+	}
+	lossAt := map[string]time.Time{} // when a log first overwrote events, by host and log
+	for _, g := range r.Health.Gaps {
+		k := strings.ToLower(g.Host + "|" + g.Channel)
+		if g.Lost > 0 && (lossAt[k].IsZero() || g.From.Before(lossAt[k])) {
+			lossAt[k] = g.From
+		}
+	}
+	clock := func(t time.Time) string {
+		if r.WindowEnd.Sub(r.WindowStart) <= 25*time.Hour {
+			return t.In(r.Location).Format("15:04")
+		}
+		return t.In(r.Location).Format("2 Jan 15:04")
+	}
+	kinds := map[string]int{} // gaps by kind, for the "With a gap" card
+	var kindOrder []string
+	kind := func(k string) {
+		if kinds[k] == 0 {
+			kindOrder = append(kindOrder, k)
+		}
+		kinds[k]++
 	}
 	read := map[string]int{} // records read, by host and log
 	lost := map[string]uint64{}
@@ -179,6 +226,8 @@ func (r *Report) logsPage() *LogsPage {
 		logs := map[string]*agg{}
 		var order []string
 		var infoBytes int64
+		var briefs []string
+		pieces, gap := 0, false
 		seenNote := map[string]bool{}
 		for _, info := range r.archiveState[a.Name].Contents {
 			for _, f := range info.Files {
@@ -282,8 +331,43 @@ func (r *Report) logsPage() *LogsPage {
 				lf.Events = commas(n)
 			}
 			var parts []string
+			pieces += g.files
+			logName := shortLog(g.log) + " log"
 			if late {
 				parts = append(parts, "Covers from "+g.covFrom.In(r.Location).Format("2 Jan 15:04"))
+				briefs = append(briefs, logName+" starts at "+clock(g.covFrom))
+			}
+			over := g.lostOut
+			if over == 0 {
+				over = lost[h+"|"+strings.ToLower(g.log)]
+			}
+			if over > 0 {
+				b := fmt.Sprintf("%s overwrote %s", logName, plural(int(over), "event"))
+				if t := lossAt[h+"|"+strings.ToLower(g.log)]; !t.IsZero() {
+					b += " " + clock(t)
+				}
+				briefs = append(briefs, b)
+				kind(shortLog(g.log) + " overwrite")
+			}
+			if g.changed {
+				briefs = append(briefs, logName+" changed after it was exported")
+				kind("changed")
+			}
+			if len(g.lostFiles) > 0 {
+				briefs = append(briefs, logName+" export lost "+strings.Join(g.lostFiles, ", "))
+				kind("export lost")
+			}
+			if len(g.gaps) > 0 {
+				briefs = append(briefs, logName+" missing "+strings.Join(g.gaps, ", "))
+				kind("missing")
+			}
+			if len(g.missing) > 0 {
+				briefs = append(briefs, logName+" records missing")
+				kind("missing")
+			}
+			if len(g.clears) > 0 {
+				briefs = append(briefs, logName+" cleared "+strings.Join(g.clears, ", "))
+				kind("log cleared")
 			}
 			switch {
 			case g.lostOut > 0:
@@ -325,32 +409,91 @@ func (r *Report) logsPage() *LogsPage {
 					la.Issues = append(la.Issues, shortLog(g.log)+": "+strings.ToLower(lf.Note[:1])+lf.Note[1:])
 				}
 			case len(cleared[h+"|"+strings.ToLower(g.log)]) > 0:
-				lf.Note, lf.NoteBad = "Cleared "+cleared[h+"|"+strings.ToLower(g.log)][0].In(r.Location).Format("2 Jan")+" · nothing lost", true
+				at := cleared[h+"|"+strings.ToLower(g.log)][0]
+				lf.Note, lf.NoteBad = "Cleared "+at.In(r.Location).Format("2 Jan")+" · nothing lost", true
+				briefs = append(briefs, logName+" cleared "+clock(at)+"; nothing lost")
+				kind("log cleared")
 			case len(g.notes) > 0:
 				lf.Note = g.notes[0]
 			}
+			gap = gap || lf.NoteBad || late
 			la.Files = append(la.Files, lf)
 		}
 		if len(r.archiveState[a.Name].Contents) > 0 {
 			la.Files = append(la.Files, LogFile{File: "archive.json", Log: "—", Size: humanBytes(uint64(infoBytes)), Note: "File list + hashes"})
 		}
 		la.Logs = strings.Join(names, ", ")
+		// Problems the collector found in the archive itself, with what
+		// to do (on Audit health before UI-R1).
+		for _, g := range a.Gaps {
+			switch {
+			case g.Records != "":
+				gap = true
+				la.Notes = appendOnce(la.Notes, "Records not in the log when it was exported ("+g.Source+": "+g.Records+"): the logs are exported in record order, so this is not the clock. To keep it from happening again, make the log larger (blackbox check gives the size); for audit serials, check auditd's lost count (auditctl -s).")
+			case g.Reason != "":
+				gap = true
+				la.Notes = appendOnce(la.Notes, "Exports deleted or unreadable before they were archived ("+g.Reason+"): their events are in this report, the original copy of that time is not. Find who or what removed them: Blackbox's own folder is only changed by Blackbox.")
+			}
+		}
+		if len(a.Changed) > 0 {
+			gap = true
+			var names []string
+			for _, f := range a.Changed {
+				names = append(names, f.Name)
+			}
+			la.Notes = append(la.Notes, "Changed after they were exported, and archived as found: "+strings.Join(names, ", ")+". Compare them with the events in this report (see Detections), and find who could write to the Blackbox data folder.")
+		}
+		if len(briefs) == 0 && gap {
+			briefs = append(briefs, "a log is incomplete: see "+a.Host)
+		}
+		la.Brief = strings.Join(briefs, "; ")
+		la.NoteFull = strings.Join(append(append([]string(nil), la.Issues...), la.Notes...), " ")
+		la.Inside = insideText(la.Files, pieces)
+		switch {
+		case la.Class == "bad":
+			la.Chip, la.ChipLevel = "Hash mismatch", "bad"
+		case gap:
+			la.Chip, la.ChipLevel = "Gap", "warn"
+		default:
+			la.Chip, la.ChipLevel = "Complete", "ok"
+		}
 		byHost[h] = la
 		lp.Archives = append(lp.Archives, la)
 	}
-	var missingWho []string
+	silent := 0
 	for _, h := range r.NoArchive {
-		la := &LogArchive{Host: h, Status: "Missing", Class: "bad", Logs: "—", Size: "—", Short: "—"}
+		la := &LogArchive{Host: h, Status: "Missing", Class: "bad", Logs: "—", Size: "—", Short: "—", Chip: "Missing", ChipLevel: "bad",
+			Brief: "no original logs for this period"}
 		if s, ok := osOf[strings.ToLower(h)]; ok {
 			la.OS = osLabel(s)
-			if s.Status == "silent" && !s.LastRun.IsZero() {
-				missingWho = append(missingWho, h+" · no data since "+s.LastRun.In(r.Location).Format("2 Jan"))
-				la.Covers = "no data since " + s.LastRun.In(r.Location).Format("2 Jan 15:04")
-			} else {
-				missingWho = append(missingWho, h)
+			if s.Status == "silent" {
+				silent++
+				la.Brief = "nothing received in this period"
+				if !s.LastRun.IsZero() {
+					la.Covers = "no data since " + s.LastRun.In(r.Location).Format("2 Jan 15:04")
+					la.Brief = "nothing received since " + s.LastRun.In(r.Location).Format("2 Jan 15:04")
+				}
 			}
 		}
 		lp.Archives = append(lp.Archives, la)
+	}
+	// This report's archives set aside because they failed their check
+	// (AR7): a line of their own, as well as the warning at the top.
+	setAside := 0
+	if !r.Interim {
+		for _, l := range r.LeftOut {
+			if l.Report != "" || byHost[strings.ToLower(l.Host)] != nil {
+				continue
+			}
+			setAside++
+			la := &LogArchive{Host: l.Host, Status: "Missing", Class: "bad", Logs: "—", Size: "—", Short: "—", Chip: "Set aside", ChipLevel: "bad",
+				Brief: "archive failed its check; set aside in " + l.SetAside, Notes: []string{l.Text(r.stamp)}}
+			if s, ok := osOf[strings.ToLower(l.Host)]; ok {
+				la.OS = osLabel(s)
+			}
+			byHost[strings.ToLower(l.Host)] = la
+			lp.Archives = append(lp.Archives, la)
+		}
 	}
 	sort.SliceStable(lp.Archives, func(i, j int) bool {
 		a, b := lp.Archives[i], lp.Archives[j]
@@ -363,23 +506,77 @@ func (r *Report) logsPage() *LogsPage {
 		lp.Range = from.In(r.Location).Format("2 Jan 15:04") + " – " + to.In(r.Location).Format("2 Jan 15:04")
 	}
 	n := len(r.Archives)
-	lvl := func(bad bool, l string) string {
-		if bad {
-			return l
+	all := n + len(r.NoArchive) + setAside
+	c1 := HealthCard{Label: "Original logs in this report", Value: fmt.Sprintf("%d / %d", n, all), Note: "one zip per system"}
+	var miss []string
+	if silent > 0 {
+		miss = append(miss, plural(silent, "system")+" sent nothing (see Systems)")
+	}
+	if k := len(r.NoArchive) - silent; k > 0 {
+		miss = append(miss, plural(k, "system")+" with no archive")
+		c1.Level = "bad"
+	}
+	if setAside > 0 {
+		miss = append(miss, fmt.Sprintf("%d set aside: failed its check", setAside))
+		c1.Level = "bad"
+	}
+	if len(miss) > 0 {
+		c1.Note = strings.Join(miss, " · ")
+	}
+	complete, gaps := 0, 0
+	for _, la := range lp.Archives {
+		switch la.Chip {
+		case "Complete":
+			complete++
+		case "Gap":
+			gaps++
 		}
-		return ""
 	}
-	lp.Stats = []EventCard{
-		{Icon: "hard-drive", Label: "Archives", Value: commas(n), Note: "one zip per system"},
-		{Icon: "file-text", Label: "Total size", Value: humanBytes(total), Note: "compressed"},
-		{Icon: "fingerprint", Label: "Hashes verified", Value: fmt.Sprintf("%d / %d", verified, n), Note: "SHA-256 match", Level: lvl(verified < n, "bad")},
-		{Icon: "clock-alert", Label: "Missing", Value: commas(len(r.NoArchive)), Note: strings.Join(missingWho, ", "), Level: lvl(len(r.NoArchive) > 0, "bad")},
+	c2 := HealthCard{Label: "Complete", Value: commas(complete), Note: "every collection exported, nothing missing", Level: "ok"}
+	if complete == 0 {
+		c2.Level = ""
 	}
-	// Archives set aside count as missing (AR7).
-	if left := r.leftOutHosts(); len(left) > 0 && !r.Interim {
-		missing := len(r.NoArchive) + len(r.LeftOut)
-		lp.Stats[3] = EventCard{Icon: "clock-alert", Label: "Missing", Value: commas(missing),
-			Note: strings.Join(append(missingWho, plural(len(r.LeftOut), "day")+" set aside: "+strings.Join(left, ", ")), ", "), Level: "bad"}
+	c3 := HealthCard{Label: "With a gap", Value: commas(gaps), Note: "nothing overwritten, cleared or lost"}
+	if gaps > 0 {
+		c3.Level = "warn"
+		var parts []string
+		for _, k := range kindOrder {
+			w := k
+			if kinds[k] > 1 && !strings.HasSuffix(k, "missing") && !strings.HasSuffix(k, "changed") && !strings.HasSuffix(k, "lost") {
+				w += "s"
+			}
+			parts = append(parts, fmt.Sprintf("%d %s", kinds[k], w))
+		}
+		c3.Note = strings.Join(parts, " · ")
+	}
+	c4 := HealthCard{Label: "Checked", Value: "—", Note: "no zips in this report"}
+	switch {
+	case n > 0 && verified == n:
+		c4.Value, c4.Level = "✓", "ok"
+		// Each zip is checked whole against the SHA-256 recorded when it
+		// was made; the files inside are not hashed one by one.
+		c4.Note = fmt.Sprintf("all %s match their SHA-256 · %s", plural(n, "zip"), humanBytes(total))
+		if n == 1 {
+			c4.Note = "the zip matches its SHA-256 · " + humanBytes(total)
+		}
+	case n > 0:
+		c4.Value, c4.Level = "✕", "bad"
+		c4.Note = fmt.Sprintf("%d of %s do not match their SHA-256 · %s", n-verified, plural(n, "zip"), humanBytes(total))
+		if n-verified == 1 {
+			c4.Note = fmt.Sprintf("1 of %s does not match its SHA-256 · %s", plural(n, "zip"), humanBytes(total))
+		}
+	}
+	lp.Cards = []HealthCard{c1, c2, c3, c4}
+
+	// The table: grouped, gaps and missing first (UI-R1).
+	rows := append([]*LogArchive(nil), lp.Archives...)
+	problemsFirst(rows, func(a *LogArchive) string { return a.ChipLevel }, func(a *LogArchive) string { return a.Host })
+	lp.Table = groupByKind(rows, func(a *LogArchive) string { return r.hostKind(a.Host) })
+	lp.AllN = len(rows)
+	for _, a := range rows {
+		if a.Chip != "Complete" {
+			lp.GapsN++
+		}
 	}
 
 	// Grouped for the O3 list.
@@ -421,4 +618,50 @@ func logRank(name string) int {
 		}
 	}
 	return 99
+}
+
+// insideText is what a zip holds, short: "3 .evtx · 3 pieces", or
+// "audit.log + 2 more · 3 pieces" when the logs are of different kinds.
+func insideText(files []LogFile, pieces int) string {
+	var names []string
+	ext := ""
+	same := true
+	for _, f := range files {
+		if f.File == "archive.json" || f.File == "—" {
+			continue
+		}
+		name, _, _ := strings.Cut(f.File, " + ")
+		names = append(names, name)
+		e := ""
+		if i := strings.LastIndex(name, "."); i > 0 {
+			e = name[i:]
+		}
+		if len(names) == 1 {
+			ext = e
+		} else if e != ext {
+			same = false
+		}
+	}
+	var s string
+	switch {
+	case len(names) == 0:
+		return ""
+	case len(names) == 1:
+		s = names[0]
+	case same && ext != "":
+		s = fmt.Sprintf("%d %s", len(names), ext)
+	default:
+		s = fmt.Sprintf("%s + %d more", names[0], len(names)-1)
+	}
+	return s + " · " + plural(pieces, "piece")
+}
+
+// appendOnce appends s to list unless it is there already.
+func appendOnce(list []string, s string) []string {
+	for _, x := range list {
+		if x == s {
+			return list
+		}
+	}
+	return append(list, s)
 }

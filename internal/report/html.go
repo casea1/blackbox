@@ -193,7 +193,7 @@ func funcs(loc *time.Location) template.FuncMap {
 		"overviewTitle": overviewTitleOf,
 		"dayBefore":     func(ds []DetectionCard, i int) string { return ds[i-1].Day },
 		"healthCrumb": func(p pageData) string {
-			return "audit settings compared with the STIG for each system's OS · Blackbox only reports, it never changes settings"
+			return "each system against the STIG for its OS · Blackbox never changes settings"
 		},
 		"searchCrumb": func(p pageData) string {
 			return fmt.Sprintf("%s events from %s · searched in your browser, nothing leaves this report", commas(len(p.Events)), plural(len(p.Hosts), "system"))

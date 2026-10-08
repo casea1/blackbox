@@ -364,8 +364,8 @@ func (r *Report) printOut(o *Overview, hp *HealthPage) PrintOut {
 		total, rep = len(r.Hosts), len(r.Hosts)
 	}
 	settings := "—"
-	if hp != nil && len(hp.Stats) > 0 {
-		settings = strings.ReplaceAll(hp.Stats[0].Value, " ", "") + " match"
+	if hp != nil && len(hp.Cards) > 0 {
+		settings = strings.ReplaceAll(hp.Cards[0].Value, " ", "") + " match"
 		settings = strings.Replace(settings, "/", " / ", 1)
 	}
 	p.Totals = []Fact{{Label: "Systems reporting", Value: fmt.Sprintf("%d / %d", rep, total)}, {Label: "Detections", Value: commas(len(r.Findings))},

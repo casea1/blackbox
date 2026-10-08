@@ -850,7 +850,7 @@ func (r *Report) sysChecks(s SystemRow, cx *checkCtx, got, want int) []SysCheck 
 	}
 
 	// SCAP: no scan found (when SCAP results are in the report) amber.
-	sc := SysCheck{CheckCell: CheckCell{Label: "SCAP", Href: ScapHref(name)}}
+	sc := SysCheck{CheckCell: CheckCell{Label: "SCAP", Href: r.scapLink(name)}}
 	g, ok := r.scapGlance(name)
 	switch {
 	case !ok:
@@ -928,7 +928,7 @@ func (r *Report) sysFacts(s SystemRow, v *SystemView, high, med int, first *Dete
 	}
 	f = append(f, set)
 
-	sc := SysFact{Label: "SCAP", Value: "—", Note: "no scan", Href: ScapHref(s.Name)}
+	sc := SysFact{Label: "SCAP", Value: "—", Note: "no scan", Href: r.scapLink(s.Name)}
 	if g, ok := r.scapGlance(s.Name); ok && !g.Missing {
 		sc.Value, sc.Note = g.Score, fmt.Sprintf("%d CAT I", g.Cat[1])
 		if sc.Value == "" {
@@ -1254,7 +1254,7 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 	}
 
 	if sc, ok := r.scapGlance(s.Name); ok {
-		l := CheckLine{Level: "ok", Icon: "shield-check", Title: "STIG compliance (SCAP)", Href: ScapHref(s.Name)}
+		l := CheckLine{Level: "ok", Icon: "shield-check", Title: "STIG compliance (SCAP)", Href: r.scapLink(s.Name)}
 		switch {
 		case sc.Missing:
 			l.Level, l.Title, l.What = "warn", "No SCAP scan", "Put this system's SCC or OpenSCAP results in the scap_results folder"

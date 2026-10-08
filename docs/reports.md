@@ -9,7 +9,7 @@ choose:
   the logs and remembers where it stopped, so the copy stays small.
   Collecting often keeps ahead of a busy log, but Blackbox cannot stop a
   full log from overwriting events: it detects and reports any loss
-  (Audit health shows it as "Events lost to log rollover").
+  (Audit health's **Log sizes** tab lists each log that overwrote events).
 - **Watching between reports (AU-5).** Auditing stopped, a log cleared or
   events lost are seen at the next collection and shown by `blackbox
   status` (which exits 4 when something needs attention) and in the next
@@ -228,7 +228,7 @@ remounts are not; network shares (`nfs`, `cifs`, `sshfs`) are Low,
 **Auditing off at collection (Linux).** Each collection checks that the
 audit service is running (`systemctl is-active auditd`) and that kernel
 auditing is on (`auditctl -s`). If not, the computer is red: "Auditing
-off" on Systems, an "Auditing is off" row in Audit health's Gaps table, a line in
+off" on Systems, a note on Logs intact in the system's settings on Audit health, a line in
 `blackbox status` (also in a collector's list of systems) and a red
 status icon with a notification.
 
@@ -312,7 +312,7 @@ activity only. Failed logons against an excluded account, changes to it,
 log clears and audit changes by it, and anything of Medium severity or
 above are always shown. An entry with a domain (`CORP\svc_backup`)
 matches that account only; one without matches the local account. The
-Overview and Audit health say how many events were left out, and by whom.
+Overview, and a note under Audit health's Settings to fix, say what was left out.
 
 ## Original logs
 
@@ -333,6 +333,27 @@ is in the next scheduled report's folder (AR10).
 | Windows | `Security.evtx`, `System.evtx`, and the USB, Defender, device and PowerShell (`Microsoft-Windows-PowerShell-Operational.evtx`, every script block, not only the ones reported) logs, as `.evtx` files | Event Viewer (Open Saved Log), or `Get-WinEvent -Path`. Each `.evtx` has its message text next to it (`LocaleMetaData`, from `wevtutil al`), so its events read the same on a computer without the programs that wrote them |
 | Linux | `audit.log`: the audit records, in their original format | `ausearch -if audit.log`, or `aureport -if audit.log` |
 | Linux | `syslog`/`messages` and `auth.log`/`secure`: the lines for the period (or `journal.log` from the systemd journal when there are no log files) | Any text editor |
+
+**The Original logs page** (UI-R1) has four cards: **Original logs in
+this report** (zips against systems, e.g. 28 / 30, "2 systems sent nothing
+(see Systems)", and any set aside), **Complete**, **With a gap** ("1 log
+cleared · 3 PowerShell overwrites") and **Checked** (✓ when every zip
+matches the SHA-256 recorded when it was made). Below, one table of every
+system, grouped Servers / Workstations, gaps and missing first, with an
+**All / Gaps and missing** switch: the system (click it for what is in its
+zip, log by log, with each file's hash), a status (**Complete**, **Gap**,
+**Missing**, **Set aside**, **Hash mismatch**), a short note ("PowerShell
+log overwrote 415 events 12:40", "Security log cleared 14:22; nothing
+lost", "nothing received since 6 Oct 04:00"; the whole of it on hover),
+what is inside ("3 .evtx · 3 pieces"), the size and the file. Warnings that
+logs could not be archived, were set aside (AR7), were never put in a report
+(RET1), or that earlier reports are missing or changed are at the top. The
+**Giving these to an assessor** box says, in three steps, how to check
+them without Blackbox: `sha256sum -c manifest.sha256` (Linux) or `blackbox
+verify <folder>`; open a `.evtx` in Event Viewer or read `audit.log` with
+`ausearch -if`; each zip's `archive.json` lists every file with its hash,
+and any gap with its reason. The report folder's `README.txt` starts with
+the same three steps.
 
 Inside, there is a folder for each day, named for the time it covers (in
 UTC), with that day's logs and an `archive.json` listing each file's
@@ -375,8 +396,7 @@ Original logs page shows the same, e.g. "Covers from 5 Oct 04:08; 94,565
 events were overwritten before they could be exported". If a full log
 had already overwritten part of the period since the last export, that
 part is recorded as missing: the page shows "Missing <from> – <to>:
-overwritten before it was saved" for that log, Audit health has a
-warning, `summary.json` lists it under the archive's `gaps` (and the
+overwritten before it was saved" for that log and marks the system **Gap**, `summary.json` lists it under the archive's `gaps` (and the
 coverage under `logs`), and `blackbox status` says **LOGS INCOMPLETE**
 for 14 days and exits with code 4. For another log, such as the
 PowerShell log, the line is "Logs incomplete" and does not change the
@@ -406,7 +426,7 @@ hashed when they are written (`piece.json`). When they are packed, a file
 that has been deleted or can't be read is left out and the rest are still
 packed: `archive.json` records it under `gaps` with its log, its period
 and the reason (e.g. "Application.evtx, exported for … was missing when
-the logs were packed"), and the Original logs page, Audit health and
+the logs were packed"), and the Original logs page and
 `blackbox status` (**LOGS INCOMPLETE**) say so. Its events are still in
 the reports; only the original copy of that part is gone. A file whose
 hash no longer matches is packed as it was found, marked `changed` in
@@ -422,7 +442,7 @@ If packing fails altogether (the archive folder can't be written, for
 example), the exports are kept and packing is tried again at every run.
 Until it works, `blackbox status` says **ORIGINAL LOGS NOT ARCHIVED
 since <time>: <reason>** and exits with code 4, the status icon notifies
-once, and reports say so on Original logs and in Audit health.
+once, and reports say so at the top of Original logs and on the Overview.
 
 **An archive that fails its check.** Every daily archive is checked
 against the hashes in its `archive.json` before it goes into a
@@ -434,7 +454,7 @@ moved to a `set-aside` folder next to it (e.g.
 computer>'s logs for <from> to <to>: <reason>** with where the file is,
 and exits with code 4; the status icon notifies once. The report says so
 on the Overview ("Original logs not in this report", never "Original
-logs archived"), on Original logs and in Audit health, and a manual
+logs archived") and on Original logs (a warning at the top and a **Set aside** line in its table), and a manual
 report made afterwards says so too. The events are in the report; the
 original copy of that period is only in the file set aside. Archives
 written before 0.21 could hold two `.evtx` files under one name (two
@@ -488,9 +508,8 @@ delivered to a collector) are never deleted under `retention_days`:
 they may be the only copy. Once one is older than `retention_days`,
 `blackbox status` says **ORIGINAL LOGS NEVER REPORTED: <computer>:
 original logs from <from> to <to> have waited <N> days and were never
-put in a report** and exits with code 4, and the report says so in
-Audit health (a warning and an "Original logs never put in a report"
-card) and on Original logs.
+put in a report** and exits with code 4, and the report says so in a
+warning at the top of Original logs.
 
 Expect a few MB a day per Windows computer (much less for Linux),
 compressed. It depends on how busy the Security log is.
@@ -513,8 +532,8 @@ compressed. It depends on how busy the Security log is.
   source **Blackbox**, event ID 101, a warning, on Windows; syslog/the
   journal with the ident `blackbox` on Linux, `journalctl -t blackbox`), so
   a copy exists outside Blackbox's folder, the next report
-  has "Earlier reports missing or changed" on the Overview and in Audit
-  health's gaps, and All reports lists it as "Missing: deleted or moved".
+  has "Earlier reports missing or changed" on the Overview and at the top
+  of Original logs, and All reports lists it as "Missing: deleted or moved".
   Every run checks that each file the manifest lists is there, at the
   size it was written with, and that no file was added anywhere in the
   folder (the record keeps how many files it had); once a day every file
@@ -715,17 +734,51 @@ when it sends through a VirtualBox shared folder (`/media/sf_…` or
 `\\VBOXSVR\…`); data relayed through another computer does not make it
 one. A VM that sends over the network shows as a workstation.
 
-The **Audit health** page shows every system against every STIG audit
-check (logon, account management, policy change, privilege use, process
-creation, removable storage, PowerShell logging, log size, reporting, logs
-intact), the gaps with how to fix them, and each system's own settings
-table. Blackbox only reports audit settings; it never changes them.
-The grid takes the page's full width, with short headings and the System
+The **Audit health** page (UI-R1) is about settings: what each system's
+audit settings, SCAP scans, antivirus and log sizes are. Blackbox only
+reports them; it never changes them. Missing systems and cleared logs are
+not repeated here: they are on the Overview, Systems and Detections.
+
+- **Four cards:** **Audit settings match the STIG** (systems matching,
+  e.g. 8 / 30, with a green/amber bar and "159 settings to fix on 22
+  systems"), **SCAP (latest scans)** (the lowest score, open CAT I and on
+  how many systems, and how many were not scanned within
+  `scap_max_age_days`), **Antivirus** (systems with current definitions,
+  e.g. 25 / 30) and **Logs** (systems whose logs overwrote events, and how
+  many events the Security or audit log lost). Each card opens its tab.
+- **Tabs:** Settings to fix (n) · By system (N) · SCAP (n CAT I) ·
+  Antivirus (n) · Log sizes (n). A link can open one: `#health/@systems`,
+  `@scap`, `@av`, `@logs`.
+- **Settings to fix** (the first tab): one row per setting, the setting on
+  most systems first. Each row has a dot (red: a STIG gap; amber: a
+  warning or Blackbox's advice), the setting with its operating systems
+  and "without it the report misses: Failed Logons", its STIG IDs (each OS
+  its own, e.g. "WN25-AU-000005 · WN11-AU-000005"; the full list with
+  each ID's OS is in the open row), or "Blackbox's advice", and "9
+  systems". Click a row for the systems (each opens its own settings),
+  what it is set to against what is required, and how to fix it, with
+  "One GPO on the OU fixes all 9" for a Group Policy setting. The first 8
+  are shown, then "16 more settings, each on 1–8 systems · Show all 24".
+  What your settings leave out of the report is a note under the list.
+- **By system:** the grid of every system against every group of checks
+  (logon, account management, policy change, privilege use, process
+  creation, removable storage, PowerShell logging, antivirus, log size,
+  reporting, logs intact), grouped Servers / Workstations, then the
+  Security-log events Blackbox does not translate. Click a system for its
+  own settings table, which also says when a collection was blocked or
+  auditing was off.
+- **SCAP** and **Antivirus:** the tables below.
+- **Log sizes:** each log that filled up and overwrote events before
+  Blackbox read them, by system: how many, when, and what to do (collect
+  more often, or make the log larger). Log size *settings* below the STIG
+  are on Settings to fix.
+
+The grid takes the tab's full width, with short headings and the System
 column always in view; a key under the grid gives each short heading's
 full name ("Accounts: Account management"), so nothing needs hovering
 (UI19). On a narrow screen the grid scrolls sideways and says **more →**
-until its last column is in view; at 768 pixels the page itself, the
-STIG compliance table included, needs no sideways scrolling.
+until its last column is in view; on a phone the cards stack and each
+setting's STIG ID goes under its name.
 
 The report is checked with axe-core for the accessibility rules on
 names and structure (UI19): every filter (Search, and the filters
@@ -735,22 +788,19 @@ icons are hidden from screen readers; Inventory's rows open with a
 button; each menu has its own name; headings never skip a level; and on
 the narrow icon menu each page's name is still read out.
 Systems that match on every check are folded under **Show the N systems
-that match on every check**, so the sections below stay in reach; a bar
-at the top of the page links to each section (the grid, Gaps, Antivirus,
-STIG compliance, other Security-log events) with what needs attention.
-In the **Antivirus** table, systems with current definitions are folded
-the same way. The gaps follow below the grid as a table, one row per gap (its STIG ID, the systems and the result; a gap systems share under different STIGs lists each one's IDs with its OS, e.g. "WN25-AU-000070, WN25-AU-000080 (Windows Server 2025) · WN11-AU-000010, WN11-AU-000005 (Windows 11)", and the CSV gives each system its own); click a gap for what it means and how to fix it. **Log size and space settings** counts the
-systems whose logs are smaller than the STIG asks, or, on Linux, whose
-auditd space and disk actions differ from it.
+that match on every check**. In the **Antivirus** table, systems with
+current definitions are folded the same way. The CSV of Audit health (Export
+CSV) has every system's every check, one row each, and Export's **Audit
+settings to fix** every failing setting on every system with how to fix it.
 
-**Systems matching STIG** counts only checks that cite a STIG rule ID.
+**Audit settings match the STIG** counts only checks that cite a STIG rule ID.
 A check with no STIG ID (for example Windows Time, the USB logs,
 Defender real-time protection, the other logs' sizes, and on Windows 11
 File System auditing, which the STIG dropped in V2R8) is **Blackbox's
-advice**: its gap row says "Advice" with "Blackbox's advice" in the STIG
+advice**: its row on Settings to fix has an amber dot and "Blackbox's advice" in the STIG
 ID column, its text says "Blackbox recommends …", never "the STIG
-requires …", it shows as a warning (!) in the grid, and the
-**Blackbox's advice** card counts these on their own. The overview's
+requires …", it shows as a warning (!) in the grid, and it does not count
+against **Audit settings match the STIG**. The overview's
 Audit health figure counts the same way. On Linux the IDs come from the
 STIG for the distribution (UBTU-24, UBTU-22, ALMA-09, RHEL-09, and RHEL-08
 for AlmaLinux 8; see linux.md).
@@ -767,7 +817,7 @@ than 30 days ago, or protection turned off, show as a gap. It is read once
 a day with `Get-MpComputerStatus`.
 
 **Where to find the definitions date.** Audit health has an **Antivirus**
-table (linked from the bar at the top), one row per system, out-of-date ones first: the antivirus, the
+tab, one row per system, out-of-date ones first: the antivirus, the
 date its definitions were made, how old they are, the version, real-time
 protection (or the ClamAV service), and the result. The Overview's
 checklist has an **Antivirus definitions** line with the oldest date and

@@ -239,7 +239,7 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []Che
 			parts = append(parts, fmt.Sprintf("%s: %s overwritten", name, plural(int(otherBy[k]), "event")))
 		}
 		lines = append(lines, CheckLine{Level: "warn", Icon: "circle-check", Title: "Other logs overwrote events", Who: strings.Join(otherOn, ", "),
-			What: strings.Join(parts, "; ") + " · see Audit health", Href: "#health", Count: frac(len(otherOn))})
+			What: strings.Join(parts, "; ") + " · see Audit health", Href: "#health/@logs", Count: frac(len(otherOn))})
 	}
 
 	if n := len(r.MissingReports); n > 0 {
@@ -248,7 +248,7 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []Che
 			names = append(names, m.Name)
 		}
 		lines = append(lines, CheckLine{Level: "bad", Icon: "history", Title: "Earlier reports missing or changed",
-			What: plural(n, "scheduled report") + " deleted, moved or changed, with the only copy of their original logs: " + strings.Join(names, ", "), Href: "#health", Count: ""})
+			What: plural(n, "scheduled report") + " deleted, moved or changed, with the only copy of their original logs: " + strings.Join(names, ", "), Href: "#logs", Count: ""})
 	}
 	if l, ok := r.avCheckLine(r.avRows()); ok {
 		lines = append(lines, l)
@@ -287,6 +287,21 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []Che
 		}
 		lines = append(lines, CheckLine{Level: "bad", Icon: "hard-drive", Title: title, Who: strings.Join(hosts, ", "),
 			What: "archive failed its check and was set aside: " + strings.Join(why, "; "), Count: frac(len(hosts))})
+	}
+	// Original logs that waited past retention_days without a report
+	// (RET1): kept, and raised here as well as on Original logs.
+	if len(r.Overdue) > 0 {
+		bad = true
+		var hosts []string
+		most := 0
+		for _, o := range r.Overdue {
+			if !containsFold(hosts, o.Host) {
+				hosts = append(hosts, o.Host)
+			}
+			most = max(most, o.Days)
+		}
+		lines = append(lines, CheckLine{Level: "bad", Icon: "hard-drive", Title: "Original logs never put in a report", Who: strings.Join(hosts, ", "),
+			What: fmt.Sprintf("waiting up to %d days; kept, as they may be the only copy", most), Href: "#logs", Count: frac(len(hosts))})
 	}
 	switch {
 	case len(r.NoArchive) > 0:

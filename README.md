@@ -119,10 +119,10 @@ local folder or a file share). Its pages:
 | **Search** | One search box with filters (kind, person, system, severity, time), counts to click on, an events-per-hour chart and a shareable link; clicking an event shows it in plain words with its original record |
 | **People** | Every account that did something, the same name on several systems as one person (and `people_aliases` for other spellings), where and when they were active, and who acted as root or Administrator |
 | **Events by kind** | One page per kind of event (privileged activity, audit integrity, logons and so on): Search with that kind already chosen |
-| **Audit health** | Every system against every STIG audit check, the antivirus on each (Defender or ClamAV) with its definitions date, the gaps and where to fix them in Group Policy, and each system's settings (Blackbox only reports these; it never changes them) |
+| **Audit health** | Four numbers (audit settings, SCAP, antivirus, logs) and a tab for each: the settings to fix and where to fix them in Group Policy, every system against every STIG audit check, the latest SCAP scans, the antivirus on each (Defender or ClamAV) with its definitions date, and log sizes (Blackbox only reports these; it never changes them) |
 | **Inventory** | Each system's make, model and serial number, its drives with their serial numbers (removable ones too), and its user accounts, as a page and a CSV |
 | **Trends** | Six measures by week over 4, 8 or 12 weeks against what is usual, the biggest changes this week, and what is new this week |
-| **Original logs** | The raw logs the report was made from, one zip per system, with hashes |
+| **Original logs** | The raw logs the report was made from, one zip per system, each checked against its SHA-256: every system grouped servers and workstations, gaps and missing first, and one system's zip log by log |
 
 Export prints a one-page summary (or saves it as PDF), or saves the
 detections, every event, or the audit health check as CSV. **Verified**

@@ -185,11 +185,8 @@ func TestExclusionsAreStated(t *testing.T) {
 	if hp == nil {
 		t.Fatal("no Audit health page")
 	}
-	for _, g := range hp.Gaps {
-		if g.Title == "Left out by your settings" && len(g.Systems) == 1 {
-			found = true
-		}
-	}
+	// UI-R1: a note under Settings to fix, not a row of its own.
+	found = strings.Contains(hp.Excluded, want)
 	if !found {
 		t.Error("Audit health does not say what was left out")
 	}

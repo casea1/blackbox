@@ -658,7 +658,8 @@ func TestArchiveLeftOutOfReport(t *testing.T) {
 		t.Fatalf("left out: %+v", st.State.LeftOut)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-	for _, want := range []string{"Original logs not in this report", "Original logs not in the report", "not a readable zip file", "It was set aside in "} {
+	// Overview's line, and the warning on Original logs (UI-R1; was an Audit health card).
+	for _, want := range []string{"Original logs not in this report", "not a readable zip file", "It was set aside in "} {
 		if !strings.Contains(string(html), want) {
 			t.Errorf("the report does not say %q", want)
 		}

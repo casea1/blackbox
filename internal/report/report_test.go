@@ -405,7 +405,7 @@ func TestSystemsPage(t *testing.T) {
 	h := html.String()
 	for _, want := range []string{`data-view="systems"`, `data-pick="WS-03"`, `data-sys="WS-01"`, `data-sysrow="WS-03"`, "virtual machine on WS-01",
 		"Audit settings", "nothing since", "Problem: not reporting",
-		"No data received", `href="#health/WS-01"`} { // Audit health
+		`href="#health/WS-01"`} { // Audit health
 		if !strings.Contains(h, want) {
 			t.Errorf("report HTML missing %q", want)
 		}
@@ -457,10 +457,11 @@ func TestSingleSystemHasNoSystemsPage(t *testing.T) {
 	if !strings.Contains(html.String(), `<div><span>System</span><a href="#systems/WS-07">WS-07</a>`) {
 		t.Error("a standalone report names its system in the sidebar")
 	}
-	// This one has a gap (the Security log was cleared): Audit health
-	// opens on the gaps, not hidden behind the system's settings.
-	if strings.Contains(html.String(), `data-single=`) || !strings.Contains(html.String(), "Settings on WS-07") || !strings.Contains(html.String(), "Security log was cleared") {
-		t.Error("a report of one system with gaps opens Audit health on them")
+	// This one has no setting to fix (the Security log was cleared, which
+	// is on Overview and Detections since UI-R1): Audit health opens on
+	// the system's settings, where Logs intact shows the clear.
+	if !strings.Contains(html.String(), `data-single="WS-07"`) || !strings.Contains(html.String(), "Settings on WS-07") || !strings.Contains(html.String(), "Security log was cleared") {
+		t.Error("a report of one system opens its audit settings")
 	}
 	// With no gaps it opens the system's settings directly.
 	sets := []CheckSet{NewCheckSet("WS-07", time.Now(), []check.Result{{Area: "a", Item: "b", Status: check.Pass}})}
