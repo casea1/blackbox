@@ -993,14 +993,16 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
   each hour that has a detection. Clicking a bar opens Search for that
   hour (`when=2026100714`), or that day for a per-day bar.
   **Systems at a glance** lists only the systems with a problem: a red
-  check or a high detection (the detection said under its name, "High
-  detection: Group membership added", when no check is red), grouped
+  check, a high detection or a red Delivery line (deliveries waiting for
+  approval or a rekey, or a key on two computers); when no check is red
+  the reason is said under its name ("High detection: Group membership
+  added", "Delivery: waiting for approval"), grouped
   Servers / Workstations, with six squares (Reporting, Logs intact,
   Settings, Antivirus, Original logs, SCAP; green ok, amber warning, red
   problem, grey no data; each opens its detail) and the events; then "23
   more systems with no problems (16 with warnings, 2 all OK)" and a link
-  to all of them on the Systems page. A warning is an amber check or a
-  medium detection. The Systems page's Problems, Warnings and OK count
+  to all of them on the Systems page. A warning is an amber check, a
+  medium detection or an unsigned sender. The Systems page's Problems, Warnings and OK count
   the systems by the same rule, so the two pages always agree. The trends and "what changed" are on
   Trends.
 - **Systems** (UI-R1). One table of every system, grouped **Servers** and

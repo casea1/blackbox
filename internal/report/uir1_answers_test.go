@@ -7,6 +7,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/casea1/blackbox/internal/store"
 )
 
 // The owner's answers to UI-R1's open questions: five kinds of event,
@@ -206,16 +209,65 @@ func TestProblemsAgreeOverviewSystems(t *testing.T) {
 		cells     []string
 		high, med int
 		want      string
+		deliv     string
 	}{
-		{[]string{"ok", "ok"}, 0, 0, "ok"}, {[]string{"ok", "warn"}, 0, 0, "warn"}, {[]string{"ok", "bad"}, 0, 0, "bad"},
-		{[]string{"ok", "ok"}, 1, 0, "bad"}, {[]string{"ok", "ok"}, 0, 1, "warn"}, {[]string{"bad"}, 0, 1, "bad"}, {[]string{"", ""}, 0, 0, "ok"},
+		{[]string{"ok", "ok"}, 0, 0, "ok", ""}, {[]string{"ok", "warn"}, 0, 0, "warn", ""}, {[]string{"ok", "bad"}, 0, 0, "bad", ""},
+		{[]string{"ok", "ok"}, 1, 0, "bad", ""}, {[]string{"ok", "ok"}, 0, 1, "warn", ""}, {[]string{"bad"}, 0, 1, "bad", ""}, {[]string{""}, 0, 0, "ok", ""},
+		{[]string{"ok"}, 0, 0, "bad", "bad"}, {[]string{"ok"}, 0, 0, "warn", "warn"}, {[]string{"bad"}, 0, 0, "bad", "warn"},
 	} {
 		var cs []CheckCell
 		for _, l := range c.cells {
 			cs = append(cs, CheckCell{Level: l})
 		}
-		if got := systemLevel(cs, c.high, c.med); got != c.want {
+		if got := systemLevel(cs, c.high, c.med, c.deliv); got != c.want {
 			t.Errorf("%v %d high %d med: %s, want %s", c.cells, c.high, c.med, got, c.want)
 		}
+	}
+}
+
+// A red Delivery line (held for approval, a new key, a key on two
+// computers) makes a system a problem, an unsigned sender a warning, on
+// Overview and Systems alike.
+func TestDeliveryLevelsAgree(t *testing.T) {
+	end := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+	fp := "SHA256:ab12cd34ef56gh78ij90kl12mn34op56qr78st90uv1"
+	d := map[string]*Delivery{
+		"WS-OK": {Signed: true, KeyFP: fp, Since: end.AddDate(0, 0, -3)}, "WS-HELD": {Signed: true, KeyFP: fp, Held: true, New: true, Since: end},
+		"WS-REKEY": {Signed: true, KeyFP: fp, NewKeyFP: "SHA256:zz99", Since: end}, "WS-COPY": {Signed: true, KeyFP: fp, SharedWith: "WS-OK", Since: end},
+		"WS-OLD": {}, "COL": nil,
+	}
+	var sys []SystemInfo
+	var runs []*store.Run
+	for h, dl := range d {
+		sys = append(sys, SystemInfo{Name: h, OS: "windows", LastRun: end.Add(-time.Hour), LastReceived: end.Add(-time.Hour), Delivery: dl})
+		runs = append(runs, &store.Run{Time: end.Add(-time.Hour), Host: h, OS: "windows"})
+	}
+	r := Build(nil, runs, Options{WindowStart: end.AddDate(0, 0, -1), WindowEnd: end, Generated: end, Location: time.UTC, Collector: true, Systems: sys})
+	o := r.overview(nil)
+	glance := map[string]GlanceRow{}
+	for _, g := range o.Glance {
+		for _, row := range g.Items {
+			glance[row.Name] = row
+		}
+	}
+	for _, g := range r.systemsPage().Groups {
+		for _, v := range g.Systems {
+			if o.levels[v.Name] != v.Level {
+				t.Errorf("%s: %s on Overview, %s on Systems", v.Name, o.levels[v.Name], v.Level)
+			}
+			bad := v.Name == "WS-HELD" || v.Name == "WS-REKEY" || v.Name == "WS-COPY"
+			if bad && (v.Level != "bad" || !strings.Contains(v.Chip, "delivery")) {
+				t.Errorf("%s on Systems: %s %q", v.Name, v.Level, v.Chip)
+			}
+			if bad && !strings.Contains(glance[v.Name].Reason, "Delivery: ") {
+				t.Errorf("%s on the glance: %+v", v.Name, glance[v.Name])
+			}
+			if v.Name == "WS-OLD" && v.Level == "ok" {
+				t.Errorf("an unsigned sender is OK")
+			}
+		}
+	}
+	if !strings.Contains(glance["WS-HELD"].Reason, "Delivery: waiting for approval") {
+		t.Errorf("WS-HELD: %q", glance["WS-HELD"].Reason)
 	}
 }

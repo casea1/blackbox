@@ -270,7 +270,7 @@ func (r *Report) systemsPage() *SystemsPage {
 
 		// The level: the worst check, or a detection (systemLevel, as
 		// Overview's Systems at a glance).
-		v.Level = systemLevel(checkCells(v.Cells), high, med)
+		v.Level = systemLevel(checkCells(v.Cells), high, med, s.Delivery.Level())
 		v.Checks = append([]SysCheck(nil), v.Cells...)
 		sort.SliceStable(v.Checks, func(i, j int) bool { return levelRank(v.Checks[i].Level) < levelRank(v.Checks[j].Level) })
 		var shorts []string
@@ -285,10 +285,16 @@ func (r *Report) systemsPage() *SystemsPage {
 			if high > 0 && first != nil && len(shorts) == 0 {
 				shorts = append(shorts, first.Title)
 			}
+			if s.Delivery.Level() == "bad" {
+				shorts = append(shorts, deliveryShort(s.Delivery))
+			}
 		case "warn":
 			v.Status = "Warning"
 			if med > 0 && first != nil && len(shorts) == 0 {
 				shorts = append(shorts, first.Title)
+			}
+			if s.Delivery.Level() == "warn" {
+				shorts = append(shorts, deliveryShort(s.Delivery))
 			}
 		default:
 			v.Status = "OK"

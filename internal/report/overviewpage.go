@@ -154,7 +154,7 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 		if d == nil {
 			d = &sysDets{}
 		}
-		level := systemLevel(cs, d.High, d.Med)
+		level := systemLevel(cs, d.High, d.Med, s.Delivery.Level())
 		o.levels[s.Name] = level
 		switch level {
 		case "bad":
@@ -176,6 +176,9 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 			if d.High > 1 {
 				reason += fmt.Sprintf(" +%d more", d.High-1)
 			}
+		}
+		if !red && s.Delivery.Level() == "bad" {
+			reason = strings.TrimPrefix(reason+" · ", " · ") + "Delivery: " + strings.TrimPrefix(deliveryShort(s.Delivery), "delivery ")
 		}
 		line := osLabel(s) + " · " + map[string]string{"server": "Server", "workstation": "Workstation", "vm": "Virtual machine"}[systemKind(s)]
 		if n := d.High + d.Med; n > 0 {
