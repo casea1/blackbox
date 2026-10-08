@@ -3,6 +3,7 @@ package event
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -18,7 +19,7 @@ var (
 	bbTaskOff  = regexp.MustCompile(`(?i)\bschtasks(?:\.exe)?\s+.*(?:/delete|/disable|/end)\b.*\bblackbox|\bschtasks(?:\.exe)?\s+.*\bblackbox\b.*(?:/delete|/disable|/end)\b|(?:disable|unregister|stop)-scheduledtask\b.*\bblackbox`)
 	bbPaths    = `(?:/etc/blackbox|/var/lib/blackbox|programdata[\\/]blackbox|/usr/local/bin/blackbox)`
 	bbPathRE   = regexp.MustCompile(`(?i)` + bbPaths)
-	bbRemoveFS = regexp.MustCompile(`(?i)\b(?:rm|del|erase|remove-item|rmdir|rd)\b.*` + bbPaths)
+	bbRemoveFS = regexp.MustCompile(`(?i)\b(rm|del|erase|remove-item|rmdir|rd)\b.*` + bbPaths)
 )
 
 // FilesRemoved is what a command that deletes Blackbox's files did, and
@@ -28,6 +29,43 @@ const (
 	FilesRemoved       = "deleted Blackbox's files"
 	FilesRemoveRefused = "tried to delete Blackbox's files (refused)"
 )
+
+// RemovedGone and RemovedThere list, in Fields, the files a command that
+// deletes Blackbox's files names that were gone, or still there, at the
+// Blackbox run that collected it, one per line (DET1b); RemovedMoved
+// those gone from a folder Blackbox moves files out of itself, which
+// shows nothing.
+const (
+	RemovedGone  = "blackbox_files_gone"
+	RemovedThere = "blackbox_files_there"
+	RemovedMoved = "blackbox_files_moved"
+)
+
+// RemoveProgram is the delete command a command line runs on Blackbox's
+// files ("rm", "del", "Remove-Item"), or "".
+func RemoveProgram(cmd string) string {
+	if m := bbRemoveFS.FindStringSubmatch(cmd); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// RemoveTargets are the files and folders of Blackbox's a delete command
+// names: each absolute path argument under one of its folders.
+func RemoveTargets(cmd string) []string {
+	if RemoveProgram(cmd) == "" {
+		return nil
+	}
+	var out []string
+	for _, f := range strings.Fields(cmd) {
+		f = strings.Trim(f, `"',;`)
+		abs := strings.HasPrefix(f, "/") || len(f) > 2 && f[1] == ':' && (f[2] == '\\' || f[2] == '/')
+		if abs && bbPathRE.MatchString(f) && !slices.Contains(out, f) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
 
 // BlackboxPath reports whether a path (or a list of them) names one of
 // Blackbox's folders or its program: /etc/blackbox, /var/lib/blackbox,

@@ -178,6 +178,22 @@ is not in the "Blackbox's files removed" detection, its count, or
 "Possible covering of tracks"; the deletes that happened keep their High
 detection with their own count (DET1).
 
+**A delete is High only when a record shows it worked** (DET1b): a file
+of Blackbox's deleted or changed by the same process (Linux: a
+`nametype=DELETE` with `success=yes`; Windows: a 4663 delete), or a file
+the command names gone at the Blackbox run that collected it. When the
+audit log has only the command line (a share mounted over CIFS, or no
+watch rules on Blackbox's folders), the row is "ran rm on Blackbox's
+files: …" (or `del`, `Remove-Item`), Medium, with "Whether it worked:
+isn't recorded" in its details, listed under Medium as "delete commands
+on Blackbox's files (whether they worked isn't recorded)". Like a
+refused delete, it is not counted as a removal. A file still there at
+that run is named under "Still there at Blackbox's next run". A file gone
+from a folder Blackbox moves files out of itself (the inbox, the outbox,
+the original logs waiting) does not count as deleted: it is named under
+"Not there at Blackbox's next run". A pattern (`*.json`) that matches
+nothing is not known either way.
+
 **Blackbox's own writes.** The Event Log service writing the original-log
 pieces during a Blackbox run is not a row, also in a manual report made
 right after a run that made a scheduled report: the report looks at

@@ -56,7 +56,8 @@ func (a *App) noteBlocked(err error) {
 // liveOptions are the options for this computer's collection, with any
 // gap left by refused runs.
 func (a *App) liveOptions() collect.Options {
-	return collect.Options{Version: a.Version, Now: a.now, Logf: a.Logf, Blocked: readBlocked(a.Cfg.DataDir)}
+	return collect.Options{Version: a.Version, Now: a.now, Logf: a.Logf, Blocked: readBlocked(a.Cfg.DataDir),
+		MovedBy: []string{a.Cfg.Inbox, a.Cfg.ArchivesDir(), a.dataPiecesDir(), filepath.Join(a.Cfg.DataDir, "outbox")}}
 }
 
 // collected clears what a collection has recorded.

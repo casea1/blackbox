@@ -555,6 +555,23 @@ All are covered by unit tests and CI only.
 
 All are covered by unit tests and CI only.
 
+## 0.25.0 quick re-test (8 Oct 2026)
+
+0.25.0 was re-tested live on 8 Oct 2026. SEC1f, OS1, PPL1 and UI22 are confirmed fixed. Two small items were left, and neither blocks production. They led to worker prompt 14 (#125). The full finding text is in this section of the testing repo's findings.md (PR #29); the rows below are short, written from #125.
+
+| # | Finding | Status | Fixed in |
+|---|---|---|---|
+| DET1b | **Must fix: a refused `sudo rm` known only from its command line was still High.** `sudo rm /var/lib/blackbox/collector/stray-0.25.txt` was refused (drop-only inbox on CIFS), but the audit log had only rm's `execve`, no unlink or PATH record, so the 0.25 check never applied: High "claude deleted Blackbox's files: /usr/bin/rm …". A delete is now High only when a record shows it worked (a `nametype=DELETE` with `success=yes`, a 4663 delete, or a file it names gone at the Blackbox run that collected it). With only the command line it is "ran rm on Blackbox's files: …", Medium, "Whether it worked: isn't recorded", and not a removal; the same for `del`/`Remove-Item` on Windows. Tests: execve only (Medium), execve and a successful unlink (High), execve and a refused unlink (Medium, refused), and the file check. | Fixed | 0.25.1 |
+| LOG2 | Backlog: a resent batch that was already imported was logged per file as "inbox: imported …". The line now says "inbox: NAME was already imported (sent again), written by …" (test). | Fixed | 0.25.1 |
+
+**Not verified live (0.25.1):**
+- the re-test's refused `sudo rm` on the CIFS inbox giving the Medium "ran rm on Blackbox's files" row (DET1b);
+- a real `rm` with only its command line recorded, of a file then gone at the next run, staying High with "Gone at Blackbox's next run" (DET1b);
+- a Windows `del` with no File System auditing on `C:\ProgramData\Blackbox` giving "ran del", Medium (DET1b);
+- the "already imported (sent again)" line in a real collector's `blackbox.log` after `blackbox send --resend` (LOG2).
+
+All are covered by unit tests and CI only.
+
 ## ISSO / ISSM review: audit coverage (AU-2, AU-6, AU-12)
 
 Looked at as an ISSO doing the weekly audit review, and as an assessor checking that what the STIG makes you audit is actually reviewed. Owner decisions respected and not re-raised: no review/sign-off section (reviews are recorded on a separate platform) and no classification banner (`design.md` §13).

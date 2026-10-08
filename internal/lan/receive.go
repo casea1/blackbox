@@ -255,7 +255,12 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 		}
 		noteSigned(st, b.SenderID, pub, now)
 		if writer != "" {
-			logf("inbox: imported %s, written by %s", it.name, writer)
+			// A batch delivered again adds nothing: its line says so (LOG2).
+			if dup {
+				logf("inbox: %s was already imported (sent again), written by %s", it.name, writer)
+			} else {
+				logf("inbox: imported %s, written by %s", it.name, writer)
+			}
 		}
 		if err := os.Remove(path); err != nil {
 			logf("imported %s but could not remove it: %v (it will be skipped as a duplicate)", it.name, err)

@@ -731,6 +731,7 @@ var actionLabels = map[string][2]string{
 	"eventlog_error":          {"event log error", "event log errors"},
 	"sudo_denied":             {"refused sudo command", "refused sudo commands"},
 	refusedRemove:             {"refused attempt to delete Blackbox's files", "refused attempts to delete Blackbox's files"},
+	unconfirmedRemove:         {"delete command on Blackbox's files (whether it worked isn't recorded)", "delete commands on Blackbox's files (whether they worked isn't recorded)"},
 	"removable_mounted":       {"removable disk opened (mounted)", "removable disks opened (mounted)"},
 	"module_loaded":           {"kernel module loaded", "kernel modules loaded"},
 	"module_unloaded":         {"kernel module unloaded", "kernel modules unloaded"},

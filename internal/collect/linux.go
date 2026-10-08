@@ -97,10 +97,12 @@ type batcher struct {
 	key   string
 	batch []*event.Event
 	cr    *store.ChannelRun
+	moved []string // Options.MovedBy
 }
 
 func (b *batcher) add(e *event.Event) error {
 	e.Collected = b.now
+	checkRemoved(e, b.moved)
 	b.batch = append(b.batch, e)
 	b.cr.Kept++
 	if len(b.batch) >= flushEvery {
@@ -125,7 +127,7 @@ func followAudit(st *store.Store, tr *linuxlog.Translator, host string, now time
 	cr := store.ChannelRun{Channel: AuditLog, TypeCounts: map[string]int{}}
 	key := store.BookmarkKey(host, AuditLog)
 	bm := st.State.Bookmarks[key]
-	b := &batcher{st: st, now: now, key: key, cr: &cr}
+	b := &batcher{st: st, now: now, key: key, cr: &cr, moved: opt.MovedBy}
 	var last time.Time
 	asm := linuxlog.NewAssembler(func(ev *linuxlog.Event) error {
 		last = ev.Time
@@ -157,7 +159,7 @@ func followSyslog(st *store.Store, tr *linuxlog.Translator, p *linuxlog.LinePars
 	cr := store.ChannelRun{Channel: path, TypeCounts: map[string]int{}}
 	key := store.BookmarkKey(host, path)
 	bm := st.State.Bookmarks[key]
-	b := &batcher{st: st, now: now, key: key, cr: &cr}
+	b := &batcher{st: st, now: now, key: key, cr: &cr, moved: opt.MovedBy}
 	var last time.Time
 	source := filepath.Base(path)
 	res, err := linuxlog.Follow(path, bm, func(s string) error {
@@ -217,7 +219,7 @@ func followJournal(st *store.Store, tr *linuxlog.Translator, p *linuxlog.LinePar
 	cr := store.ChannelRun{Channel: journalName, TypeCounts: map[string]int{}}
 	key := store.BookmarkKey(host, journalName)
 	bm := st.State.Bookmarks[key]
-	b := &batcher{st: st, now: now, key: key, cr: &cr}
+	b := &batcher{st: st, now: now, key: key, cr: &cr, moved: opt.MovedBy}
 	var last time.Time
 	cursor, err := linuxlog.ReadJournal(bm.Cursor, func(s string) error {
 		l, ok := p.Parse(s)
