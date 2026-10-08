@@ -80,7 +80,8 @@ if [ "$GOFIPS140" != off ] && [ "$(uname -s)-$(uname -m)" = Linux-x86_64 ]; then
 	fips=$("dist/stage/blackbox-${VERSION}-linux-amd64/blackbox" version | tail -1)
 	echo "$fips"
 	case "$fips" in
-	*"Go Cryptographic Module ${GOFIPS140} "*"FIPS mode on") ;;
+	# Newer Go names the snapshot in full: v1.0.0-c2097c7c.
+	*"Go Cryptographic Module ${GOFIPS140}"[\ -]*"FIPS mode on") ;;
 	*) echo "the build does not report the FIPS 140-3 module ${GOFIPS140}" >&2; exit 1 ;;
 	esac
 fi
