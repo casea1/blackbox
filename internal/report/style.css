@@ -590,7 +590,6 @@ aside .grp{padding:16px 18px 5px}
 .side>nav:last-of-type{margin-bottom:18px}
 .rcard b{display:block;font-size:13px;font-weight:650;color:#fff}.rcard>span{display:block}
 /* The card stays in view at the bottom of a sidebar taller than the window. */
-@media (min-width:1051px){.rcard{position:sticky;bottom:0;background:#14295E;box-shadow:0 -12px 16px rgba(0,18,60,.55)}}
 aside nav a{padding-top:6px;padding-bottom:6px}
 .vline{display:block;margin:8px 0 0;padding:0;background:none;border:0;font:600 12px 'Public Sans',sans-serif;color:#6EE7A0;cursor:pointer;text-align:left}
 .vline i{font-style:normal}.vline.bad{color:#FF9B9B}.vline:hover span{text-decoration:underline}
