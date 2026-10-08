@@ -125,7 +125,7 @@ func TestPageHeaderUIR1(t *testing.T) {
 		}
 	}
 	det := between2(h, `<section class="view" data-view="detections">`, "</h1>")
-	if !strings.Contains(det, " · "+commas(len(r.Findings))+" detections · ") {
+	if !strings.Contains(det, " · "+commas(len(r.Findings))+" detections</div>") {
 		t.Errorf("detections crumb: %s", det)
 	}
 	if !strings.Contains(between2(h, `<section class="view" data-view="detections">`, `</div></div>`), `data-act="pagecsv">Export CSV`) {

@@ -95,9 +95,9 @@ func TestFoldedRows(t *testing.T) {
 	}
 }
 
-// UX2: each Audit integrity row has its own kind, and the "Logging
-// stopped" tile counts only real stops (not the event log service
-// stopping at a shutdown, nor Blackbox, firewall or clock changes).
+// UX2: each Audit integrity row has its own kind (the page's Kind counts
+// and filter, UI-R1), so "Logging stopped" is only real stops, not
+// Blackbox, firewall or clock changes.
 func TestIntegrityKinds(t *testing.T) {
 	at := time.Date(2026, 10, 7, 13, 0, 0, 0, time.UTC)
 	ev := func(min int, action string, sev event.Severity) *event.Event {
@@ -113,27 +113,6 @@ func TestIntegrityKinds(t *testing.T) {
 	for _, e := range r.Events {
 		if got := spec.kindOf(e); got != want[e.Action] {
 			t.Errorf("%s: kind %q, want %q", e.Action, got, want[e.Action])
-		}
-	}
-	pages, _, err := r.buildData()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, p := range pages {
-		if p.ID != "integrity" {
-			continue
-		}
-		found := false
-		for _, c := range p.Top.Stats {
-			if c.Label == "Logging stopped" {
-				found = true
-				if c.Value != "1" {
-					t.Errorf("Logging stopped tile: %s, want 1 (only the High audit stop)", c.Value)
-				}
-			}
-		}
-		if !found {
-			t.Error("no Logging stopped tile")
 		}
 	}
 }

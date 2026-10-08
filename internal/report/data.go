@@ -47,9 +47,9 @@ type EventPage struct {
 	Days     []string       // YYYYMMDD of each data file
 	Hosts    []string       `json:"-"` // computers with events on this page
 
-	Cols      []Column // the table's columns
-	KindLabel string   // the kind column's filter, e.g. "Reason"
-	Top       *pageTop `json:"-"`
+	KindLabel string // what its kinds are called, e.g. "Reason"
+	XLabel    string // its extra value's name, e.g. "Device" (none: "")
+	Unit      string // what its events are, e.g. "failed logons"
 }
 
 // eventPages lists the event pages in sidebar order.
@@ -119,6 +119,7 @@ func (r *Report) buildData() ([]*EventPage, []dataFile, error) {
 	}
 	var files []dataFile
 	sessions := r.sessions()
+	det := r.detailer()
 	for _, p := range pages {
 		spec := pageSpecs[p.ID]
 		p.BySev = map[string]int{}
@@ -166,7 +167,7 @@ func (r *Report) buildData() ([]*EventPage, []dataFile, error) {
 			c.Rows = append(c.Rows, []any{i, e.Time.Unix() + int64(dz) - c.Base, c.ref(e.Host), c.ref(string(e.Severity)), c.ref(e.Action),
 				c.ref(e.User), e.Target, c.ref(e.SourceIP), e.Summary, eid, c.ref(e.Source), c.ref(e.Process), e.Command,
 				c.ref(e.Outcome), strings.Join(flags[i], ","), c.ref(spec.kindOf(e)), c.ref(extra(spec, e, sessions[i])), dz})
-			d.raw = append(d.raw, []any{e.Details, e.Fields, recordedAs(e), preciseTime(local)})
+			d.raw = append(d.raw, []any{e.Details, e.Fields, recordedAs(e), preciseTime(local), det.extra(e)})
 		}
 		sort.Strings(p.Hosts)
 		for day := range days {

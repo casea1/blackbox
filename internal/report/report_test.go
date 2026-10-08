@@ -197,6 +197,13 @@ func TestWriteAndVerify(t *testing.T) {
 			shown[row.Summary] = true
 		}
 	}
+	// A detection's "What happened" shows the events ten minutes either
+	// side of it (UI-R1): those are in the page too, and only those.
+	for _, v := range r.detectionViews() {
+		for _, l := range v.Timeline {
+			shown[l.Text] = true
+		}
+	}
 	checked := 0
 	for _, row := range r.rows {
 		if shown[row.Summary] || len(row.Summary) < 30 {
@@ -447,7 +454,7 @@ func TestSingleSystemHasNoSystemsPage(t *testing.T) {
 	if err := r.WriteHTML(&html, nil); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(html.String(), `<span>System</span><b>`) {
+	if !strings.Contains(html.String(), `<div><span>System</span><a href="#systems/WS-07">WS-07</a>`) {
 		t.Error("a standalone report names its system in the sidebar")
 	}
 	// This one has a gap (the Security log was cleared): Audit health
@@ -543,7 +550,7 @@ func TestVMOffIsNotFlagged(t *testing.T) {
 	if len(r.Silent) != 1 || r.Silent[0].Name != "WS-04" {
 		t.Errorf("silent: %+v", r.Silent)
 	}
-	if k := r.overview(nil).KPIs[0]; k.Value != "2 / 4" || !k.Bad || k.Note != "2 sent nothing" {
+	if k := r.overview(nil).Strip[1]; k.Label != "Systems reporting" || k.Value != "2 / 4" || !k.Bad || k.Note != "2 silent" {
 		t.Errorf("systems reporting: %+v", k)
 	}
 }

@@ -61,14 +61,3 @@ func systemLink(h string) string {
 	}
 	return "#systems/" + h
 }
-
-// cardFilter is a stat card's filter for the event table below it (see
-// EventCard.Filter): kind, sev, host, user, day, text or flag, as a query
-// string. A kind may list several with "|".
-func cardFilter(kv ...string) string {
-	v := url.Values{}
-	for i := 0; i+1 < len(kv); i += 2 {
-		v.Set(kv[i], kv[i+1])
-	}
-	return v.Encode()
-}

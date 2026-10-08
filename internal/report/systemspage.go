@@ -73,11 +73,11 @@ type SysFact struct {
 	Href               string
 }
 
-// StripCell is one cell of the collection strip: Class "" (collected),
+// CollCell is one cell of the collection strip: Class "" (collected),
 // bad (a log cleared), warn (events lost), miss (no collection), part
 // (some of the collections it stands for missing), pre (not expected:
 // before the system was first seen, or after it was retired).
-type StripCell struct {
+type CollCell struct {
 	Class, Title string
 }
 
@@ -112,7 +112,7 @@ type SystemView struct {
 	Events, Det int
 	LastSeen    string
 	Facts       []SysFact
-	Strip       []StripCell
+	Strip       []CollCell
 	StripNote   string // "24 of 24"
 	StripName   string // the strip in words, for a screen reader
 	// StripKey says which marks the strip has, for its legend.
@@ -207,10 +207,7 @@ func (r *Report) systemsPage() *SystemsPage {
 		}
 	}
 	cards := r.detectionCards()
-	av := map[string]AVRow{}
-	for _, a := range r.avRows() {
-		av[strings.ToLower(a.Host)] = a
-	}
+	cx := r.newCheckCtx(cleared)
 
 	var views []*SystemView
 	oses := map[string]bool{}
@@ -260,7 +257,7 @@ func (r *Report) systemsPage() *SystemsPage {
 			clears = append(clears, c.Time)
 		}
 		got, want := r.collectionStrip(v, s, iv, append(clears, s.resets...))
-		v.Cells = r.sysChecks(s, cleared[h], av[h], got, want)
+		v.Cells = r.sysChecks(s, cx, got, want)
 
 		// The level: the worst check, or a detection.
 		v.Level = "ok"
@@ -609,7 +606,7 @@ func (r *Report) collectionStrip(v *SystemView, s SystemRow, iv time.Duration, m
 	at := func(i int) string { return start.Add(time.Duration(i) * iv).In(r.Location).Format("2 Jan 15:04") }
 	for j := 0; j*k < n; j++ {
 		a, z := j*k, min(n, (j+1)*k)
-		var c StripCell
+		var c CollCell
 		nf, np, nl := 0, 0, 0
 		var cl time.Time
 		for i := a; i < z; i++ {
@@ -629,18 +626,18 @@ func (r *Report) collectionStrip(v *SystemView, s SystemRow, iv time.Duration, m
 		switch {
 		case !cl.IsZero():
 			v.StripKey.Clear = true
-			c = StripCell{Class: "bad", Title: "Log cleared " + cl.In(r.Location).Format("2 Jan 15:04")}
+			c = CollCell{Class: "bad", Title: "Log cleared " + cl.In(r.Location).Format("2 Jan 15:04")}
 		case np == z-a:
-			c = StripCell{Class: "pre", Title: at(a) + ": not expected"}
+			c = CollCell{Class: "pre", Title: at(a) + ": not expected"}
 		case nf == 0:
 			v.StripKey.Miss = true
-			c = StripCell{Class: "miss", Title: at(a) + ": no collection"}
+			c = CollCell{Class: "miss", Title: at(a) + ": no collection"}
 		case nl > 0:
 			v.StripKey.Lost = true
-			c = StripCell{Class: "warn", Title: at(a) + ": events overwritten before they were collected"}
+			c = CollCell{Class: "warn", Title: at(a) + ": events overwritten before they were collected"}
 		case nf+np < z-a:
 			v.StripKey.Miss = true
-			c = StripCell{Class: "part", Title: fmt.Sprintf("%s: %d of %d collections", at(a), nf, z-a-np)}
+			c = CollCell{Class: "part", Title: fmt.Sprintf("%s: %d of %d collections", at(a), nf, z-a-np)}
 		}
 		v.Strip = append(v.Strip, c)
 	}
@@ -655,14 +652,53 @@ func (r *Report) collectionStrip(v *SystemView, s SystemRow, iv time.Duration, m
 	return got, want
 }
 
-// sysChecks are a system's six checks, in the list's column order.
-func (r *Report) sysChecks(s SystemRow, cleared []*Row, av AVRow, got, want int) []SysCheck {
+// checkCtx is what a system's six checks read beyond its SystemRow: the
+// log clears per system (by lower-case name), the antivirus rows, and
+// which systems' original logs are missing or in the report. Built once
+// per page by newCheckCtx.
+type checkCtx struct {
+	cleared   map[string][]*Row
+	av        map[string]AVRow
+	noArchive map[string]bool
+	archives  map[string]*ArchiveRef
+}
+
+// newCheckCtx gathers what sysChecks reads for every system; cleared is
+// the log_cleared rows by lower-case system name.
+func (r *Report) newCheckCtx(cleared map[string][]*Row) *checkCtx {
+	cx := &checkCtx{cleared: cleared, av: map[string]AVRow{}, noArchive: map[string]bool{}, archives: map[string]*ArchiveRef{}}
+	for _, a := range r.avRows() {
+		cx.av[strings.ToLower(a.Host)] = a
+	}
+	for _, h := range append(append([]string(nil), r.NoArchive...), r.leftOutHosts()...) {
+		cx.noArchive[strings.ToLower(h)] = true
+	}
+	for i := range r.Archives {
+		cx.archives[strings.ToLower(r.Archives[i].Host)] = &r.Archives[i]
+	}
+	return cx
+}
+
+// collections is how many collections came of those expected in the
+// period, as the collection strip counts them.
+func (r *Report) collections(s SystemRow) (got, want int) {
+	return r.collectionStrip(&SystemView{}, s, collectInterval(s.runTimes), nil)
+}
+
+// sysChecks are a system's six checks, in the column order of the
+// Systems list and the Overview's Systems at a glance (both pages show
+// these same squares): Reporting, Logs intact, Audit settings,
+// Antivirus, Original logs, SCAP. got and want are its collections
+// (r.collections).
+func (r *Report) sysChecks(s SystemRow, cx *checkCtx, got, want int) []SysCheck {
 	name := s.Name
+	h := strings.ToLower(name)
+	cleared := cx.cleared[h]
 	reporting := SysCheck{CheckCell: CheckCell{Level: "ok", Label: "Reporting", Href: "#logs/" + name}}
 	switch {
 	case s.Status == "silent":
 		reporting.Level, reporting.Short = "bad", "not reporting"
-		reporting.Title = "nothing received"
+		reporting.Title = "nothing received this " + r.periodNoun()
 		if !s.LastRun.IsZero() {
 			reporting.Title = "nothing since " + s.LastRun.In(r.Location).Format("2 Jan 15:04")
 		}
@@ -671,14 +707,14 @@ func (r *Report) sysChecks(s SystemRow, cleared []*Row, av AVRow, got, want int)
 	case s.VM:
 		on, _, _ := r.coverage(s)
 		reporting.Title = fmt.Sprintf("on %d%% of the period · %s while on", on, plural(len(s.runTimes), "collection"))
-	case len(s.runTimes) == 0:
-		reporting.Level, reporting.Title = "", "no collection in this short period yet"
+	case len(s.runTimes) == 0 || s.LastRun.IsZero():
+		reporting.Level, reporting.Title = "", "no collection in this period" // or a report from saved logs
 	default:
 		reporting.Title = fmt.Sprintf("%d of %d collections · last %s", got, want, r.shortStamp(s.LastRun))
 		if got < want {
 			reporting.Level, reporting.Short = "warn", plural(want-got, "missed collection")
 		}
-		if r.WindowEnd.Sub(s.LastRun) > silentAfter {
+		if !r.WindowEnd.IsZero() && r.WindowEnd.Sub(s.LastRun) > silentAfter {
 			reporting.Level, reporting.Short = "warn", "late"
 		}
 	}
@@ -687,11 +723,17 @@ func (r *Report) sysChecks(s SystemRow, cleared []*Row, av AVRow, got, want int)
 		reporting.Title += " (recorded by a clock that was ahead)"
 	}
 
+	// Logs intact: events lost count only when some were (as on Audit
+	// health); a lost count of 0 is a log reset, below.
 	logs := SysCheck{CheckCell: CheckCell{Level: "ok", Label: "Logs intact", Href: searchLink("page", "integrity", "host", name)}}
-	var critical []GapItem
+	var critical, other []GapItem
 	for _, g := range s.gaps {
-		if rollover.Critical(g.Channel) {
+		switch {
+		case g.Lost == 0:
+		case rollover.Critical(g.Channel):
 			critical = append(critical, g)
+		default:
+			other = append(other, g)
 		}
 	}
 	switch {
@@ -720,11 +762,13 @@ func (r *Report) sysChecks(s SystemRow, cleared []*Row, av AVRow, got, want int)
 	case len(critical) > 0:
 		logs.Level, logs.Short = "bad", "events lost"
 		logs.Title = lostTitle(critical, true) + " before they were collected"
-	case lostTitle(s.gaps, false) != "":
+	case len(other) > 0:
 		logs.Level, logs.Short = "warn", "events overwritten"
-		logs.Title = lostTitle(s.gaps, false)
-	case s.Status == "silent" || len(s.runTimes) == 0:
+		logs.Title = lostTitle(other, false)
+	case s.Status == "silent":
 		logs.Level, logs.Title = "", "no collection to check"
+	case len(s.runTimes) == 0:
+		logs.Title = "none cleared"
 	default:
 		logs.Title = "none cleared, nothing overwritten"
 		for _, log := range []string{"Security", "audit", "auth"} {
@@ -736,6 +780,7 @@ func (r *Report) sysChecks(s SystemRow, cleared []*Row, av AVRow, got, want int)
 		}
 	}
 
+	// Audit settings: auditing off red, settings to fix amber.
 	settings := SysCheck{CheckCell: CheckCell{Label: "Audit settings", Href: "#health/" + name}}
 	switch {
 	case s.AuditOff != "":
@@ -750,7 +795,10 @@ func (r *Report) sysChecks(s SystemRow, cleared []*Row, av AVRow, got, want int)
 			}
 		}
 		settings.Level, settings.Short = "warn", plural(s.Checks.STIGFail, "audit setting")+" to fix"
-		settings.Title = fmt.Sprintf("%d to fix: %s", s.Checks.STIGFail, strings.Join(items[:min(2, len(items))], ", "))
+		settings.Title = fmt.Sprintf("%d to fix", s.Checks.STIGFail)
+		if len(items) > 0 {
+			settings.Title += ": " + strings.Join(items[:min(2, len(items))], ", ")
+		}
 		if len(items) > 2 {
 			settings.Title += fmt.Sprintf(" and %d more", len(items)-2)
 		}
@@ -761,58 +809,55 @@ func (r *Report) sysChecks(s SystemRow, cleared []*Row, av AVRow, got, want int)
 		}
 	}
 
+	// Antivirus: protection off red; out of date (or not checked) amber.
 	avc := SysCheck{CheckCell: CheckCell{Label: "Antivirus", Href: "#health/@av"}}
+	av, haveAV := cx.av[h]
 	product := strings.TrimPrefix(av.Product, "Microsoft ")
 	switch {
-	case av.Host == "":
+	case !haveAV:
 		avc.Title = "not checked"
 	case av.ProtectionBad:
 		avc.Level, avc.Short, avc.Title = "bad", "antivirus off", product+": "+av.Protection
-	case av.Status == "Current":
+	case av.Level == "ok":
 		avc.Level, avc.Title = "ok", product+", definitions current"
+		if d := strings.Fields(av.Dated); len(d) >= 2 { // "5 Oct 2026 21:00"
+			avc.Title = product + ", definitions " + d[0] + " " + d[1]
+		}
 	case av.Status == "Out of date":
 		avc.Level, avc.Short, avc.Title = "warn", "antivirus out of date", product+", definitions "+av.Age
 	default:
 		avc.Level, avc.Short, avc.Title = "warn", "antivirus not checked", product+": "+strings.ToLower(av.Status)
 	}
-	if avc.Level == "ok" && av.Dated != "" {
-		d := strings.Fields(av.Dated) // "5 Oct 2026 21:00"
-		if len(d) >= 2 {
-			avc.Title = product + ", definitions " + d[0] + " " + d[1]
-		}
-	}
 
 	orig := SysCheck{CheckCell: CheckCell{Label: "Original logs", Href: "#logs/" + name}}
-	var arch *ArchiveRef
-	for i := range r.Archives {
-		if strings.EqualFold(r.Archives[i].Host, name) {
-			arch = &r.Archives[i]
-		}
-	}
-	missing := false
-	for _, h := range r.NoArchive {
-		missing = missing || strings.EqualFold(h, name)
-	}
+	arch := cx.archives[h]
 	switch {
 	case s.Status == "retired":
 		orig.Title = "not expected after it was retired"
+	case r.PackFailing != nil && strings.EqualFold(r.PackFailing.Host, name):
+		orig.Level, orig.Short, orig.Title = "bad", "original logs not archived", "not archived"
+	case cx.noArchive[h]:
+		orig.Level, orig.Short, orig.Title = "warn", "original logs missing", "missing for this "+r.periodNoun()
 	case arch != nil:
 		orig.Level, orig.Title = "ok", "in this report ("+humanBytes(arch.Bytes)+")"
 		if st, ok := r.archiveState[arch.Name]; ok && !st.Verified {
 			orig.Level, orig.Short, orig.Title = "bad", "original logs changed", arch.Name+" does not match its SHA-256"
 		}
-	case missing:
-		orig.Level, orig.Short, orig.Title = "warn", "original logs missing", "none in this report"
 	case r.Interim && len(r.Archives) == 0:
 		orig.Title = "kept by the next scheduled report"
 	default:
 		orig.Title = "not kept"
 	}
 
+	// SCAP: no scan found (when SCAP results are in the report) amber.
 	sc := SysCheck{CheckCell: CheckCell{Label: "SCAP", Href: ScapHref(name)}}
-	if g, ok := r.scapGlance(name); !ok || g.Missing {
+	g, ok := r.scapGlance(name)
+	switch {
+	case !ok:
 		sc.Title = "no SCAP scan"
-	} else {
+	case g.Missing:
+		sc.Level, sc.Short, sc.Title = "warn", "no SCAP scan", "no scan found"
+	default:
 		sc.Level = "ok"
 		sc.Title = fmt.Sprintf("%d CAT I · %s", g.Cat[1], g.Benchmark)
 		if g.Score != "" {

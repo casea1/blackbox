@@ -1,6 +1,6 @@
 // Opens a report in a headless browser and checks every page works: no
-// script errors, the event tables fill from the data files, a row opens
-// the event panel, Search finds events, and each list page shows an item.
+// script errors, Search and the event pages fill from the data files, a
+// row opens the event panel, Search finds events, and each list page shows an item.
 //
 //   node scripts/browsercheck.js <report folder> [chrome path]
 //
@@ -27,15 +27,16 @@ try { pw = require('playwright-core'); } catch (e) { pw = require('playwright');
     await page.waitForTimeout(150);
     const shown = await page.$eval('.view[data-view="' + v + '"]', el => !el.hidden && el.innerText.trim().length > 40);
     if (!shown) fail('page ' + v + ' is empty');
-    const events = await page.$('.view[data-view="' + v + '"] [data-events]');
-    if (events) {
-      const total = await page.$eval('.view[data-view="' + v + '"] [data-events] h2', h => h.textContent);
-      if (/· 0$/.test(total.trim())) continue;
+    // Search and each event page (Search with its kind preset): the
+    // results fill from the data files, and a row opens the event panel.
+    if (await page.$('.view[data-view="' + v + '"] [data-sq]')) {
       try {
-        await page.waitForSelector('.view[data-view="' + v + '"] .vt-row', { timeout: 20000 });
-      } catch (e) { fail('event table on ' + v + ' did not fill'); continue; }
-      await page.click('.view[data-view="' + v + '"] .vt-row');
+        await page.waitForSelector('.view[data-view="' + v + '"] tr[data-i]', { timeout: 20000 });
+      } catch (e) { fail('results on ' + v + ' did not fill'); continue; }
+      await page.click('.view[data-view="' + v + '"] tr[data-i]');
       await page.waitForSelector('.drawer:not([hidden]) .raw', { timeout: 5000 }).catch(() => fail('event panel on ' + v + ' did not open'));
+      await page.waitForFunction(() => !/Loading/.test(document.querySelector('.drawer .raw').textContent), null, { timeout: 10000 })
+        .catch(() => fail('the raw record on ' + v + ' did not load'));
       await page.keyboard.press('Escape');
     }
   }
@@ -59,8 +60,10 @@ try { pw = require('playwright-core'); } catch (e) { pw = require('playwright');
     if (await page.$('.view[data-view="' + v + '"] [data-pick]') && n !== 1) fail(v + ': no item shown');
   }
   await page.goto(url + '#search');
+  await page.click('.view[data-view="search"] [data-common]');
   await page.click('[data-preset="person"]');
-  await page.waitForFunction(() => /\d.* events? /.test(document.querySelector('[data-title] span').textContent), null, { timeout: 30000 })
+  await page.waitForFunction(() => /^\d[\d,]* events? · /.test(document.querySelector('.view[data-view="search"] [data-qhead]').textContent) &&
+    /user=/.test(location.hash), null, { timeout: 30000 })
     .catch(() => fail('Search found nothing'));
   await page.goto(url + '#health');
   await page.click('aside [data-vline]');

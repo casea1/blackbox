@@ -52,13 +52,12 @@
 </section>
 <section class="view" data-view="systems">{{with .SystemsPage}}<div data-syslist>{{template "head" (head $ "Systems" .Crumb "csv")}}{{template "syslist" .}}</div>{{template "sysone" .}}{{else}}{{template "head" (head . "Systems" "")}}<div class="panel"><p class="pm" style="margin:0">No systems in this report.</p></div>{{end}}</section>
 <section class="view" data-view="detections">{{template "head" (head . "Detections" (detectionsCrumb .) "csv")}}{{template "detections" .}}</section>
-<section class="view" data-view="search">{{template "head" (head . "Search" (searchCrumb .))}}{{template "search" .}}</section>
+<section class="view" data-view="search">{{template "head" (head . "Search" (searchCrumb .) "csv")}}{{template "finder" (finder . "")}}</section>
 <section class="view" data-view="people">{{template "head" (head . "People" (peopleCrumb .))}}{{with .PeoplePage}}{{template "people" .}}{{else}}<div class="panel"><p class="pm" style="margin:0">No one's account did anything in this report.</p></div>{{end}}</section>
 {{range .Pages}}
 <section class="view" data-view="{{.ID}}">
-  {{template "head" (head $ .Title (eventsCrumb $ .))}}
-  {{if .Total}}{{with .Top}}{{template "pagetop" .}}{{end}}
-  {{template "events" .}}{{else}}<div class="panel"><p class="pm" style="margin:0">Nothing on {{.Title}} this {{lower (periodWord $)}}. <a class="link" href="#search">Search</a> covers every event in the report.</p></div>{{end}}
+  {{template "head" (head $ .Title (eventsCrumb $ .) "csv")}}
+  {{if .Total}}{{template "finder" (finder $ .ID)}}{{else}}<div class="panel"><p class="pm" style="margin:0">Nothing on {{.Title}} this {{lower (periodWord $)}}. <a class="link" href="#search">Search</a> covers every event in the report.</p></div>{{end}}
 </section>
 {{end}}
 <section class="view" data-view="health">{{template "head" (head . "Audit health" (healthCrumb .))}}{{with .HealthPage}}{{template "health" .}}{{else}}<div class="panel"><p class="pm" style="margin:0">No systems in this report.</p></div>{{end}}</section>
@@ -148,22 +147,33 @@
 <div class="panel" id="pdet-{{.Key}}"><div class="ph"><h2>{{icon "shield-alert" 17}}Detections involving {{.Name}}</h2><span class="pm" data-slotnote>{{len .Detections}} this period</span></div>{{if .Detections}}<div class="dl">{{range .Detections}}<a class="dc {{.Severity}}" href="#detections/{{.Index}}"{{if .Slots}} data-slots="{{.Slots}}"{{end}}><div class="b"><b>{{.Title}}</b><span>{{.Detail}}</span></div><div class="m2">{{.Host}}<small>{{.Day}} {{.Time}}</small></div></a>{{end}}</div>{{else}}<p class="pm" style="margin:0">None.</p>{{end}}</div>
 </div>{{end}}{{end}}</div></div>{{end}}
 
-{{define "search"}}<div class="panel" style="margin-bottom:12px"><div class="builder" data-q>Show
-<label class="pick">{{icon "layers" 15}}<select data-q="page" aria-label="Kind of events"><option value="">All events</option>{{range .Pages}}{{if .Total}}<option value="{{.ID}}">{{.Title}}</option>{{end}}{{end}}</select></label> by
-<label class="pick">{{icon "user-round" 15}}<select data-q="user" aria-label="Person"><option value="">anyone</option>{{with .PeoplePage}}{{range .Groups}}<optgroup label="{{.Title}}">{{range .People}}<option value="{{.Key}}">{{.Name}}</option>{{end}}</optgroup>{{end}}{{end}}</select></label> on
-<label class="pick">{{icon "server" 15}}<select data-q="host" aria-label="System"><option value="">Any system</option><option value="@server">Servers</option><option value="@workstation">Workstations</option><option value="@vm">Virtual machines</option><optgroup label="Systems">{{range .Hosts}}<option value="{{.}}">{{.}}</option>{{end}}</optgroup></select></label> during
-<label class="pick">{{icon "calendar-range" 15}}<select data-q="when" aria-label="When"><option value="">This {{lower (periodWord .)}}</option><option value="@after">Outside working hours</option><optgroup label="Day">{{range periodDays .}}<option value="{{.}}">{{dayName .}}</option>{{end}}</optgroup></select></label> containing
-<label class="pick" style="font-weight:500;min-width:200px">{{icon "search" 15}}<input type="search" placeholder="any text" data-q="text"></label></div>
-<div class="chips cats" data-cats style="margin-top:14px"><span class="on" data-cat="">All events</span>{{range .Pages}}{{if .Total}}<span data-cat="{{.ID}}">{{.Title}}<i>{{commas .Total}}</i></span>{{end}}{{end}}</div>
-<div class="sub2" style="margin-top:18px">Common searches</div><div class="saved" style="margin-top:0">
-<a data-preset="person">{{icon "key-round" 16}}Everything one person did</a><a data-preset="usbservers">{{icon "usb" 16}}USB devices on servers</a>
-<a data-preset="afterhours">{{icon "moon" 16}}Admin work after hours</a><a data-preset="failedsource">{{icon "log-in" 16}}Failed logons by source</a>
-<a data-preset="admingroups">{{icon "user-plus" 16}}Changes to admin groups</a><a data-preset="audit">{{icon "eraser" 16}}Logs cleared or audit changed</a>
-<a data-preset="psdownload">{{icon "terminal" 16}}PowerShell that downloads</a><a data-preset="rdp">{{icon "monitor" 16}}Remote Desktop logons</a></div></div>
-<div class="panel" data-search><div class="toolbar"><h2 data-title>{{icon "list-filter" 17}}<span>All events</span></h2><div class="chips"><span class="on" data-sort="new">Newest</span><span data-sort="host">Group by system</span><span data-csv>Export CSV</span></div></div>
-<div data-hist style="margin-bottom:12px"></div>
-<div class="vt" tabindex="0" style="{{searchCols}}"><div class="vt-head"><span>Time</span><span>System</span><span>Event</span><span>Person</span><span>Details</span><span>Severity</span></div><div class="vt-body"><div class="vt-msg">Search runs in this browser, over the events in this report's folder. Nothing leaves this computer.</div></div></div>
-<div class="pager"><span data-count></span><span></span><span></span></div></div>{{end}}
+{{/* Search (UI-R1 design 03), and each event page (design 10), which is
+Search with its kind of event preset: one box, the filters, field counts,
+events per hour and the results, 50 at a time (app.js Finder). */}}
+{{define "finder"}}<div class="sq" data-sq="{{.Kind}}">
+<div class="panel sq-bar"><div class="sq-row">
+<label class="sq-text">{{icon "search" 15}}<input type="search" data-q="text" placeholder="{{.Placeholder}}" aria-label="{{if .Kind}}{{.Placeholder}}{{else}}Search every field{{end}}">{{if not .Kind}}<span class="sq-hint" aria-hidden="true">searches every field</span>{{end}}</label>
+{{if .Kind}}<span class="sq-dd sq-kind"><span>Kind</span><b>{{.KindTitle}}</b><button type="button" data-kindclear title="Clear the kind: search every event" aria-label="Clear the kind {{.KindTitle}} and search every event">×</button></span>{{else}}<label class="sq-dd"><span>Kind</span><select data-q="page" aria-label="Kind"><option value="">all</option>{{range .Pages}}<option value="{{.ID}}">{{.Title}}</option>{{end}}</select></label>{{end}}
+<label class="sq-dd"><span>Person</span><select data-q="user" aria-label="Person"><option value="">anyone</option></select></label>
+<label class="sq-dd"><span>System</span><select data-q="host" aria-label="System"><option value="">any</option></select></label>
+<label class="sq-dd sq-role"><span>Servers / workstations</span><select data-q="role" aria-label="Servers or workstations"><option value="">both</option><option value="server">servers</option><option value="workstation">workstations</option>{{if .VMs}}<option value="vm">virtual machines</option>{{end}}</select></label>
+<label class="sq-dd"><span>Severity</span><select data-q="sev" aria-label="Severity"><option value="">any</option><option value="high">high</option><option value="medium">medium</option><option value="hm">high or medium</option><option value="li">low or info</option></select></label>
+<label class="sq-dd"{{if .Kind}} hidden{{end}}><span>When</span><select data-q="when" aria-label="When"><option value="">this period</option>{{if .After}}<option value="@after">outside working hours</option>{{end}}</select></label>
+{{if not .Kind}}<div class="sq-common"><button type="button" class="sq-dd" data-common aria-expanded="false">Common searches <i aria-hidden="true">▾</i></button><div class="sq-menu" data-commonmenu hidden>
+<button type="button" data-preset="person">{{icon "key-round" 15}}Everything one person did</button><button type="button" data-preset="usbservers">{{icon "usb" 15}}USB devices on servers</button>
+<button type="button" data-preset="afterhours">{{icon "moon" 15}}Admin work after hours</button><button type="button" data-preset="failedsource">{{icon "log-in" 15}}Failed logons by source</button>
+<button type="button" data-preset="admingroups">{{icon "user-plus" 15}}Changes to admin groups</button><button type="button" data-preset="audit">{{icon "eraser" 15}}Logs cleared or audit changed</button>
+<button type="button" data-preset="psdownload">{{icon "terminal" 15}}PowerShell that downloads</button><button type="button" data-preset="rdp">{{icon "monitor" 15}}Remote Desktop logons</button></div></div>{{end}}
+</div><div class="sq-chips" data-qchips hidden></div></div>
+<div class="sq-main">
+<div class="panel sq-facets" data-facets aria-label="Field counts"><p class="pm">Counting…</p></div>
+<div class="sq-right">
+<div class="panel sq-chart"><div class="sq-ch"><h2 data-qhead aria-live="polite">Loading events…</h2><span class="pm">{{if .Kind}}per hour{{else}}events per hour{{end}}</span></div><div data-hist></div></div>
+<div class="panel sq-res"><div class="sq-tools"><span class="pm" data-qnote></span><label class="sq-group">Group by: <select data-q="group" aria-label="Group by"><option value="">none</option><option value="host">system</option><option value="user">person</option>{{if .Kind}}<option value="sub">kind</option>{{else}}<option value="event">event</option>{{end}}</select></label></div>
+{{if .Omitted}}<div class="alertbar note">{{icon "info" 18}}<span>{{commas .Omitted}} routine Info events are counted in this report but not listed, to keep the report a manageable size. They are in the original logs in this report's folder.</span></div>{{end}}
+<div class="sq-wrap"><table class="sq-tbl{{if .Kind}} kind{{end}}"><thead><tr>{{range .Cols}}<th scope="col">{{.}}</th>{{end}}</tr></thead><tbody data-qrows><tr><td colspan="{{len .Cols}}" class="sq-msg">Search runs in this browser, over the events in this report's folder. Nothing leaves this computer.</td></tr></tbody></table></div>
+<div class="sq-more"><span data-qleft></span><button type="button" class="link" data-qmore hidden>Show 50 more ↓</button></div></div>
+</div></div></div>{{end}}
 
 {{define "health"}}<div class="ev6" style="grid-template-columns:repeat(5,1fr)">{{range .Stats}}{{template "stat" .}}{{end}}</div>
 <div data-a1{{if and .Single (not .Gaps)}} data-single="{{.Single}}"{{end}}>
@@ -273,65 +283,48 @@
 
 {{define "stat"}}{{if .Filter}}<a class="panel ec {{.Level}}" href="#" data-cardfilter="{{if ne .Filter "all"}}{{.Filter}}{{end}}" title="Show these below">{{else if .Href}}<a class="panel ec {{.Level}}" href="{{.Href}}">{{else if .Scroll}}<a class="panel ec {{.Level}}" href="#" data-scroll="{{.Scroll}}">{{else}}<div class="panel ec {{.Level}}">{{end}}<div class="l">{{icon .Icon 15}}{{.Label}}</div><div class="v">{{.Value}}</div><div class="d" title="{{.Note}}">{{.Note}}</div>{{if or .Filter .Href .Scroll}}</a>{{else}}</div>{{end}}{{end}}
 
-{{define "detections"}}{{if not .Detections}}<div class="panel"><div class="clean"><div class="ic">{{icon "shield-check" 22}}</div><div><b>Nothing unusual this {{lower (periodWord .)}}</b><span>No activity matched a detection rule. All {{commas (len .Events)}} events are still on the event pages and in Search.</span></div></div></div>{{else}}
-<div class="md2" style="grid-template-columns:300px 1fr"><div class="panel dlist" data-picklist style="padding:4px 0 10px"><div class="chips" data-detsev style="padding:12px 16px 0"><span class="on" data-sev="">All<i>{{len .Detections}}</i></span><span data-sev="high">High<i>{{sevCount .Detections "high"}}</i></span><span data-sev="medium">Medium<i>{{sevCount .Detections "medium"}}</i></span></div>
-{{range $i, $d := .Detections}}{{if or (eq $i 0) (ne $d.Day (detDayBefore $.Detections $i))}}<div class="dayh">{{$d.Day}}</div>{{end}}<a class="{{$d.Severity}}" data-pick="{{$d.Index}}" href="#detections/{{$d.Index}}"><div><b>{{$d.Title}}</b><span>{{$d.Host}}{{if $d.Time}} · {{$d.Time}}{{end}}</span></div></a>{{end}}</div>
-<div style="min-width:0">{{range .Detections}}<div class="detail" data-pane="{{.Index}}" hidden><div class="panel" style="margin-bottom:12px"><div class="dh"><div><h2>{{.Title}}</h2><p>{{.Range}}</p></div><span class="sv {{.Severity}}">{{if eq .Severity "high"}}High{{else}}Medium{{end}}</span></div>
-{{if .Detail}}<p style="margin:0 0 12px;font-size:13.5px">{{.Detail}}</p>{{end}}{{if .Why}}<div class="why2"><b>Why this was flagged:</b> {{.Why}}</div>{{end}}</div>
-<div class="row" style="grid-template-columns:1.3fr 1fr;margin-bottom:12px">
-<div class="panel"><div class="ph"><h2>{{icon "history" 17}}What happened</h2><span class="pm">In order</span></div>{{if .Steps}}<div class="seq">{{range .Steps}}<div class="{{if .Key}}k{{end}}{{if .Ev}} evl{{end}}"{{if .Ev}} data-ev="{{.Ev}}" title="Open this event"{{end}}><b>{{.Time}}</b><span>{{.Text}}</span><small>{{.Sub}}</small></div>{{end}}</div>{{if gt .Count (len .Steps)}}<p class="pm" style="margin:0">and {{minus .Count (len .Steps)}} more in the events below.</p>{{end}}{{else}}<p class="pm" style="margin:0">The events behind this detection are not in this report.</p>{{end}}</div>
-<div class="panel"><div class="ph"><h2>{{icon "user-round" 17}}Involved</h2></div><div class="kv2">{{range .Involved}}<span>{{.Label}}</span><b>{{range $i, $l := .Links}}{{if $i}}, {{end}}{{if $l.Href}}<a class="link" href="{{$l.Href}}">{{$l.Text}}</a>{{else}}{{$l.Text}}{{end}}{{end}}</b>{{end}}</div>
-{{if .Related}}<div class="sub2" style="margin-top:16px">Related this period</div><div class="dl">{{range .Related}}<a class="dc {{.Severity}}" href="#detections/{{.Index}}"><div class="b"><b>{{.Title}}</b><span>{{.Host}} · {{.Day}} {{.Time}}</span></div><div></div></a>{{end}}</div>{{end}}</div></div>
-{{if .Events}}<div class="panel"><div class="ph"><h2>{{icon "scroll-text" 17}}Events</h2>{{if .Archive}}<span class="pm">From the original logs · {{.Archive}}</span>{{end}}</div>
-<div style="overflow-x:auto" tabindex="0"><table class="ev"><thead><tr><th>Time</th><th>ID</th><th>Event</th><th>Account</th><th>Details</th></tr></thead><tbody>{{range .Events}}<tr{{if .Ev}} class="evl" data-ev="{{.Ev}}" title="Open this event"{{end}}><td class="mono">{{.Time}}</td><td class="mono">{{.ID}}</td><td>{{.Event}}</td><td>{{.Account}}</td><td class="mute">{{.Details}}</td></tr>{{end}}</tbody></table></div>
-{{if gt .Count (len .Events)}}<p class="pm" style="margin:10px 0 0">Showing the first {{len .Events}} of {{.Count}} events.</p>{{end}}</div>{{end}}
-</div>{{end}}</div></div>{{end}}{{end}}
+{{define "detections"}}{{if not .Detections}}<div class="panel"><div class="clean"><div class="ic">{{icon "shield-check" 22}}</div><div><b>Nothing unusual this {{lower (periodWord .)}}</b><span>No activity matched a detection rule. All {{commas (len .Events)}} events are still on the event pages and in Search.</span></div></div></div>{{else}}{{with .DetPage}}
+<div class="panel detbar"><div class="segb" data-detsev role="group" aria-label="Severity"><button type="button" class="on" data-sev="" aria-pressed="true">All <i>{{len .Views}}</i></button><button type="button" data-sev="high" aria-pressed="false">High <i>{{len .High}}</i></button><button type="button" data-sev="medium" aria-pressed="false">Medium <i>{{len .Med}}</i></button></div>
+<select class="dd" data-detf="host" aria-label="System"><option value="">System: any</option>{{range .Hosts}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select>
+<select class="dd" data-detf="user" aria-label="Person"><option value="">Person: anyone</option>{{range .People}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select>
+{{if .Kinds}}<select class="dd" data-detf="kind" aria-label="Servers or workstations"><option value="">Servers / workstations: both</option><option value="server">Servers</option><option value="workstation">Workstations</option></select>{{end}}
+<span class="pm detsort">Sorted by severity, then time</span></div>
+<div class="md2 detgrid"><div class="panel dlist2" data-picklist>
+{{if .High}}<div class="grph" data-dethead="High">High · {{len .High}}</div>{{range .High}}{{template "detli" .}}{{end}}{{end}}
+{{if .Med}}<div class="grph" data-dethead="Medium">Medium · {{len .Med}}</div>{{range .Med}}{{template "detli" .}}{{end}}{{end}}
+<p class="pm" data-detnone hidden>No detection matches these filters.</p></div>
+<div class="detpanes">{{range .Views}}{{template "detpane" .}}{{end}}</div></div>
+{{end}}{{end}}{{end}}
 
-{{define "pagetop"}}<div class="ev6" style="grid-template-columns:repeat(4,1fr)">{{range .Stats}}{{template "stat" .}}{{end}}</div>
-<div class="row" style="grid-template-columns:1.5fr 1fr">
-<div class="panel"><div class="ph"><h2>{{icon "calendar-range" 17}}{{.ChartTitle}}</h2><span class="pm">By {{lower $.KindWord}}</span></div>{{.Chart}}<div class="legend">{{range .Legend}}<span><i style="background:{{css2 .Color}}"></i>{{.Name}}</span>{{end}}{{if .Hot}}<span><i style="background:none;outline:1.5px solid #D12C2C"></i>Above normal</span>{{end}}</div></div>
-<div class="panel"><div class="ph"><h2>{{icon "list-filter" 17}}{{.TopTitle}}</h2>{{if .Top}}<span class="pm">Red = in a detection</span>{{end}}</div>{{if .Top}}<div class="mini">{{range .Top}}<div>{{if .Href}}<a class="link" style="color:inherit" href="{{.Href}}" title="{{.Label}}">{{.Label}}</a>{{else}}<span title="{{.Label}}">{{.Label}}</span>{{end}}<s style="width:{{.Pct}}%{{if .Flagged}};background:#D12C2C{{end}}"></s><b>{{commas .N}}</b></div>{{end}}</div>{{else}}<p class="pm" style="margin:0">Nothing this week.</p>{{end}}</div></div>
-{{if .Flagged}}<div class="panel" style="margin-bottom:12px"><div class="ph"><h2>{{icon "shield-alert" 17}}Detections</h2><span class="pm">{{.FlaggedNote}}</span></div><div class="dstrip">{{range .Flagged}}<a class="dc {{.Severity}}" href="#detections/{{.Index}}"><div class="b"><b>{{.Title}}</b><span>{{.Detail}}</span></div><div class="m2">{{.Host}}<small>{{.Day}} {{.Time}}</small></div></a>{{end}}</div></div>{{end}}
-{{end}}
+{{define "detli"}}<a class="li1 {{if eq .Severity "high"}}bad{{else}}warn{{end}}" data-pick="{{.Index}}" href="#detections/{{.Index}}" data-sev="{{.Severity}}" data-host="{{.Host}}" data-user="{{.PersonKey}}" data-kind="{{.HostKind}}" data-pos="{{.Pos}}"><i aria-hidden="true"></i><span class="t"><b>{{.Short}}</b></span><span class="s">{{.Host}} · {{.When}}</span></a>{{end}}
 
-{{define "events"}}
-<div class="panel" data-events="{{.ID}}">
-  <div class="ph"><h2>{{icon "list-filter" 17}}{{.All}} · {{commas .Total}}</h2><span class="pm">Click a row for the full event</span></div>
-  {{if .Omitted}}<div class="alertbar note">{{icon "info" 18}}<span>{{commas .Omitted}} routine Info events are counted in this report but not listed, to keep the report a manageable size. They are in the original logs in this report's folder.</span></div>{{end}}
-  <div class="fbar"><input class="dd txt" type="search" placeholder="Filter text…" data-f="text">
-    <select class="dd" data-f="sev" aria-label="Severity"><option value="">Severity: Any</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">None (Info)</option></select>
-    <select class="dd" data-f="host" aria-label="System"><option value="">System: Any</option></select>
-    <select class="dd" data-f="user" aria-label="Person"><option value="">Person: Any</option></select>
-    {{if .KindLabel}}<select class="dd" data-f="kind" aria-label="{{.KindLabel}}"><option value="">{{.KindLabel}}: Any</option></select>{{end}}
-    <select class="dd" data-f="day" aria-label="Day"><option value="">Day: All</option></select>
-    <span class="flagnote" data-flagnote hidden>Only: <b></b> <a href="#" class="link" data-flagclear title="Show all">×</a></span>
-  </div>
-  <div class="vt" tabindex="0" style="{{gridCols .Cols}}"><div class="vt-head">{{if .Cols}}{{range .Cols}}<span>{{.Label}}</span>{{end}}{{else}}<span>Time</span><span>System</span><span>Person</span><span>What happened</span><span>Severity</span>{{end}}</div><div class="vt-body"><div class="vt-msg">Loading events…</div></div></div>
-  <div class="pager"><span data-count></span><span></span><span data-csv>Export CSV</span></div>
-</div>
-{{end}}
+{{define "detpane"}}<div class="detail" data-pane="{{.Index}}" hidden><div class="panel detmain"><div class="dh"><h2>{{.Title}}</h2><span class="chip {{.Severity}}">{{if eq .Severity "high"}}High{{else}}Medium{{end}}</span></div>
+{{if .Detail}}<p class="detsent">{{.Detail}}</p>{{end}}
+<div class="detfacts">{{range .Facts}}<div><span>{{.Label}}</span>{{if .Href}}<a href="{{.Href}}">{{.Value}}</a>{{else}}<b>{{.Value}}</b>{{end}}{{if .Sub}}<small>{{.Sub}}</small>{{end}}</div>{{end}}</div>
+{{if .Why}}<div class="why2">{{.Why}}</div>{{end}}</div>
+<div class="row detrow"><div class="panel"><div class="ph"><h2>What happened</h2>{{if .TLHead}}<span class="pm">{{.TLHead}}</span>{{end}}</div>
+<div class="dtl">{{range .Timeline}}{{if .Gap}}<div class="gap">{{.Gap}}</div>{{else if .Ev}}<a href="#" class="{{if .Key}}k{{end}}" data-ev="{{.Ev}}" title="Open this event"><span class="tm">{{.Time}}</span><b>{{.Label}}</b><span class="tx">{{.Text}}</span><span class="id">{{.ID}}</span></a>{{else}}<div class="{{if .Key}}k{{end}}"><span class="tm">{{.Time}}</span><b>{{.Label}}</b><span class="tx">{{.Text}}</span><span class="id">{{.ID}}</span></div>{{end}}{{end}}</div>
+<div class="dbtns2">{{if .SearchHref}}<a class="btn" href="{{.SearchHref}}">Open in Search (±10 min)</a>{{end}}{{if .Person}}<a class="btn" href="{{.PersonHref}}">Everything {{.Person}} did</a>{{end}}</div></div>
+<div class="panel"><div class="ph"><h2>Related this period</h2></div>{{if .Related}}<div class="detrel">{{range .Related}}{{template "li1" .}}{{end}}</div>{{end}}{{if .RelNote}}<p class="pm" style="margin:10px 0 0">{{.RelNote}}</p>{{end}}</div></div></div>{{end}}
 
 {{define "overview"}}
-<div class="sub2" style="margin:0 0 8px">This report</div>
-<div class="kpis">{{range .KPIs}}<a class="panel kpi" href="{{.Href}}"><div class="kl">{{.Label}}</div><div class="kv{{if .Bad}} bad{{end}}">{{.Value}}</div><div class="kr"><span class="ks">{{.Note}}</span>{{.Spark}}</div></a>{{end}}</div>
-{{if .Cards}}<div class="ev6">{{range .Cards}}<a class="panel ec {{.Level}}" href="{{.Href}}"><div class="l">{{icon .Icon 15}}{{.Label}}</div><div class="v">{{.Value}}</div><div class="d">{{.Note}}</div></a>{{end}}</div>{{end}}
-{{if .Quiet}}<p class="pm" style="margin:0 0 12px">{{.Quiet}}</p>{{end}}
-<div class="row" style="grid-template-columns:1.35fr 1fr">
-<div class="panel"><div class="ph"><h2>{{icon "server" 17}}Health</h2>{{if not .Standalone}}<a class="pm link" href="#systems">{{$n := add (add .OK .Warn) .Bad}}{{$n}} {{if eq $n 1}}system{{else}}systems{{end}} →</a>{{end}}</div>
-{{if not .Standalone}}<div class="hbar">{{if .OK}}<s style="flex:{{.OK}};background:#1A9A50"></s>{{end}}{{if .Warn}}<s style="flex:{{.Warn}};background:#E08A00"></s>{{end}}{{if .Bad}}<s style="flex:{{.Bad}};background:#D12C2C"></s>{{end}}</div>
-<div class="hleg"><span><i style="background:#1A9A50"></i><b>{{.OK}}</b>reporting normally</span>{{if .Warn}}<span><i style="background:#E08A00"></i><b>{{.Warn}}</b>{{if eq .Warn 1}}warning{{else}}warnings{{end}}</span>{{end}}{{if .Bad}}<span><i style="background:#D12C2C"></i><b>{{.Bad}}</b>{{if eq .Bad 1}}problem{{else}}problems{{end}}</span>{{end}}</div>{{end}}
-{{range .Problems}}{{template "ck" .}}{{end}}
-{{if .ChecksOK}}<p class="pm" style="margin:10px 0 0">{{if .Problems}}Also fine{{else}}All fine{{end}}: {{join .ChecksOK " · "}}.</p>{{end}}
-</div>
-<div class="panel"><div class="ph"><h2>{{icon "shield-alert" 17}}Detections</h2><span class="pm"><span class="hi">{{.High}} high</span> · <span class="md">{{.Med}} medium</span></span></div>
-{{if .Detections}}<div class="dl">{{range $i, $d := .Detections}}{{if lt $i 6}}{{if or (eq $i 0) (ne $d.Day (dayBefore $.Detections $i))}}<div class="dayh">{{$d.Day}}</div>{{end}}<a class="dc {{$d.Severity}}" href="#detections/{{$d.Index}}"><div class="b"><b>{{$d.Title}}</b><span>{{$d.Detail}}</span></div><div class="m2">{{$d.Host}}<small>{{$d.Time}}</small></div></a>{{end}}{{end}}</div>
-{{if gt (len .Detections) 6}}<a class="pm link" style="display:block;margin-top:12px" href="#detections">All {{len .Detections}} detections →</a>{{end}}
+<div class="panel ovsum{{if .Clean}} clean2{{end}}"><i aria-hidden="true"></i><div><b>{{.Review}}</b>{{if .ReviewDetail}}<p>{{.ReviewDetail}}</p>{{end}}</div></div>
+<div class="panel ovstrip">{{range .Strip}}<a href="{{.Href}}"><span>{{.Label}}</span><b{{if .Bad}} class="bad"{{end}}>{{.Value}}</b><small>{{.Note}}</small></a>{{end}}</div>
+<div class="row ovrow">
+<div class="panel"><div class="ph"><h2>{{icon "shield-alert" 17}}Detections</h2>{{if or .High .Med}}<span class="pm"><span class="hi">{{.High}} high</span> · <span class="md">{{.Med}} medium</span></span>{{end}}</div>
+{{if .Dets}}<div class="ovdets">{{range .Dets}}{{template "li1" .}}{{end}}</div>
+<a class="link ovmore" href="#detections">{{.DetMore}}</a>
 {{else}}<div class="clean"><div class="ic">{{icon "shield-check" 22}}</div><div><b>Nothing unusual this {{.PeriodNoun}}</b><span>No activity matched a detection rule. Every event is still on the event pages and in Search.</span></div></div>{{end}}
+</div>
+<div class="panel"><div class="ph"><h2>{{icon "server" 17}}Needs attention</h2>{{if .Attention}}<span class="pm">{{len .Attention}} {{if eq (len .Attention) 1}}item{{else}}items{{end}}</span>{{end}}</div>
+{{if .Attention}}<div class="ovattn">{{range .Attention}}<a class="li1 {{.Level}}" href="{{.Href}}"><i aria-hidden="true"></i><span class="t"><b>{{.Title}}</b><small>{{.Reason}}</small></span><span class="c">{{.Count}}</span></a>{{end}}</div>{{else}}<p class="pm" style="margin:0 0 6px">Nothing needs attention.</p>{{end}}
+{{if .Fine}}<p class="pm ovfine">Fine: {{.Fine}}</p>{{end}}
 </div></div>
-<div class="panel" style="margin-bottom:12px"><div class="ph"><h2>{{icon "trending-up" 17}}What changed</h2><span class="pm">{{if .HistoryN}}This week so far against the average of {{.HistoryN}} complete weeks · <a class="link" href="#trends">Trends →</a>{{else}}By calendar week{{end}}</span></div>
-{{if .Changes}}<div class="chg">{{range .Changes}}<a class="c-{{.Class}}" href="{{.Href}}"><i>{{if eq .Class "dn"}}▼{{else if eq .Class "new"}}●{{else}}▲{{end}}</i><span>{{.Text}}</span></a>{{end}}</div>
-{{else if .HistoryN}}<p class="pm" style="margin:0">No big changes: every count is within 25% of its average for this point of the week, and no system or person stands out.</p>
-{{else}}<p class="pm" style="margin:0">Not enough history yet: trends start after 2 full weeks. Each scheduled report keeps its counts day by day; once two calendar weeks are fully covered, this lists the biggest changes across systems and people.</p>{{end}}</div>
-{{if .HistoryN}}<div class="sub2" style="margin:6px 0 8px">Trends · {{.TrendSpan}}</div>
-<div class="row" style="grid-template-columns:repeat(3,1fr)">{{range .Trends}}<div class="panel"><div class="ph"><h2>{{.Title}}</h2><span class="pm">{{.Note}}</span></div>{{if .Chart}}{{.Chart}}<div class="lg" style="justify-content:space-between"><span>{{.From}}</span><span>{{.To}}</span></div>{{end}}</div>{{end}}</div>{{end}}
+{{with .Activity}}<div class="panel ovact" style="margin-bottom:12px"><div class="ph"><h2>Activity this period</h2><span class="pm ovleg">events per {{.Unit}} <span><i class="w"></i>Windows</span> <span><i class="l"></i>Linux</span> <span><i class="d"></i>detection</span> · click a bar to search that {{.Unit}}</span></div>
+{{if not .Total}}<p class="pm" style="margin:0">No events happened inside this period's hours. Late events from before it are in Search.</p>{{else}}<div class="ach{{if .Dense}} dense{{end}}" role="group" aria-label="{{commas .Total}} events by {{.Unit}}">{{range .Bars}}{{if .Href}}<a href="{{.Href}}" title="{{.Title}}" aria-label="{{.Title}}">{{else}}<span title="{{.Title}}">{{end}}{{if .Det}}<em aria-hidden="true"></em>{{end}}<i class="w" style="{{.Win}}"></i><i class="l" style="{{.Lin}}"></i>{{if .Href}}</a>{{else}}</span>{{end}}{{end}}</div>
+<div class="ach-l" aria-hidden="true">{{range .Labels}}<span style="{{.Left}}">{{.Text}}</span>{{end}}</div>{{end}}</div>{{end}}
+{{if not .Standalone}}<div class="panel ovglance"><div class="ph"><h2>{{icon "server" 17}}Systems at a glance</h2>{{template "cellkey"}}</div>
+{{if .Glance}}<div class="ovgt"><table><thead><tr><th scope="col">System</th>{{range .GlanceChecks}}<th scope="col" class="c" abbr="{{.Name}}"><span class="full">{{.Name}}</span><span class="short" aria-hidden="true">{{.Short}}</span></th>{{end}}<th scope="col" class="n">Events</th></tr></thead>
+{{range .Glance}}<tbody><tr class="g"><th colspan="8" scope="colgroup">{{.Label}}</th></tr>{{range .Items}}<tr><td><a href="{{.Href}}">{{.Name}}</a><small>{{.Line}}</small></td>{{range .Cells}}<td class="c">{{template "cell" .}}</td>{{end}}<td class="n">{{.Events}}</td></tr>{{end}}</tbody>{{end}}</table></div>{{end}}
+<div class="ovgfoot">{{if .GlanceMore}}<span>{{.GlanceMore}}</span>{{end}}<a class="link" href="#systems">All {{.SystemsN}} systems on the Systems page →</a></div></div>{{end}}
 {{end}}

@@ -53,8 +53,9 @@ func TestAntivirusTable(t *testing.T) {
 	}
 }
 
-// Stat cards above an event table filter it; the People heatmap links its
-// hours; All reports is a link in the sidebar's report card.
+// An event page is Search with its kind preset (UI-R1, its stat cards
+// are gone); the People heatmap links its hours; All reports is a link in
+// the sidebar's report card.
 func TestClickableCardsAndHeatmap(t *testing.T) {
 	end := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	at := time.Date(2026, 10, 5, 9, 30, 0, 0, time.UTC) // a Monday
@@ -70,9 +71,8 @@ func TestClickableCardsAndHeatmap(t *testing.T) {
 	b, _ := os.ReadFile(filepath.Join(dir, "report.html"))
 	html := string(b)
 	for _, want := range []string{
-		`data-cardfilter="kind=Locked&#43;out"`, // Accounts locked out filters the Failed logons table
-		`data-cardfilter=""`,                    // the total card shows everything
-		`href="#search?page=failed&amp;sort=src"`,
+		`<div class="sq" data-sq="failed">`, // Failed logons is Search with its kind preset
+		`data-kindclear`,
 		`href="../index.html" title="Every report in this folder, newest first"`,
 		`href="#search?user=admin_jd&amp;when=%40slot%3A0-9"`, // a heatmap hour opens Search
 	} {
