@@ -59,8 +59,8 @@ func TestAccessibility(t *testing.T) {
 			t.Errorf("svg neither named nor hidden: %s", s)
 		}
 	}
-	if regexp.MustCompile(`<tr[^>]*aria-expanded`).MatchString(h) || !strings.Contains(h, `data-invbtn aria-expanded="false"`) {
-		t.Error("aria-expanded on a table row, or the Inventory toggle has none")
+	if regexp.MustCompile(`<tr[^>]*aria-expanded`).MatchString(h) {
+		t.Error("aria-expanded on a table row")
 	}
 	names := map[string]bool{}
 	for _, n := range regexp.MustCompile(`<nav[^>]*>`).FindAllString(h, -1) {

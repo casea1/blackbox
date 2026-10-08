@@ -455,107 +455,18 @@ func containsFold(l []string, s string) bool {
 	return false
 }
 
-// glanceCells are each system's six check cells: Reporting, Logs intact,
-// Settings, Antivirus, Original logs, SCAP.
+// glanceCells are each system's six check cells, the same squares as
+// on the Systems page (sysChecks).
 func (r *Report) glanceCells(systems []SystemRow, cleared map[string][]*Row) map[string][]CheckCell {
-	lost, other := map[string]bool{}, map[string]bool{}
-	for _, g := range r.Health.Gaps {
-		if g.Lost == 0 {
-			continue
-		}
-		if rollover.Critical(g.Channel) {
-			lost[strings.ToLower(g.Host)] = true
-		} else {
-			other[strings.ToLower(g.Host)] = true
-		}
-	}
-	av := map[string]AVRow{}
-	for _, a := range r.avRows() {
-		av[strings.ToLower(a.Host)] = a
-	}
-	noArchive := map[string]bool{}
-	for _, h := range append(append([]string(nil), r.NoArchive...), r.leftOutHosts()...) {
-		noArchive[strings.ToLower(h)] = true
-	}
-	archived := map[string]bool{}
-	for _, a := range r.Archives {
-		archived[strings.ToLower(a.Host)] = true
-	}
+	cx := r.newCheckCtx(cleared)
 	out := map[string][]CheckCell{}
 	for _, s := range systems {
-		h := strings.ToLower(s.Name)
-		rep := CheckCell{Label: "Reporting", Level: "ok", Href: "#logs/" + s.Name}
-		switch {
-		case s.Status == "silent":
-			rep.Level, rep.Title = "bad", "nothing received this "+r.periodNoun()
-			if !s.LastRun.IsZero() {
-				rep.Title = "nothing since " + r.since(s.LastRun)
-			}
-		case s.VM && s.Runs == 0:
-			rep.Level, rep.Title = "warn", "a virtual machine that sent nothing this "+r.periodNoun()
-		case s.LastRun.IsZero():
-			rep.Level = "" // not collected live (a report from saved logs)
-		case !s.VM && !r.WindowEnd.IsZero() && r.WindowEnd.Sub(s.LastRun) > silentAfter:
-			rep.Level, rep.Title = "warn", "last collection "+r.since(s.LastRun)
+		got, want := r.collections(s)
+		var cells []CheckCell
+		for _, c := range r.sysChecks(s, cx, got, want) {
+			cells = append(cells, c.CheckCell)
 		}
-		logs := CheckCell{Label: "Logs intact", Level: "ok", Href: searchLink("page", "integrity", "host", s.Name)}
-		switch {
-		case len(cleared[h]) > 0:
-			logs.Level, logs.Title = "bad", clearedWhat(cleared[h])+" cleared"
-		case lost[h]:
-			logs.Level, logs.Title = "bad", "audit events lost to log rollover"
-		case other[h]:
-			logs.Level, logs.Title = "warn", "events overwritten in another log"
-		}
-		set := CheckCell{Label: "Settings", Href: "#health/" + s.Name}
-		if s.Checks != nil {
-			set.Level = "ok"
-			switch {
-			case s.AuditOff != "":
-				set.Level, set.Title = "bad", "auditing is off"
-			case s.Checks.STIGFail > 0:
-				set.Level, set.Title = "warn", plural(s.Checks.STIGFail, "setting")+" to fix"
-			}
-		} else if s.AuditOff != "" {
-			set.Level, set.Title = "bad", "auditing is off"
-		}
-		a := CheckCell{Label: "Antivirus", Href: "#health/@av"}
-		if row, ok := av[h]; ok {
-			switch {
-			case row.ProtectionBad:
-				a.Level, a.Title = "bad", "protection off: "+row.Protection
-			case row.Level == "ok":
-				a.Level = "ok"
-			default:
-				a.Level, a.Title = "warn", strings.ToLower(row.Status)
-				if row.Age != "" {
-					a.Title += ", definitions " + row.Age
-				}
-			}
-		}
-		orig := CheckCell{Label: "Original logs", Href: "#logs/" + s.Name}
-		switch {
-		case r.PackFailing != nil && strings.EqualFold(r.PackFailing.Host, s.Name):
-			orig.Level, orig.Title = "bad", "not archived"
-		case noArchive[h]:
-			orig.Level, orig.Title = "warn", "missing for this "+r.periodNoun()
-		case archived[h]:
-			orig.Level = "ok"
-		}
-		sc := CheckCell{Label: "SCAP", Href: ScapHref(s.Name)}
-		if g, ok := r.scapGlance(s.Name); ok {
-			switch {
-			case g.Missing:
-				sc.Level, sc.Title = "warn", "no scan found"
-			case g.Cat[1] > 0:
-				sc.Level, sc.Title = "bad", plural(g.Cat[1], "open CAT I finding")
-			case g.Stale:
-				sc.Level, sc.Title = "warn", "scan out of date"
-			default:
-				sc.Level = "ok"
-			}
-		}
-		out[s.Name] = []CheckCell{rep, logs, set, a, orig, sc}
+		out[s.Name] = cells
 	}
 	return out
 }
