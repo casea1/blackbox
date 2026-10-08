@@ -372,8 +372,12 @@ blackbox uninstall            # remove the task/timer; reports are kept
     code builds fully offline.
   - Reproducible builds.
   - An SBOM (CycloneDX) and SHA-256 checksums published with every release.
-- **FIPS.** Build with Go's FIPS 140-3 module (`GOFIPS140`) so hashing uses
-  validated cryptography.
+- **FIPS.** Releases are built with `GOFIPS140=v1.0.0` (`scripts/build.sh`),
+  which links the Go Cryptographic Module v1.0.0 (CMVP certificate #5247)
+  and turns FIPS 140-3 mode on by default, so hashing uses validated
+  cryptography. `blackbox version` prints the module and whether FIPS mode
+  is on; `GODEBUG=fips140=on` turns it on for a build made without
+  `GOFIPS140` (see security.md).
 
 ---
 

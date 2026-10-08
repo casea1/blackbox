@@ -207,6 +207,12 @@ signature (Properties > Digital Signatures). `blackbox-<version>.spdx.json`
 is the software bill of materials (SPDX 2.3): Blackbox and the Go
 standard library, nothing else.
 
+Releases are built with Go's FIPS 140-3 module (`GOFIPS140=v1.0.0`, the
+Go Cryptographic Module v1.0.0) and run in FIPS mode. `blackbox version`
+shows it on its second line, for example `FIPS 140-3: Go Cryptographic
+Module v1.0.0 (built with GOFIPS140=v1.0.0); FIPS mode on`
+([details](docs/security.md#supply-chain)).
+
 ## License
 
 Copyright 2026 Austin Case. Licensed under the [Apache License, Version 2.0](LICENSE).

@@ -120,6 +120,7 @@ func main() {
 		err = install.Uninstall(printf)
 	case "version", "--version", "-v":
 		fmt.Println("blackbox", version)
+		fmt.Println(fipsState()) // COMP3
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 	default:

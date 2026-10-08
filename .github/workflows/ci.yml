@@ -42,6 +42,9 @@ jobs:
         run: go vet ./... && GOOS=windows go vet ./...
       - name: Test
         run: go test -race ./...
+      # Releases link Go's FIPS 140-3 module and run in FIPS mode (COMP3).
+      - name: Test in FIPS 140-3 mode
+        run: GOFIPS140=v1.0.0 go test ./...
       - name: Build release binaries
         run: |
           scripts/build.sh

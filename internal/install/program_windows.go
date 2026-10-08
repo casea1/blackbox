@@ -73,7 +73,7 @@ func RemoveOld() {
 // just installed. If it isn't, the previous program is put back.
 func checkPrograms(version string, ks []kept) error {
 	out, err := hidden.Command(ProgramPath(), "version").Output()
-	got := strings.TrimSpace(string(out))
+	got := versionLine(out)
 	if err == nil && got == "blackbox "+version {
 		return nil
 	}
@@ -160,5 +160,5 @@ func InstalledVersion() string {
 	if err != nil {
 		return ""
 	}
-	return strings.TrimPrefix(strings.TrimSpace(string(out)), "blackbox ")
+	return strings.TrimPrefix(versionLine(out), "blackbox ")
 }
