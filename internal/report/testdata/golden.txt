@@ -17,7 +17,7 @@
 2026-09-28T11:32:10Z medium WS-07 failed_logon | Successful logon after failures | mjones logged on to WS-07 at 11:32:10 after 3 failed attempts in the previous 30 minutes.
 2026-09-28T15:32:10Z medium ubu-audit failed_logon | Successful logon after failures | mjones logged on to ubu-audit at 15:32:10 after 3 failed attempts in the previous 30 minutes.
 
-# Rows (102)
+# Rows (101)
 2025-10-02T13:50:01Z info claude-code logon_activity logon success | austin logged on via SSH from 192.168.1.20.
 2025-10-02T13:51:10Z high claude-code privileged audit_tamper_command  | austin used sudo to run a command that can stop or weaken auditing: /usr/bin/systemctl stop rsyslog
 2025-10-02T13:52:30Z info claude-code logon_activity logoff success | austin logged off.
@@ -79,7 +79,6 @@
 2026-09-28T15:32:10Z info ubu-audit logon_activity logon success | mjones logged on at the text console.
 2026-09-28T15:40:12Z medium WS-07 privileged explicit_credentials  | jsmith used the credentials of admin_jd (RunAs / alternate credentials).
 2026-09-28T16:38:00Z high WS-07 audit_integrity log_cleared  | The Application log was cleared by admin_jd.
-2026-09-28T16:38:00Z high WS-07 privileged audit_tamper_command  | admin_jd ran a command that can clear logs or weaken auditing: wevtutil  cl Application
 2026-09-28T16:40:00Z high WS-07 audit_integrity log_cleared  | The Security log was cleared by admin_jd.
 2026-09-28T16:50:00Z medium WS-07 removable_media virtual_disk_mounted  | A virtual disk (ISO/VHD file) was mounted: Msft Virtual DVD-ROM, 4.7 GB.
 2026-09-28T16:55:10Z medium ubu-ws12 removable_media usb_connected  | USB storage connected: Kingston DataTraveler 3.0 (serial E0D55EA573DCF450E97C0A7F), 30.9 GB.
@@ -132,7 +131,7 @@
     "ubu-ws12",
     "WS-07"
   ],
-  "events": 102,
+  "events": 101,
   "high": 15,
   "medium": 22,
   "by_category": {
@@ -142,7 +141,7 @@
     "logon_activity": 13,
     "other_security": 8,
     "powershell": 0,
-    "privileged": 15,
+    "privileged": 14,
     "removable_media": 14
   },
   "events_lost": 0,
@@ -274,16 +273,16 @@
   "metrics": {
     "account_changes": 10,
     "detections": 17,
-    "events": 102,
+    "events": 101,
     "failed_logons": 26,
-    "high_events": 16,
+    "high_events": 15,
     "late_events": 0,
     "lockouts": 2,
     "logs_cleared": 2,
     "new_admins": 2,
     "new_usb_devices": 0,
     "policy_changes": 1,
-    "privileged_actions": 15,
+    "privileged_actions": 14,
     "systems_reporting": 4,
     "usb_events": 14
   },
@@ -291,7 +290,7 @@
     {
       "key": "admin_jd",
       "name": "admin_jd",
-      "privileged_actions": 11,
+      "privileged_actions": 10,
       "logons": 2,
       "detections": 8
     },
@@ -378,12 +377,12 @@
         "account_changes": 10,
         "detections": 16,
         "failed_logons": 26,
-        "high_events": 15,
+        "high_events": 14,
         "lockouts": 2,
         "logs_cleared": 2,
         "new_admins": 2,
         "policy_changes": 1,
-        "privileged_actions": 14,
+        "privileged_actions": 13,
         "usb_events": 14
       },
       "hosts": [
@@ -395,7 +394,7 @@
         {
           "key": "admin_jd",
           "name": "admin_jd",
-          "privileged_actions": 11,
+          "privileged_actions": 10,
           "logons": 2,
           "detections": 8
         },

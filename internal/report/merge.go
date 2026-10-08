@@ -936,6 +936,55 @@ func sshSources(events []*event.Event) []*event.Event {
 	return out
 }
 
+// sshLogonPairs makes each SSH logon on Windows one row (UX1b): Windows
+// OpenSSH records an administrator's sign-in as two 4624s at the same
+// second, which are not always linked to each other. Two SSH logons of
+// one account on one computer within 2 seconds are joined (each row takes
+// at most one other), keeping the one with administrator rights, and the
+// other's logon ID in its details.
+func sshLogonPairs(events []*event.Event) []*event.Event {
+	const near = 2 * time.Second
+	gone := map[*event.Event]bool{}
+	paired := map[*event.Event]bool{}
+	for i, l := range events {
+		if !isSSHLogon(l) || gone[l] || paired[l] {
+			continue
+		}
+		for j := i + 1; j < len(events) && events[j].Time.Sub(l.Time) <= near; j++ {
+			m := events[j]
+			if !isSSHLogon(m) || gone[m] || paired[m] || m.Host != l.Host || !strings.EqualFold(accountName(m.User), accountName(l.User)) {
+				continue
+			}
+			keep, drop := l, m
+			if !strings.Contains(l.Summary, "administrator") && strings.Contains(m.Summary, "administrator") {
+				keep, drop = m, l
+			}
+			if keep.SourceIP == "" && drop.SourceIP != "" {
+				keep.SourceIP = drop.SourceIP
+				keep.Summary = drop.Summary
+			}
+			keep.AddDetail("Also logon ID", detail(drop, "Logon ID")+" (Windows records an SSH sign-in twice)")
+			gone[drop], paired[keep] = true, true
+			break
+		}
+	}
+	out := events[:0]
+	for _, e := range events {
+		if !gone[e] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// accountName is an account without its domain, in lower case.
+func accountName(u string) string {
+	if i := strings.LastIndexAny(u, `\@`); i >= 0 && u[i] == '\\' {
+		u = u[i+1:]
+	}
+	return strings.ToLower(u)
+}
+
 func isSSHLogon(e *event.Event) bool {
 	return e.OS == "windows" && e.Action == "logon" && detail(e, "Logon type") == "SSH (OpenSSH)"
 }
@@ -970,6 +1019,23 @@ func (r *Report) foldConsoleHosts(events []*event.Event) []*event.Event {
 				break
 			}
 		}
+		if p == nil && plainConsoleHost(e) {
+			// Started by a program that is not a row (sshd, for an SSH
+			// session's console): part of that person's session, folded
+			// into their latest logon on that computer, or left out
+			// (UX1b).
+			for j := i - 1; j >= 0; j-- {
+				x := events[j]
+				if x.Host == e.Host && x.Action == "logon" && strings.EqualFold(accountName(x.User), accountName(e.User)) {
+					p = x
+					break
+				}
+			}
+			if p == nil {
+				r.Folded++
+				continue
+			}
+		}
 		if p == nil {
 			out = append(out, e)
 			continue
@@ -990,6 +1056,28 @@ func (r *Report) foldConsoleHosts(events []*event.Event) []*event.Event {
 		p.AddDetail("Also started", what+", not shown as rows of their own")
 	}
 	return out
+}
+
+// plainConsoleHost is a console host started the usual way
+// ("conhost.exe 0xffffffff -ForceV1"), with nothing in its command line a
+// person chose.
+func plainConsoleHost(e *event.Event) bool {
+	cmd := strings.ToLower(e.Command)
+	if i := strings.Index(cmd, "conhost.exe"); i >= 0 {
+		cmd = cmd[i+len("conhost.exe"):]
+	} else if i := strings.Index(cmd, "openconsole.exe"); i >= 0 {
+		cmd = cmd[i+len("openconsole.exe"):]
+	}
+	for _, f := range strings.Fields(strings.Trim(cmd, `" `)) {
+		switch f {
+		case "0xffffffff", "-forcev1", "--headless", "--server":
+		default:
+			if !strings.HasPrefix(f, "0x") {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func baseName(p string) string {
@@ -1209,6 +1297,100 @@ func dropWindowsModules(in []*event.Event) []*event.Event {
 	return out
 }
 
+// foldClearCommands makes one log clear one row (DUP2): the command that
+// cleared a log ("wevtutil cl …", Clear-EventLog) and the log's own
+// record of being cleared (1102 or 104) were two High rows. The command
+// is folded into the clear when they match: same computer and person,
+// the command names that log, within a minute. Its command line is kept
+// in the clear's details.
+func foldClearCommands(events []*event.Event) []*event.Event {
+	gone := map[*event.Event]bool{}
+	for _, c := range events {
+		if c.Action != "log_cleared" {
+			continue
+		}
+		log := c.Target
+		if log == "" {
+			log = "Security"
+		}
+		for j := range events {
+			x := events[j]
+			if gone[x] || (x.Action != "audit_tamper_command" && x.Action != "powershell_tamper") || x.Host != c.Host ||
+				accountName(x.User) != accountName(c.User) || absDur(x.Time.Sub(c.Time)) > time.Minute || !clearsLog(x, log) {
+				continue
+			}
+			gone[x] = true
+			cmd := detail(x, "Command line")
+			if cmd == "" {
+				cmd = detail(x, "Script")
+			}
+			if cmd == "" {
+				cmd = x.Summary
+			}
+			c.AddDetail("Cleared with", cmd)
+			if p := detail(x, "Program"); p != "" {
+				c.AddDetail("Program", p)
+			}
+			break
+		}
+	}
+	out := events[:0]
+	for _, e := range events {
+		if !gone[e] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// clearsLog says whether a command row clears the log named log.
+func clearsLog(e *event.Event, log string) bool {
+	text := strings.ToLower(strings.ReplaceAll(detail(e, "Command line")+" "+detail(e, "PowerShell command (decoded)")+" "+detail(e, "Script")+" "+e.Summary, `"`, ""))
+	if !strings.Contains(text, strings.ToLower(log)) {
+		return false
+	}
+	f := strings.Fields(text)
+	for i, w := range f {
+		w = strings.Trim(w, "'(),;")
+		switch {
+		case (w == "cl" || w == "clear-log") && i > 0 && strings.Contains(f[i-1], "wevtutil"):
+			return true
+		case w == "clear-eventlog", w == "clear-log", strings.Contains(w, ".clear()"), strings.Contains(w, "clearlog("):
+			return true
+		}
+	}
+	return false
+}
+
+// mergeReportFiles adds e's report files to kept's, and says them again.
+func mergeReportFiles(kept, e *event.Event) {
+	have := strings.Split(kept.Fields[event.ReportFilesFlag], "\n")
+	seen := map[string]bool{}
+	for _, f := range have {
+		seen[f] = true
+	}
+	for _, f := range strings.Split(e.Fields[event.ReportFilesFlag], "\n") {
+		if !seen[f] {
+			seen[f] = true
+			have = append(have, f)
+		}
+	}
+	kept.Fields[event.ReportFilesFlag] = strings.Join(have, "\n")
+	verb := "changed"
+	if strings.HasPrefix(kept.DedupeKey, "bbreport|deleted|") {
+		verb = "deleted"
+	}
+	who := kept.User
+	if who == "" {
+		who = "an unknown account"
+	}
+	prog := filepath.Base(strings.ReplaceAll(kept.Process, "\\", "/"))
+	if kept.Process == "" {
+		prog = ""
+	}
+	kept.Summary = event.ReportFilesSummary(who, verb, kept.Target, prog, have)
+}
+
 // defenderUpdates uses Defender's own updates (T2b): a code integrity
 // failure (5038) on a file under Windows Defender\Platform\ within 15
 // minutes of a Defender update on that computer, in the folder of a
@@ -1269,33 +1451,4 @@ func roughSpan(d time.Duration) string {
 		return "1 minute " + when
 	}
 	return fmt.Sprintf("%d minutes %s", m, when)
-}
-
-// mergeReportFiles adds e's report files to kept's, and says them again.
-func mergeReportFiles(kept, e *event.Event) {
-	have := strings.Split(kept.Fields[event.ReportFilesFlag], "\n")
-	seen := map[string]bool{}
-	for _, f := range have {
-		seen[f] = true
-	}
-	for _, f := range strings.Split(e.Fields[event.ReportFilesFlag], "\n") {
-		if !seen[f] {
-			seen[f] = true
-			have = append(have, f)
-		}
-	}
-	kept.Fields[event.ReportFilesFlag] = strings.Join(have, "\n")
-	verb := "changed"
-	if strings.HasPrefix(kept.DedupeKey, "bbreport|deleted|") {
-		verb = "deleted"
-	}
-	who := kept.User
-	if who == "" {
-		who = "an unknown account"
-	}
-	prog := filepath.Base(strings.ReplaceAll(kept.Process, "\\", "/"))
-	if kept.Process == "" {
-		prog = ""
-	}
-	kept.Summary = event.ReportFilesSummary(who, verb, kept.Target, prog, have)
 }

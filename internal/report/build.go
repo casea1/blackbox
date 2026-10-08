@@ -325,8 +325,10 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	events = sshAttempts(events)
 	unknownNames(events)
 	events = mergeAdminLogons(events)
+	events = sshLogonPairs(events)
 	events = sshSources(events)
 	events = r.dedupe(events)
+	events = foldClearCommands(events)
 	own := runs
 	if opt.OwnRuns != nil {
 		own = opt.OwnRuns
