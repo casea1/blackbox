@@ -1,15 +1,20 @@
 # Linux guide
 
-Supports Ubuntu 22.04 and 24.04, and AlmaLinux 8.10.
+Supports Ubuntu 22.04, 24.04 and 26.04, and AlmaLinux 8.10.
 
-**Ubuntu 26.04 is not supported yet.** Blackbox already handles what
-changes there: OpenSSH 10's `sshd-session` and `sshd-auth`, the GNU
-tools renamed `gnurm`, `gnucp` and so on (shown by their usual names),
-and sudo-rs, which writes no audit record of the commands it runs
-(`blackbox check` flags it, and Blackbox reads sudo's journal lines
-instead, with or without a terminal). A sudo-rs command refused because
-the person is not in sudoers is logged nowhere. It is not yet tested on 26.04 in CI, so use it there at your
-own risk until it is listed here.
+On **Ubuntu 26.04** Blackbox handles what changes there:
+
+- OpenSSH 10's `sshd-session` and `sshd-auth`, which record no logon
+  (`USER_LOGIN`) in the audit log for an SSH sign-in. Blackbox takes the
+  sign-in from the session start (`USER_START`) instead, and the method
+  from `auth.log` (see [SSH logons](#ssh-logons)). `blackbox check` warns
+  when sshd records sessions but no logons.
+- The GNU tools renamed `gnurm`, `gnucp` and so on (shown by their usual
+  names).
+- sudo-rs, which writes no audit record of the commands it runs
+  (`blackbox check` flags it, and Blackbox reads sudo's journal lines
+  instead, with or without a terminal). A sudo-rs command refused because
+  the person is not in sudoers is logged nowhere.
 
 No other software is needed. Blackbox is a single self-contained program:
 there is no Go or other runtime to install.
@@ -228,11 +233,34 @@ system, `/sbin/modprobe` and `/usr/sbin/modprobe` are one file, and
 |---|---|
 | `/var/log/audit/audit.log` | Logons, failed logons and lockouts, sudo and su, root shells, account and group changes, sudoers and `/etc/passwd` edits, auditd stopped, audit rules changed, time changes, kernel modules, AppArmor/SELinux |
 | `/var/log/syslog` (Ubuntu), `/var/log/messages` (Alma), or the systemd journal | USB devices from kernel messages (make, model, serial, size, USB network adapters), and who mounted them (udisks) |
-| `/var/log/auth.log` (Ubuntu), `/var/log/secure` (Alma) | Only when auditd is not installed: logons, sudo, su and account changes |
+| `/var/log/auth.log` (Ubuntu), `/var/log/secure` (Alma) | With auditd: sshd's sign-in lines (see [SSH logons](#ssh-logons)), and sudo-rs's commands. Without auditd: logons, sudo, su and account changes |
 
 Each file is read from where the last run stopped. Blackbox follows log
 rotation, and the report says if anything was rotated away, or dropped by
 the kernel, before it could be read.
+
+### SSH logons
+
+Each SSH sign-in is one Logons row, with the account, the source address
+and, when sshd's lines are there, the method (`password` or `publickey`)
+and the key's type and fingerprint. The row is built from whichever of
+these the system writes, all within a few seconds of each other:
+
+- the audit log's logon record (`USER_LOGIN`), written by sshd on Ubuntu
+  22.04 and 24.04 and AlmaLinux
+- the audit log's session start (`USER_START`, `terminal=ssh`), the only
+  audit record of a sign-in on Ubuntu 26.04
+- sshd's `Accepted publickey for claude from 192.168.1.11 port 50522 ssh2:
+  ED25519 SHA256:…` line in `auth.log`/`secure` or the journal
+
+Each failed try is one Failed Logons row, from the audit log's password
+check (`USER_AUTH`) and failed logon (`USER_LOGIN`), joined to sshd's
+`Failed password …`, `Failed publickey …` or `… for invalid user …` line,
+which says whether a password or a key was refused and whether the name
+exists. A connection closed while signing in with no `Failed` line (how a
+refused key shows at sshd's usual log level) is a failed try too. A
+connection from an unknown name that tried nothing (`Invalid user` alone)
+is not.
 
 ## Reporting on copied logs
 
@@ -244,7 +272,8 @@ blackbox report --audit audit.log --audit audit.log.1 --syslog syslog --passwd p
 ```
 
 `--passwd` is optional. It turns user ID numbers into names when the audit
-log is not in ENRICHED format. Use `--host NAME` if the logs don't include
+log is not in ENRICHED format. Give `auth.log` (or `secure`) with
+`--syslog` as well to see how each SSH sign-in was made. Use `--host NAME` if the logs don't include
 the host name.
 
 ## Uninstall

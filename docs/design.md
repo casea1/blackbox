@@ -47,7 +47,7 @@ decisions made so far.
 |---|---|
 | Windows 11 Enterprise | Security, System, Application, PowerShell/Operational, Partition/Diagnostic, DriverFrameworks-UserMode, Defender, Sysmon (if installed) |
 | Windows Server 2025 | Same as above; also the log collector role once the LAN is on a domain (§7) |
-| Ubuntu 22.04 / 24.04 | auditd (`/var/log/audit/audit.log*`), journald, `/var/log/auth.log`, AppArmor |
+| Ubuntu 22.04 / 24.04 / 26.04 | auditd (`/var/log/audit/audit.log*`), journald, `/var/log/auth.log`, AppArmor |
 | AlmaLinux 8.10 | auditd, journald, `/var/log/secure`, SELinux AVC |
 
 Everything ships as a single static binary for each OS (Go, cross-compiled),

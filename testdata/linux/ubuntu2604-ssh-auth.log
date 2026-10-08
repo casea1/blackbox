@@ -1,0 +1,11 @@
+2026-10-05T11:33:20.098765+00:00 ubuntu2604 sshd-session[12301]: Accepted publickey for claude from 192.168.1.11 port 50522 ssh2: ED25519 SHA256:Xq3vJ1bH0wq8m5yQm1r7S0e2Fq6kTzv9yP4uLr2aB8c
+2026-10-05T11:33:20.131902+00:00 ubuntu2604 sshd-session[12301]: pam_unix(sshd:session): session opened for user claude(uid=1000) by claude(uid=0)
+2026-10-05T11:33:20.150417+00:00 ubuntu2604 systemd-logind[701]: New session 7 of user claude.
+2026-10-05T11:35:00.401533+00:00 ubuntu2604 sshd-session[12340]: Accepted password for claude from 192.168.1.11 port 50530 ssh2
+2026-10-05T11:35:00.425871+00:00 ubuntu2604 sshd-session[12340]: pam_unix(sshd:session): session opened for user claude(uid=1000) by claude(uid=0)
+2026-10-05T11:35:00.441206+00:00 ubuntu2604 systemd-logind[701]: New session 8 of user claude.
+2026-10-05T11:37:00.309114+00:00 ubuntu2604 unix_chkpwd[12382]: password check failed for user (claude)
+2026-10-05T11:37:00.310245+00:00 ubuntu2604 sshd-session[12380]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=192.168.1.23  user=claude
+2026-10-05T11:37:02.511873+00:00 ubuntu2604 sshd-session[12380]: Failed password for claude from 192.168.1.23 port 41000 ssh2
+2026-10-05T11:37:03.102559+00:00 ubuntu2604 sshd-session[12380]: Connection closed by authenticating user claude 192.168.1.23 port 41000 [preauth]
+2026-10-05T11:38:00.214736+00:00 ubuntu2604 sshd-session[12390]: Connection closed by authenticating user claude 192.168.1.23 port 41012 [preauth]

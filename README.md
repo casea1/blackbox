@@ -39,7 +39,7 @@ whole air-gapped LAN can be covered by one report.
 | | |
 |---|---|
 | Windows | Windows 11, Windows Server 2025 |
-| Linux | Ubuntu 22.04 and 24.04, AlmaLinux 8.10 (auditd recommended, as the STIG requires) |
+| Linux | Ubuntu 22.04, 24.04 and 26.04, AlmaLinux 8.10 (auditd recommended, as the STIG requires) |
 
 ## Install
 

@@ -460,3 +460,40 @@ func TestSudoCommandsKeepTheirArguments(t *testing.T) {
 		t.Errorf("want 2 commands kept apart, got %v", keys)
 	}
 }
+
+// LNX1: with auditd, only sshd's sign-in lines are read from auth.log (the
+// rest is in the audit log). A connection closed while signing in is a
+// failed try only when no "Failed" line came for it.
+func TestSSHFromSyslog(t *testing.T) {
+	lines := []string{
+		"2026-10-05T11:33:20.098765+00:00 ubu sshd-session[12301]: Accepted publickey for claude from 192.168.1.11 port 50522 ssh2: ED25519 SHA256:Xq3vJ1bH0wq8m5yQm1r7S0e2Fq6kTzv9yP4uLr2aB8c",
+		"2026-10-05T11:33:20.131902+00:00 ubu sshd-session[12301]: pam_unix(sshd:session): session opened for user claude(uid=1000) by claude(uid=0)",
+		"2026-10-05T11:34:00.000000+00:00 ubu sudo:   claude : TTY=pts/0 ; PWD=/home/claude ; USER=root ; COMMAND=/usr/bin/id",
+		"2026-10-05T11:37:02.511873+00:00 ubu sshd-session[12380]: Failed password for claude from 192.168.1.23 port 41000 ssh2",
+		"2026-10-05T11:37:03.102559+00:00 ubu sshd-session[12380]: Connection closed by authenticating user claude 192.168.1.23 port 41000 [preauth]",
+		"2026-10-05T11:38:00.214736+00:00 ubu sshd-session[12390]: Connection closed by authenticating user claude 192.168.1.23 port 41012 [preauth]",
+		"2026-10-05T11:38:30.000000+00:00 ubu sshd-session[12395]: Failed publickey for invalid user bob from 192.168.1.23 port 41020 ssh2: RSA SHA256:abc",
+	}
+	tr := NewTranslator("ubu", nil)
+	tr.SSHFromSyslog = true
+	p := &LineParser{Loc: time.UTC, Ref: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)}
+	var got []string
+	for _, s := range lines {
+		l, ok := p.Parse(s)
+		if !ok {
+			t.Fatalf("not parsed: %s", s)
+		}
+		if e := tr.Syslog(l, "auth.log"); e != nil {
+			got = append(got, e.Summary)
+		}
+	}
+	want := []string{
+		"claude logged on via SSH from 192.168.1.11.",
+		"Failed logon for claude via SSH from 192.168.1.23 — wrong password.",
+		"Failed logon for claude via SSH from 192.168.1.23 — no key or password was accepted before the connection closed.",
+		"Failed logon for bob via SSH from 192.168.1.23 — the user name does not exist.",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("got:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
