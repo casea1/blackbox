@@ -13,6 +13,12 @@ import (
 // tracks), and it is listed apart from the deletes that happened.
 const refusedRemove = "blackbox_files_remove_refused"
 
+// unconfirmedRemove is a command that deletes Blackbox's files when only
+// its command line was recorded (DET1b): no record of the delete working
+// or being refused, and the files were not found gone at the run that
+// collected it. It is Medium and, like a refused one, not a removal.
+const unconfirmedRemove = "blackbox_files_remove_unconfirmed"
+
 // refusedDeletes re-reads a command that deletes Blackbox's files ("rm
 // /var/lib/blackbox/…", "del C:\ProgramData\Blackbox\…") as an attempt
 // when the delete itself failed: the command's own record says so
@@ -22,6 +28,12 @@ const refusedRemove = "blackbox_files_remove_refused"
 // 4663 audit failures by the same process ID) and none of them shows a
 // file of Blackbox's deleted or changed. The refusals are kept in the
 // command's row as details, not as rows of their own.
+//
+// A delete stays High, "deleted Blackbox's files", only when a record
+// shows it worked: a file of Blackbox's deleted or changed by the same
+// process, or a file it names gone at the Blackbox run that collected it
+// (DET1b). With only the command line it is "ran rm on Blackbox's files",
+// Medium: whether it worked isn't recorded.
 func refusedDeletes(events []*event.Event) []*event.Event {
 	var refusals, changes []*event.Event
 	for _, e := range events {
@@ -44,9 +56,6 @@ func refusedDeletes(events []*event.Event) []*event.Event {
 				refused = append(refused, x)
 			}
 		}
-		if c.Outcome != "failure" && len(refused) == 0 {
-			continue
-		}
 		did := false
 		for _, x := range changes {
 			if sameAttempt(c, x) {
@@ -55,6 +64,14 @@ func refusedDeletes(events []*event.Event) []*event.Event {
 			}
 		}
 		if did {
+			continue
+		}
+		if c.Outcome != "failure" && len(refused) == 0 {
+			if gone := c.Fields[event.RemovedGone]; gone != "" {
+				c.AddDetail("Gone at Blackbox's next run", strings.ReplaceAll(gone, "\n", ", "))
+			} else {
+				markUnconfirmed(c)
+			}
 			continue
 		}
 		markRefused(c, refused)
@@ -133,6 +150,28 @@ func markRefused(c *event.Event, refused []*event.Event) {
 		c.AddDetail("Refused", x.Target+" ("+r+")")
 	}
 	c.AddDetail("Not a removal", "The operating system refused the delete, so Blackbox's files are still there.")
+}
+
+// markUnconfirmed makes a delete known only from its command line an
+// attempt whose result isn't recorded (DET1b).
+func markUnconfirmed(c *event.Event) {
+	cmd := firstNonEmpty(c.Command, detail(c, "Command line"), detail(c, "Command"))
+	prog := firstNonEmpty(event.RemoveProgram(cmd), "a delete command")
+	what := "ran " + prog + " on Blackbox's files"
+	if strings.Contains(c.Summary, " "+event.FilesRemoved+": ") {
+		c.Summary = strings.Replace(c.Summary, " "+event.FilesRemoved+": ", " "+what+": ", 1)
+	} else {
+		c.Summary = orUnknown(c.User) + " " + what + ": " + cmd
+	}
+	c.Action, c.Severity = unconfirmedRemove, event.SevMedium
+	c.DedupeKey = "unconfirmed|" + c.DedupeKey
+	c.AddDetail("Whether it worked", "isn't recorded: the audit log has the command, but no record of the delete itself")
+	if v := c.Fields[event.RemovedThere]; v != "" {
+		c.AddDetail("Still there at Blackbox's next run", strings.ReplaceAll(v, "\n", ", "))
+	}
+	if v := c.Fields[event.RemovedMoved]; v != "" {
+		c.AddDetail("Not there at Blackbox's next run", strings.ReplaceAll(v, "\n", ", ")+" (Blackbox moves files out of that folder itself, so this does not show the delete worked)")
+	}
 }
 
 func firstNonEmpty(vals ...string) string {

@@ -271,12 +271,15 @@ server does not have.
 
 A command that deletes Blackbox's files (`del`, `Remove-Item`, `rd` of
 something under `C:\ProgramData\Blackbox`) is High, "deleted Blackbox's
-files". When the File System audit records of the same process (4656 or
+files", when a record shows it worked. When the File System audit records of the same process (4656 or
 4663, audit failure, the same process ID as the command's 4688) show the
 delete refused, and none shows a file deleted, the row says "tried to
 delete Blackbox's files (refused)", Medium, with the refused files in its
 details, and it is not counted as a removal (DET1). This needs failure
-auditing on the folder, as above.
+auditing on the folder, as above. With no File System record of the
+delete at all (the folder has no auditing entry), the row is "ran del on
+Blackbox's files", Medium, whether it worked isn't recorded, unless a
+file it names is gone at the next Blackbox run (DET1b).
 
 Script Block Logging must be turned on by Group Policy: Administrative
 Templates > Windows Components > Windows PowerShell > Turn on PowerShell

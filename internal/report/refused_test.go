@@ -183,7 +183,8 @@ func TestRefusedAndSuccessfulDeletes(t *testing.T) {
 
 // DET1 on Windows: "del" of a file in C:\ProgramData\Blackbox whose
 // delete was refused (4656, audit failure, by the same process) is the
-// same Medium attempt; one with no refusal stays a removal.
+// same Medium attempt; one with no record of the delete is "ran del",
+// Medium, as its result isn't recorded (DET1b).
 func TestRefusedDeleteWindows(t *testing.T) {
 	proc := func(at, pid, cmd string) string {
 		return `<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event"><System><Provider Name="Microsoft-Windows-Security-Auditing"/><EventID>4688</EventID><Version>2</Version><Level>0</Level><Task>13312</Task><Opcode>0</Opcode><Keywords>0x8020000000000000</Keywords><TimeCreated SystemTime="` + at + `"/><EventRecordID>2001</EventRecordID><Correlation/><Execution ProcessID="4" ThreadID="100"/><Channel>Security</Channel><Computer>WIN11-TEST</Computer><Security/></System><EventData>` +
@@ -220,9 +221,14 @@ func TestRefusedDeleteWindows(t *testing.T) {
 		!strings.Contains(refused[0].Summary, `blackbox.conf`) {
 		t.Fatalf("refused rows: %v (all: %v)", summaries(refused), summaries(r.Events))
 	}
-	removed := det1Rows(r, "blackbox_files_removed")
-	if len(removed) != 1 || !strings.Contains(removed[0].Summary, "state.json") || removed[0].Severity != event.SevHigh {
+	// The other del has no record of the delete either way (DET1b).
+	if removed := det1Rows(r, "blackbox_files_removed"); len(removed) != 0 {
 		t.Errorf("removal rows: %v", summaries(removed))
+	}
+	unknown := det1Rows(r, unconfirmedRemove)
+	if len(unknown) != 1 || !strings.Contains(unknown[0].Summary, "jsmith ran del on Blackbox's files:") ||
+		!strings.Contains(unknown[0].Summary, "state.json") || unknown[0].Severity != event.SevMedium {
+		t.Errorf("command-only rows: %v", summaries(unknown))
 	}
 	if n := len(det1Rows(r, "file_access_denied")); n != 0 {
 		t.Errorf("%d separate refused-access rows", n)
@@ -242,14 +248,18 @@ func summaries(evs []*event.Event) []string {
 // refusal by someone else, or of another file, is not.
 func TestRefusedDeleteWithoutProcessIDs(t *testing.T) {
 	at := time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)
-	cmd := &event.Event{Time: at, Host: "ub", OS: "linux", User: "claude", Action: "blackbox_files_removed", Severity: event.SevHigh,
-		Category: event.CatIntegrity, Command: "rm /var/lib/blackbox/spool/a.json", Summary: "claude deleted Blackbox's files: rm /var/lib/blackbox/spool/a.json"}
+	newCmd := func() *event.Event {
+		return &event.Event{Time: at, Host: "ub", OS: "linux", User: "claude", Action: "blackbox_files_removed", Severity: event.SevHigh,
+			Category: event.CatIntegrity, Command: "rm /var/lib/blackbox/spool/a.json", Summary: "claude deleted Blackbox's files: rm /var/lib/blackbox/spool/a.json"}
+	}
+	cmd := newCmd()
 	other := &event.Event{Time: at.Add(time.Second), Host: "ub", OS: "linux", User: "bob", Action: "file_access_denied", Outcome: "failure",
 		Target: "/var/lib/blackbox/spool/a.json"}
 	got := refusedDeletes([]*event.Event{cmd, other})
-	if len(got) != 2 || cmd.Action != "blackbox_files_removed" {
+	if len(got) != 2 || cmd.Action != unconfirmedRemove {
 		t.Fatalf("someone else's refusal changed the row: %v", summaries(got))
 	}
+	cmd = newCmd()
 	mine := &event.Event{Time: at.Add(time.Second), Host: "UB", OS: "linux", User: "claude", Action: "file_access_denied", Outcome: "failure",
 		Target: "/var/lib/blackbox/spool/a.json"}
 	got = refusedDeletes([]*event.Event{cmd, other, mine})

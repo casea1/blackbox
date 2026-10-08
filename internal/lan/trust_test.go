@@ -390,3 +390,35 @@ func TestNewID(t *testing.T) {
 		t.Errorf("renumbered batch: %+v %v", b, err)
 	}
 }
+
+// LOG2: a batch delivered again that was already imported (blackbox
+// send --resend) says so in its line of blackbox.log, not "imported".
+func TestResentBatchLogLine(t *testing.T) {
+	in := inbox(t)
+	col, _ := store.Open(t.TempDir())
+	ws := system(t, "WS-07", "linux", 1, t0)
+	Export(ws, "WS-07", "test", t0)
+	if n, err := Deliver(ws, in, "WS-07", true); err != nil || n != 1 {
+		t.Fatalf("deliver: %d %v", n, err)
+	}
+	var lines []string
+	logf := func(f string, a ...any) { lines = append(lines, fmt.Sprintf(f, a...)) }
+	if res, _ := Import(col, in, Dirs{}, t0.Add(time.Minute), logf); res.Batches != 1 {
+		t.Fatalf("import: %+v", res)
+	}
+	first := strings.Join(lines, "\n")
+	if _, _, err := Resend(ws, in, "WS-07", 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	lines = nil
+	if res, _ := Import(col, in, Dirs{}, t0.Add(time.Hour), logf); res.Already != 1 || res.Batches != 0 {
+		t.Fatalf("sent again: %+v", res)
+	}
+	got := strings.Join(lines, "\n")
+	if strings.Contains(got, "inbox: imported") {
+		t.Errorf("a batch sent again is logged as imported:\n%s", got)
+	}
+	if strings.Contains(first, "inbox: imported") && !strings.Contains(got, "was already imported (sent again), written by") {
+		t.Errorf("no already-imported line:\n%s", got)
+	}
+}

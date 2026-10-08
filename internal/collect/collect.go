@@ -32,6 +32,10 @@ type Options struct {
 	// Blocked is collection refused since the last run (LOCK1), recorded
 	// with this run.
 	Blocked *store.Blocked
+	// MovedBy are the folders Blackbox moves files out of itself (the
+	// inbox, the original logs waiting): a file gone from one does not
+	// show that a command deleted it (DET1b).
+	MovedBy []string
 }
 
 // LocalHost is the name this system's events and runs are recorded under:
@@ -176,6 +180,7 @@ func collectChannel(st *store.Store, tr *winevt.Translator, host, ch string, now
 			}
 			e.Collected = now
 			OnThisComputer(e, host)
+			checkRemoved(e, opt.MovedBy)
 			batch = append(batch, e)
 			cr.Kept++
 		}
