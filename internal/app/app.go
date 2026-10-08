@@ -60,6 +60,9 @@ type App struct {
 	// RecordSelf records a change Blackbox makes on a person's request
 	// (nil: selfaudit.Record, the spool and the system log).
 	RecordSelf func(dataDir string, c event.SelfChange, now time.Time) error
+	// ReportAlert writes a missing or changed scheduled report to the
+	// system log (nil: selfaudit.ReportProblem); tests replace it.
+	ReportAlert func(msg string) error
 	// LogStates reads how far back each log reaches and whether it is full
 	// (nil: archive.LogStates); tests replace it.
 	LogStates func() []archive.LogState

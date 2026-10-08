@@ -125,7 +125,7 @@ func TestReportLedgerFiles(t *testing.T) {
 	}
 	st.Save()
 	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportDir: reports, ReportEvery: "weekly", ReportAt: config.DefaultReportAt}, Version: "test", Loc: time.UTC,
-		Now: func() time.Time { return now }, Logf: func(string, ...any) {}}
+		Now: func() time.Time { return now }, Logf: func(string, ...any) {}, ReportAlert: func(string) error { return nil }}
 	status := func() string {
 		var b bytes.Buffer
 		a.Status(&b)
@@ -189,7 +189,7 @@ func TestLedgerOldRecord(t *testing.T) {
 	to := time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
 	st.State.Reports = []store.ReportRecord{{Dir: d, From: to.AddDate(0, 0, -1), To: to, Made: to, Manifest: sum, Verified: now}} // as 0.19 kept it
 	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportDir: reports, ReportEvery: "daily", ReportAt: config.DefaultReportAt}, Version: "test", Loc: time.UTC,
-		Now: func() time.Time { return now }, Logf: func(string, ...any) {}}
+		Now: func() time.Time { return now }, Logf: func(string, ...any) {}, ReportAlert: func(string) error { return nil }}
 
 	var b bytes.Buffer
 	if err := a.Reports(&b); err != nil {
@@ -214,5 +214,66 @@ func TestLedgerOldRecord(t *testing.T) {
 	var na *NeedsAttention
 	if err := a.Reports(&b); !errors.As(err, &na) || !strings.Contains(b.String(), "CHANGED: logs-WIN11-TEST.zip is missing") {
 		t.Errorf("blackbox reports (%v):\n%s", err, b.String())
+	}
+}
+
+// LEDGER4: a scheduled report found missing or changed is written to the
+// system log (Application event 101 on Windows, ident blackbox on Linux)
+// once, not at every run; again only if it is fixed and then goes wrong
+// again, or goes from changed to missing. A failed write is tried again.
+func TestReportProblemSystemLog(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	reports := t.TempDir()
+	now := time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC)
+	d := filepath.Join(reports, "2026-10-07_CI")
+	os.MkdirAll(d, 0o755)
+	os.WriteFile(filepath.Join(d, "report.html"), []byte("<html>"), 0o644)
+	sum, _ := fileSHA256(filepath.Join(d, "report.html"))
+	os.WriteFile(filepath.Join(d, "manifest.sha256"), []byte(sum+"  report.html\n"), 0o644)
+	noteReport(st, d, now.Add(-9*time.Hour).AddDate(0, 0, -7), now.Add(-9*time.Hour), now)
+	var logged []string
+	fail := false
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportDir: reports, ReportEvery: "weekly", ReportAt: config.DefaultReportAt}, Version: "test", Loc: time.UTC,
+		Now: func() time.Time { return now }, Logf: func(string, ...any) {},
+		ReportAlert: func(msg string) error {
+			if fail {
+				return errors.New("no syslog")
+			}
+			logged = append(logged, msg)
+			return nil
+		}}
+	a.verifyReports(st)
+	if len(logged) != 0 {
+		t.Fatalf("logged for a report in place: %q", logged)
+	}
+	os.WriteFile(filepath.Join(d, "report.html"), []byte("<html>!"), 0o644)
+	fail = true
+	a.verifyReports(st)
+	fail = false
+	for i := 0; i < 3; i++ {
+		a.verifyReports(st)
+	}
+	if len(logged) != 1 || !strings.HasPrefix(logged[0], "REPORT CHANGED: The scheduled report for 2026-10-01 00:00 to 2026-10-08 00:00 (2026-10-07_CI) was changed after it was written: report.html was changed (its size differs).") ||
+		!strings.HasSuffix(logged[0], "\". Folder: "+d) {
+		t.Fatalf("logged: %q", logged)
+	}
+	if st2, _ := store.Open(st.Dir); st2.State.Reports[0].Alerted != "changed" {
+		t.Error("not kept in the ledger")
+	}
+	os.RemoveAll(d)
+	a.verifyReports(st)
+	a.verifyReports(st)
+	if len(logged) != 2 || !strings.HasPrefix(logged[1], "REPORT MISSING: ") {
+		t.Fatalf("logged: %q", logged)
+	}
+	// Accepted: nothing more, and no repeat.
+	if err := a.AcceptReport("2026-10-07_CI", "moved to the archive drive"); err != nil {
+		t.Fatal(err)
+	}
+	st, _ = store.Open(st.Dir)
+	a.RecordSelf = func(string, event.SelfChange, time.Time) error { return nil }
+	a.verifyReports(st)
+	if len(logged) != 2 {
+		t.Fatalf("logged after accepting: %q", logged)
 	}
 }

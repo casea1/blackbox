@@ -647,6 +647,10 @@ type ReportRecord struct {
 	// Accepted says a person recorded that it is gone or changed on
 	// purpose (moved to an archive drive, for example).
 	Accepted *ReportAcceptance `json:"accepted,omitempty"`
+	// Alerted is the problem ("missing" or "changed") last written to the
+	// system log for it, so it is written once, not at every run
+	// (LEDGER4); cleared when the problem is gone.
+	Alerted string `json:"alerted,omitempty"`
 }
 
 // ReportAcceptance is who accepted a missing or changed report, when and why.

@@ -45,3 +45,7 @@ func systemLog(msg string, warn bool) error {
 	}
 	return w.Notice(msg)
 }
+
+// reportLog writes a warning about a scheduled report to syslog/the
+// journal, ident blackbox (LEDGER4).
+func reportLog(msg string) error { return systemLog(msg, true) }

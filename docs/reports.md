@@ -501,7 +501,11 @@ compressed. It depends on how busy the Security log is.
   folder, period and the hash of its manifest), so a scheduled report
   that is deleted, moved or changed afterwards is pointed out until
   someone says why: `blackbox status` says "REPORT MISSING" (or
-  "CHANGED") and exits 4, the status icon notifies once, the next report
+  "CHANGED") and exits 4, the status icon notifies once, the same line is
+  written once per report to the system log (LEDGER4: the Application log,
+  source **Blackbox**, event ID 101, a warning, on Windows; syslog/the
+  journal with the ident `blackbox` on Linux, `journalctl -t blackbox`), so
+  a copy exists outside Blackbox's folder, the next report
   has "Earlier reports missing or changed" on the Overview and in Audit
   health's gaps, and All reports lists it as "Missing: deleted or moved".
   Every run checks that each file the manifest lists is there, at the

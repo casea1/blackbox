@@ -253,6 +253,9 @@ own saying who (the account that ran it), which setting, and the value before an
 High for `exclude_users`, `exclude_processes`, `retention_days`,
 `report_dir`, `send_to`, `inbox` and `scap_results` (others Medium). It
 writes the same record to the Application log, source **Blackbox**, event ID 100, so a copy exists outside its own folder.
+A scheduled report found missing or changed afterwards ("REPORT MISSING",
+"REPORT CHANGED") is written there too, once per report, as a warning
+with event ID 101 (LEDGER4).
 Installing, upgrading and removing Blackbox are recorded the same way. A
 `config set` command line with no matching record (refused, answered
 "no", failed, or the value was already set) is shown as "tried to change
