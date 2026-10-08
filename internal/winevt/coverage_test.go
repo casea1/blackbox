@@ -3,6 +3,7 @@ package winevt
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/casea1/blackbox/internal/event"
 )
@@ -282,5 +283,17 @@ func TestDefenderPlatform5038(t *testing.T) {
 	e = NewTranslator().Translate(sec(5038, map[string]string{"param1": `\Device\HarddiskVolume3\Windows\System32\lsass.exe`}))
 	if strings.Contains(e.Summary, "Defender") {
 		t.Errorf("non-Defender 5038 got the note: %s", e.Summary)
+	}
+}
+
+// T2b: Defender's update events (2000, 2014) are read, with the versions
+// they name, for the report to tell a 5038 during the update.
+func TestDefenderUpdateRead(t *testing.T) {
+	r := &Raw{Provider: "Microsoft-Windows-Windows Defender", Channel: "Microsoft-Windows-Windows Defender/Operational", EventID: 2014,
+		Computer: "WS-07", Time: time.Date(2026, 9, 29, 9, 0, 0, 0, time.UTC),
+		Data: map[string]string{"Product Name": "Microsoft Defender Antivirus", "Current Platform Version": "4.18.25080.5-0", "Previous Platform Version": "4.18.25070.5-0"}}
+	e := NewTranslator().Translate(r)
+	if e == nil || e.Action != event.DefenderUpdate || e.Severity != event.SevInfo || !strings.Contains(e.Fields["versions"], "4.18.25080.5-0") {
+		t.Errorf("Defender update: %+v", e)
 	}
 }

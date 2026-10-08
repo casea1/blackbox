@@ -42,9 +42,22 @@ func (t *Translator) defender(r *Raw) *event.Event {
 			Summary: "Microsoft Defender scanning was turned off."}
 	case 5007, 5013:
 		return t.defenderSettings(r)
+	case 2000, 2014:
+		// An update (security intelligence, engine or platform): not a
+		// row, but it tells a code integrity failure on a Defender
+		// platform file during the update from a changed file (T2b).
+		var versions []string
+		for _, v := range r.Data {
+			versions = append(versions, versionRE.FindAllString(v, -1)...)
+		}
+		e := &event.Event{Category: event.CatOther, Severity: event.SevInfo, Action: event.DefenderUpdate,
+			Summary: "Microsoft Defender updated.", Fields: map[string]string{"versions": strings.Join(versions, " ")}}
+		return e
 	}
 	return nil
 }
+
+var versionRE = regexp.MustCompile(`\b\d+\.\d+\.\d+\.\d+(?:-\d+)?\b`)
 
 // psRule is one kind of PowerShell script worth reporting. A script block
 // matches when every pattern in find matches somewhere in it; the line

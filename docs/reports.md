@@ -227,8 +227,12 @@ left out. Deleting a report is one High row per report, not one per file.
 Logon rights given or taken away (4717/4718) are a Medium sentence when a
 person did it, and left out when Windows grants them itself. A 5038 (a
 system file whose signature doesn't match) on a Microsoft Defender
-platform file stays High, with a note: Windows often logs this while
-Defender updates its platform, and the row says how to tell. PowerShell module code that
+platform file is Medium "during a Microsoft Defender update" when
+Defender's own log records an update (2000/2014) on that computer within
+15 minutes, to that platform version (the folder the file is in); the
+update is in its details. Otherwise it stays High, with a note: Windows
+often logs this while Defender updates its platform, and the row says how
+to tell. Defender's updates are not rows. PowerShell module code that
 Windows generates (CDXML modules such as the firewall's
 `Get-NetFirewallRule`, in every part of a long script) is not flagged.
 OpenSSH for Windows' per-connection account `VIRTUAL USERS\sshd_<pid>` is

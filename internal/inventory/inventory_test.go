@@ -106,6 +106,15 @@ func TestLinux(t *testing.T) {
 	if inv.Manufacturer != "LENOVO" || inv.Model != "20XW00GJUS" || inv.Serial != "PF3ABCDE" || inv.OS != "Ubuntu 24.04.1 LTS" || inv.Memory != 16303488*1024 {
 		t.Errorf("system: %+v", inv)
 	}
+	// No desktop installed: a server (UX10); one with a graphical
+	// session is not.
+	if !inv.Server {
+		t.Error("a Linux computer without a desktop is not a server")
+	}
+	put("usr/share/xsessions/ubuntu.desktop", "[Desktop Entry]\n")
+	if Linux(root, nil).Server {
+		t.Error("a Linux computer with a desktop session is a server")
+	}
 	if len(inv.Drives) != 3 {
 		t.Fatalf("drives: %+v", inv.Drives)
 	}

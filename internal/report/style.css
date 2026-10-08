@@ -483,6 +483,13 @@ aside .fold.shut{display:none}
   .panel{max-width:100%;overflow-x:auto}
   .head,.top,.hd{flex-wrap:wrap}
   .head .tools{flex:1 1 100%!important;flex-wrap:wrap;min-width:0}
+  /* A detection card's system and time go under its text, not off its
+     right edge (UX10). */
+  .dc,a.dc{grid-template-columns:4px minmax(0,1fr)}
+  .dc:before{grid-row:span 2}
+  .dc .b{min-width:0;padding-bottom:4px;overflow-wrap:anywhere}
+  .dc .m2{grid-column:2;text-align:left;white-space:normal;overflow-wrap:anywhere;padding:0 14px 10px 0}
+  .dc .m2 small{display:inline;margin:0 0 0 8px}
 }
 @media print{
   @page{margin:16mm}

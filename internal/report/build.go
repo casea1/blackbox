@@ -336,6 +336,7 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	events = exportWrites(events, own)
 	events = r.appPackageRules(events)
 	events = r.defenderState(events)
+	events = defenderUpdates(events)
 	events = r.windowsSetup(events)
 	attributeDevices(events)
 	auditStoppedBy(events)

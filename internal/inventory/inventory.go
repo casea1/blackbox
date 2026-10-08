@@ -23,6 +23,10 @@ type Inventory struct {
 	Drives       []Drive   `json:"drives,omitempty"`
 	Accounts     []Account `json:"accounts,omitempty"`
 	Notes        []string  `json:"notes,omitempty"` // what could not be read, and why
+	// Server is set for a Linux computer with no desktop installed (no
+	// graphical session or display manager): grouped with the servers
+	// (UX10).
+	Server bool `json:"server,omitempty"`
 }
 
 // Drive is one physical disk.

@@ -109,12 +109,16 @@ func osLabel(s SystemRow) string {
 	return s.OSName()
 }
 
-// isServer reports a Windows Server or an Alma/RHEL computer.
+// isServer reports a Windows Server, an Alma/RHEL computer, or a Linux
+// computer with no desktop installed, such as Ubuntu Server (UX10).
 func isServer(s SystemRow) bool {
 	if s.Checks == nil {
 		return false
 	}
 	b := s.Checks.Baseline
+	if inv := s.Checks.Inventory; inv != nil && inv.Server {
+		return true
+	}
 	return strings.Contains(b, "Server") || strings.Contains(b, "RHEL") || strings.Contains(b, "Alma")
 }
 
@@ -127,8 +131,10 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	people := map[string]bool{}
 	for _, row := range r.rows {
 		if row.Action == "log_cleared" {
-			byHost[row.Host]++
-			clearRows[row.Host] = append(clearRows[row.Host], row)
+			// By lower-case name: a system's name and its rows' can
+			// differ in case (UX10).
+			byHost[strings.ToLower(row.Host)]++
+			clearRows[strings.ToLower(row.Host)] = append(clearRows[strings.ToLower(row.Host)], row)
 		}
 		if row.Category == event.CatPrivileged && person(row.User) {
 			people[strings.ToLower(row.User)] = true
@@ -162,8 +168,8 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 	var probs []string
 	for _, s := range systems {
 		switch {
-		case byHost[s.Name] > 0:
-			probs = append(probs, fmt.Sprintf("%s: %s cleared%s", s.Name, clearedWhat(clearRows[s.Name]), times(byHost[s.Name])))
+		case byHost[strings.ToLower(s.Name)] > 0:
+			probs = append(probs, fmt.Sprintf("%s: %s cleared%s", s.Name, clearedWhat(clearRows[strings.ToLower(s.Name)]), times(byHost[strings.ToLower(s.Name)])))
 		case s.Status == "silent":
 			probs = append(probs, s.Name+": no collection received")
 		}
@@ -309,16 +315,41 @@ func (r *Report) overview(pages []*EventPage) *Overview {
 // checklist is the six-line health checklist.
 func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []CheckLine {
 	total := len(systems)
-	frac := func(bad int) string { return fmt.Sprintf("%d/%d", total-bad, total) }
+	// How many systems a line is about, said in words (UX10): "1 of 3
+	// systems" for a problem, "all 3 systems" when fine.
+	frac := func(bad int) string {
+		switch {
+		case total <= 1:
+			return ""
+		case bad == 0:
+			return fmt.Sprintf("all %d systems", total)
+		}
+		return fmt.Sprintf("%d of %d systems", bad, total)
+	}
 	var lines []CheckLine
 
 	var who []string
 	var all []*Row
+	seen := map[string]bool{}
 	for _, s := range systems {
-		if len(cleared[s.Name]) > 0 {
+		if rows := cleared[strings.ToLower(s.Name)]; len(rows) > 0 {
 			who = append(who, s.Name)
-			all = append(all, cleared[s.Name]...)
+			all = append(all, rows...)
+			seen[strings.ToLower(s.Name)] = true
 		}
+	}
+	// A clear on a computer not in the systems list is still a clear:
+	// never "Logs intact" next to one (UX10).
+	var others []string
+	for h := range cleared {
+		if !seen[h] {
+			others = append(others, h)
+		}
+	}
+	sort.Strings(others)
+	for _, h := range others {
+		who = append(who, cleared[h][0].Host)
+		all = append(all, cleared[h]...)
 	}
 	if len(who) > 0 {
 		lines = append(lines, CheckLine{Level: "bad", Icon: "file-warning", Title: "Logs cleared", Who: strings.Join(who, ", "), What: clearedWhat(all) + " cleared", Count: frac(len(who))})

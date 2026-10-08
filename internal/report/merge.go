@@ -1203,3 +1203,65 @@ func dropWindowsModules(in []*event.Event) []*event.Event {
 	}
 	return out
 }
+
+// defenderUpdates uses Defender's own updates (T2b): a code integrity
+// failure (5038) on a file under Windows Defender\Platform\ within 15
+// minutes of a Defender update on that computer, in the folder of a
+// version the update names (or any, when it names none), is Medium
+// "during a Defender update" rather than High. The updates are not rows.
+func defenderUpdates(events []*event.Event) []*event.Event {
+	var updates []*event.Event
+	for _, e := range events {
+		if e.Action == event.DefenderUpdate {
+			updates = append(updates, e)
+		}
+	}
+	out := events[:0]
+	for _, e := range events {
+		if e.Action == event.DefenderUpdate {
+			continue
+		}
+		if e.Action == "code_integrity_failed" && e.Severity == event.SevHigh {
+			lo := strings.ToLower(strings.ReplaceAll(e.Target, "/", `\`))
+			if i := strings.Index(lo, `\windows defender\platform\`); i >= 0 {
+				folder, _, _ := strings.Cut(lo[i+len(`\windows defender\platform\`):], `\`)
+				for _, u := range updates {
+					if u.Host != e.Host || absDur(u.Time.Sub(e.Time)) > 15*time.Minute {
+						continue
+					}
+					vs := strings.Fields(u.Fields["versions"])
+					match := len(vs) == 0
+					for _, v := range vs {
+						match = match || strings.HasPrefix(folder, strings.ToLower(v))
+					}
+					if !match {
+						continue
+					}
+					e.Severity = event.SevMedium
+					e.Summary = strings.TrimSuffix(e.Summary, " This is a Microsoft Defender platform file: Windows often logs this while Defender is updating its platform.") +
+						" This was during a Microsoft Defender update (it updated " + roughSpan(u.Time.Sub(e.Time)) + ", to this platform version): Windows logs this while Defender replaces its platform files."
+					e.AddDetail("Defender update", u.Time.UTC().Format("2006-01-02 15:04:05Z")+" "+strings.Join(vs, ", "))
+					break
+				}
+			}
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// roughSpan is "2 minutes earlier" or "1 minute later".
+func roughSpan(d time.Duration) string {
+	when := "later"
+	if d < 0 {
+		when, d = "earlier", -d
+	}
+	m := int(d.Round(time.Minute).Minutes())
+	switch m {
+	case 0:
+		return "at the same time"
+	case 1:
+		return "1 minute " + when
+	}
+	return fmt.Sprintf("%d minutes %s", m, when)
+}

@@ -48,6 +48,16 @@ func (r ReportAt) String() string {
 	return fmt.Sprintf("%s %02d:%02d", r.Day, r.Minute/60, r.Minute%60)
 }
 
+// Show is the setting as config show gives it: "Wednesday 00:00" for
+// weekly reports, the time alone otherwise, where the day does not count
+// (UX10).
+func (r ReportAt) Show(every string) string {
+	if every == "weekly" {
+		return r.String()
+	}
+	return r.Clock()
+}
+
 // Clock writes "00:00".
 func (r ReportAt) Clock() string { return fmt.Sprintf("%02d:%02d", r.Minute/60, r.Minute%60) }
 

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -274,5 +275,49 @@ func TestIsVirtualBoxShare(t *testing.T) {
 		if got := IsVirtualBoxShare(p); got != want {
 			t.Errorf("%s: %v", p, got)
 		}
+	}
+}
+
+// CONF1b: an upgrade gives the settings file this version's comments and
+// keeps every value; the earlier file is kept as .old.
+func TestRefreshKeepsValues(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "blackbox.conf")
+	old := "# Blackbox configuration\r\n\r\n# How often a report is produced.\r\n# Events are collected every hour regardless.\r\nreport_every = daily\r\nsite_name = \"Lab 3\"\r\nreport_at = 06:00\r\n" +
+		"collect_every = 15m\r\nretention_days = 400\r\nexclude_users = svc_backup, svc_scan\r\nworking_hours = Mon-Fri 06:00-18:00\r\n"
+	os.WriteFile(path, []byte(old), 0o640)
+	before, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed, err := Refresh(path)
+	if err != nil || !changed {
+		t.Fatalf("refresh: %v %v", changed, err)
+	}
+	after, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Errorf("settings changed:\n%+v\n%+v", before, after)
+	}
+	b, _ := os.ReadFile(path)
+	text := string(b)
+	if strings.Contains(text, "every hour regardless") || !strings.Contains(text, "whatever the report schedule") || !strings.Contains(text, "\r\n") ||
+		!strings.Contains(text, `site_name = "Lab 3"`) || !strings.Contains(text, "retention_days = 400") {
+		t.Errorf("refreshed file:\n%s", text)
+	}
+	if b, _ := os.ReadFile(path + ".old"); string(b) != old {
+		t.Error("the earlier file was not kept")
+	}
+	if changed, err := Refresh(path); changed || err != nil {
+		t.Errorf("second refresh: %v %v", changed, err)
+	}
+}
+
+// UX10: config show leaves the weekday out when reports are not weekly.
+func TestReportAtShow(t *testing.T) {
+	at, _ := ParseReportAt("Wednesday 00:00")
+	if at.Show("daily") != "00:00" || at.Show("monthly") != "00:00" || at.Show("weekly") != "Wednesday 00:00" {
+		t.Errorf("show: %q %q %q", at.Show("daily"), at.Show("monthly"), at.Show("weekly"))
 	}
 }
