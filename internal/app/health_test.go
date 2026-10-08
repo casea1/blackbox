@@ -305,3 +305,32 @@ func TestPowerShellLogLoss(t *testing.T) {
 		t.Errorf("health lost: %+v", h.Lost)
 	}
 }
+
+// TZ1: status shows every time in local time, including the UTC times in
+// a stored note, with the zone named once at the top.
+func TestStatusLocalTimesOnly(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	ny := time.FixedZone("EDT", -4*3600)
+	now := time.Date(2026, 10, 7, 15, 0, 0, 0, time.UTC)
+	st.State.LastCollect = now.Add(-10 * time.Minute)
+	st.State.LogGaps = []store.LogGap{{Source: "Security", From: now.Add(-3 * time.Hour), To: now.Add(-2 * time.Hour), Noted: now,
+		Reason: "Security.evtx, exported for 2026-10-07T12:00:00Z to 2026-10-07T13:00:00Z, was missing when the logs were packed"}}
+	st.Save()
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportEvery: "weekly", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute},
+		Now: func() time.Time { return now }, Loc: ny}
+	var b bytes.Buffer
+	a.Status(&b)
+	out := b.String()
+	if strings.Count(out, "EDT") != 1 || !strings.Contains(out, "Times:            local time, EDT (UTC-04:00)") ||
+		!strings.Contains(out, "Last collection:  2026-10-07 10:50") || !strings.Contains(out, "exported for 2026-10-07 08:00 to 2026-10-07 09:00,") {
+		t.Errorf("status:\n%s", out)
+	}
+	if utcStamp.MatchString(out) {
+		t.Errorf("a UTC time is left:\n%s", out)
+	}
+	for loc, want := range map[*time.Location]string{time.UTC: "local time, UTC", time.FixedZone("", 5*3600+1800): "local time, UTC+05:30"} {
+		if got := zoneText(now, loc); got != want {
+			t.Errorf("zone %v: %q", loc, got)
+		}
+	}
+}

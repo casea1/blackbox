@@ -343,7 +343,10 @@ export starts where the last one ended **by position, not by time**
 the last byte of each log file (finishing a file rotated since) and the
 journal's cursor. So a record written in the same second as an export,
 and anything stamped while the clock was set back, are in the next one.
-The times in `piece.json` and `archive.json` are for reading only. A log
+The times in `piece.json` and `archive.json` are for reading only, and
+all in UTC (ending in `Z`), the gaps and each log's coverage included
+(TZ1); `blackbox status` shows times in local time only, and names the
+zone once, on its first line (`Times: local time, EDT (UTC-04:00)`). A log
 the collection read nothing new from is left out of that export. If the
 log no longer holds the records after the last export (it overwrote
 them), they are a gap named by number ("records 172279-172285"); on

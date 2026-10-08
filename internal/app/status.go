@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"sort"
@@ -41,11 +42,14 @@ func (a *App) Status(w io.Writer) error {
 	s := st.State
 	host := collect.LocalHost()
 	p := func(label, format string, args ...any) {
-		fmt.Fprintf(w, "  %-17s %s\n", label, fmt.Sprintf(format, args...))
+		// Every time is local (TZ1), including one in a stored note
+		// written in UTC; the zone is given once, at the top.
+		fmt.Fprintf(w, "  %-17s %s\n", label, localStamps(fmt.Sprintf(format, args...), a.loc()))
 	}
 	var attention []string // problems that make "blackbox status" exit 4 (L10)
 
 	fmt.Fprintf(w, "%s %s on %s\n\n", brand.Name, a.Version, host)
+	p("Times:", "%s", zoneText(now, a.loc()))
 	switch a.Cfg.Role() {
 	case "standalone":
 		p("Role:", "standalone (reports on this computer only)")
@@ -520,6 +524,38 @@ func commaNum(n uint64) string {
 		s = s[:i] + "," + s[i:]
 	}
 	return s
+}
+
+// utcStamp is a UTC time as Blackbox writes it in notes and gaps:
+// "2026-10-07 16:24Z" or RFC 3339 "2026-10-07T16:24:00Z".
+var utcStamp = regexp.MustCompile(`\b\d{4}-\d\d-\d\d[ T]\d\d:\d\d(:\d\d(\.\d+)?)?Z`)
+
+// localStamps gives the UTC times in text in local time, as status shows
+// every other time (TZ1).
+func localStamps(text string, loc *time.Location) string {
+	return utcStamp.ReplaceAllStringFunc(text, func(m string) string {
+		for _, f := range []string{"2006-01-02 15:04Z", time.RFC3339Nano} {
+			if t, err := time.Parse(f, m); err == nil {
+				return stampLocal(t, loc)
+			}
+		}
+		return m
+	})
+}
+
+// zoneText names the zone status times are in: "local time, EDT
+// (UTC-04:00)", or "local time, UTC".
+func zoneText(now time.Time, loc *time.Location) string {
+	t := now.In(loc)
+	name, off := t.Zone()
+	if off == 0 && (name == "UTC" || name == "GMT" || name == "") {
+		return "local time, UTC"
+	}
+	utc := "UTC" + t.Format("-07:00")
+	if name == "" || strings.HasPrefix(name, "+") || strings.HasPrefix(name, "-") || name == utc {
+		return "local time, " + utc
+	}
+	return "local time, " + name + " (" + utc + ")"
 }
 
 func stampLocal(t time.Time, loc *time.Location) string {

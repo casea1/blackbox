@@ -418,7 +418,7 @@ func TestClearedLogIsNotAGap(t *testing.T) {
 	st.Save()
 	var b bytes.Buffer
 	if err := a.Status(&b); err != nil || strings.Contains(b.String(), "LOGS INCOMPLETE") || strings.Contains(b.String(), "larger") || strings.Contains(b.String(), "EVENTS LOST") ||
-		!strings.Contains(b.String(), "Log cleared:      "+audit+" was cleared by claude at 2026-10-07 06:16Z") {
+		!strings.Contains(b.String(), "Log cleared:      "+audit+" was cleared by claude at 2026-10-07 06:16;") { // local (TZ1)
 		t.Errorf("status (%v):\n%s", err, b.String())
 	}
 
@@ -572,7 +572,7 @@ func TestPackFailingAndLostExport(t *testing.T) {
 		t.Fatalf("gaps: %+v", st.State.LogGaps)
 	}
 	b.Reset()
-	if err := a.Status(&b); !errors.As(err, &na) || strings.Contains(b.String(), "NOT ARCHIVED") || !strings.Contains(b.String(), "LOGS INCOMPLETE:  Security.evtx, exported for 2026-10-07T11:00:00Z") {
+	if err := a.Status(&b); !errors.As(err, &na) || strings.Contains(b.String(), "NOT ARCHIVED") || !strings.Contains(b.String(), "LOGS INCOMPLETE:  Security.evtx, exported for 2026-10-07 11:00 to 2026-10-07 12:00,") { // local (TZ1)
 		t.Errorf("status (%v):\n%s", err, b.String())
 	}
 	refs, _, _ := a.bundleLogs(now)

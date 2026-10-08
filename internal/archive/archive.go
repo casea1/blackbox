@@ -154,7 +154,17 @@ func Create(path, host, osName string, from, to, now time.Time, gaps []Gap) (Inf
 // one. It returns the description as stored.
 func Write(path string, info Info, sources []Source) (Info, error) {
 	info.Kind, info.Files = kind, nil
+	// Every time in archive.json is UTC ("Z"), whatever zone the computer
+	// is in (TZ1): the gaps and log coverage came in local time.
 	info.From, info.To, info.Created = info.From.UTC(), info.To.UTC(), info.Created.UTC()
+	info.Gaps = append([]Gap(nil), info.Gaps...)
+	for i := range info.Gaps {
+		info.Gaps[i].From, info.Gaps[i].To = info.Gaps[i].From.UTC(), info.Gaps[i].To.UTC()
+	}
+	info.Logs = append([]LogCover(nil), info.Logs...)
+	for i := range info.Logs {
+		info.Logs[i].From, info.Logs[i].To = info.Logs[i].From.UTC(), info.Logs[i].To.UTC()
+	}
 	err := write(path, &info, sources)
 	return info, err
 }
