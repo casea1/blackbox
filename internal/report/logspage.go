@@ -162,7 +162,6 @@ func (r *Report) logsPage() *LogsPage {
 		}
 		kinds[k]++
 	}
-	files := 0
 	read := map[string]int{} // records read, by host and log
 	lost := map[string]uint64{}
 	for _, c := range r.Health.Channels {
@@ -450,9 +449,6 @@ func (r *Report) logsPage() *LogsPage {
 		la.Brief = strings.Join(briefs, "; ")
 		la.NoteFull = strings.Join(append(append([]string(nil), la.Issues...), la.Notes...), " ")
 		la.Inside = insideText(la.Files, pieces)
-		for _, info := range r.archiveState[a.Name].Contents {
-			files += len(info.Files)
-		}
 		switch {
 		case la.Class == "bad":
 			la.Chip, la.ChipLevel = "Hash mismatch", "bad"
@@ -557,18 +553,18 @@ func (r *Report) logsPage() *LogsPage {
 	switch {
 	case n > 0 && verified == n:
 		c4.Value, c4.Level = "✓", "ok"
+		// Each zip is checked whole against the SHA-256 recorded when it
+		// was made; the files inside are not hashed one by one.
 		c4.Note = fmt.Sprintf("all %s match their SHA-256 · %s", plural(n, "zip"), humanBytes(total))
-		switch {
-		case n == 1 && files > 0:
-			c4.Note = fmt.Sprintf("the zip (%s) matches its SHA-256 · %s", plural(files, "file"), humanBytes(total))
-		case n == 1:
+		if n == 1 {
 			c4.Note = "the zip matches its SHA-256 · " + humanBytes(total)
-		case files > 0:
-			c4.Note = fmt.Sprintf("all %s files in %d zips match their SHA-256 · %s", commas(files), n, humanBytes(total))
 		}
 	case n > 0:
 		c4.Value, c4.Level = "✕", "bad"
 		c4.Note = fmt.Sprintf("%d of %s do not match their SHA-256 · %s", n-verified, plural(n, "zip"), humanBytes(total))
+		if n-verified == 1 {
+			c4.Note = fmt.Sprintf("1 of %s does not match its SHA-256 · %s", plural(n, "zip"), humanBytes(total))
+		}
 	}
 	lp.Cards = []HealthCard{c1, c2, c3, c4}
 

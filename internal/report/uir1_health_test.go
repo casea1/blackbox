@@ -101,7 +101,7 @@ func TestUIR1OriginalLogs(t *testing.T) {
 	want := "Original logs in this report: 28 / 30 · 2 systems sent nothing (see Systems)\n" +
 		"Complete: 24 · every collection exported, nothing missing\n" +
 		"With a gap: 4 · 1 log cleared · 3 PowerShell overwrites\n" +
-		"Checked: ✓ · all 84 files in 28 zips match their SHA-256 · "
+		"Checked: ✓ · all 28 zips match their SHA-256 · "
 	if got := strings.Join(cards, "\n"); !strings.HasPrefix(got, want) {
 		t.Errorf("cards:\n%s", got)
 	}
@@ -156,5 +156,31 @@ func TestUIR1LogsKeepWarnings(t *testing.T) {
 	}
 	if !found || lp.Cards[0].Level != "bad" || !strings.Contains(lp.Cards[0].Note, "1 set aside") {
 		t.Errorf("set aside: %v %+v", found, lp.Cards[0])
+	}
+
+	// The Checked card names what is checked: each zip's own SHA-256.
+	r.archiveState = map[string]archiveState{}
+	for _, a := range r.Archives {
+		r.archiveState[a.Name] = archiveState{Verified: a.Host != "SRV-DC01"}
+	}
+	if c := r.logsPage().Cards[3]; c.Value != "✕" || !strings.HasPrefix(c.Note, "1 of 28 zips does not match its SHA-256 · ") {
+		t.Errorf("checked card: %+v", c)
+	}
+}
+
+// A system's SCAP check opens its open STIG rules; with no scan found,
+// the SCAP tab, which names the systems without one.
+func TestUIR1ScapLink(t *testing.T) {
+	r, _ := demo30(t)
+	if got := r.scapLink("WS-ENG-01"); got != "#health/WS-ENG-01/scap" {
+		t.Errorf("scanned: %s", got)
+	}
+	r.scapTable = append(r.scapTable, ScapRow{Host: "WS-NEW-01", Missing: true})
+	if got := r.scapLink("WS-NEW-01"); got != "#health/@scap" {
+		t.Errorf("no scan: %s", got)
+	}
+	r.scapTable = nil
+	if got := r.scapLink("WS-ENG-01"); got != "#health/WS-ENG-01" {
+		t.Errorf("no SCAP results: %s", got)
 	}
 }

@@ -566,7 +566,7 @@ func (r *Report) healthPage() *HealthPage {
 		if sc, ok := r.scapGlance(s.Name); ok {
 			// The SCAP score up front: on a one-computer report this view
 			// is all Audit health shows.
-			f := Fact{Label: "SCAP score", Value: "no scan", Bad: true, Href: ScapHref(s.Name)}
+			f := Fact{Label: "SCAP score", Value: "no scan", Bad: true, Href: r.scapLink(s.Name)}
 			if !sc.Missing {
 				f.Value, f.Bad = "—", sc.Cat[1] > 0
 				if sc.Score != "" {
