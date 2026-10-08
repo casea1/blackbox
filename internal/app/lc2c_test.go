@@ -76,7 +76,7 @@ func TestClearedSmallLogIsAGap(t *testing.T) {
 	st.Save()
 
 	var b bytes.Buffer
-	if err := a.Status(&b); err != nil || !strings.Contains(b.String(), "Log cleared:      Security was cleared by claude at 2026-10-07 06:10Z") ||
+	if err := a.Status(&b); err != nil || !strings.Contains(b.String(), "Log cleared:      Security was cleared by claude at 2026-10-07 06:10;") || // local time (TZ1)
 		strings.Contains(b.String(), "overwritten") || strings.Contains(b.String(), "LOGS INCOMPLETE") {
 		t.Errorf("status (%v):\n%s", err, b.String())
 	}
