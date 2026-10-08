@@ -84,6 +84,29 @@ func (r *Report) detectionViews() []DetectionView {
 		sort.SliceStable(rows, func(a, b int) bool { return rows[a].Time.Before(rows[b].Time) })
 		v.Count = len(rows)
 		v.Range = c.Host + " · " + f.Time.In(r.Location).Format("Mon 2 Jan 2006, 15:04")
+		if f.Check != "" && len(rows) == 0 {
+			// Blackbox's own check, not an event (UI21): said so, with
+			// what it found, and no empty panels.
+			when := f.Time.In(r.Location).Format("Mon 2 Jan 2006, 15:04")
+			if c.Day == FoundAtReport {
+				v.Range = c.Host + " · found when this report was made (" + when + ")"
+			}
+			v.Steps = []Step{{Time: f.Time.In(r.Location).Format("15:04:05"), Text: "Found by " + f.Check + ".", Sub: "Blackbox", Key: true}}
+			v.Involved = append([]KV{{Label: "System", Value: c.Host, Links: []KVLink{{Text: c.Host, Href: systemLink(c.Host)}}},
+				{Label: "Found by", Value: "Blackbox", Links: []KVLink{{Text: "Blackbox"}}}}, f.Facts...)
+			for i := range v.Involved {
+				if v.Involved[i].Links == nil {
+					v.Involved[i].Links = []KVLink{{Text: v.Involved[i].Value}}
+				}
+			}
+			for _, a := range r.Archives {
+				if strings.EqualFold(a.Host, c.Host) {
+					v.Archive = a.Name
+				}
+			}
+			out = append(out, v)
+			continue
+		}
 		if len(rows) > 1 {
 			a, b := rows[0].Time.In(r.Location), rows[len(rows)-1].Time.In(r.Location)
 			v.Range = fmt.Sprintf("%s · %s – %s", c.Host, a.Format("Mon 2 Jan 2006, 15:04"), b.Format("15:04"))

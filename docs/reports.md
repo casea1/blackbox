@@ -281,7 +281,11 @@ High however it is written, including with the program's path in quotes.
 
 **Process starts.** Programs started with administrator rights are
 listed. Programs a standard user starts are not, to keep reports
-readable; their logons and anything they change still are.
+readable; their logons and anything they change still are. PowerShell
+run with `-File` reads "ran the script C:\Scripts\backup.ps1", with the
+full command line in the event's details. A logon with explicit
+credentials (4648) names the program only when Windows recorded one
+(UI21).
 
 **Nothing dropped silently.** A Windows Security-log event Blackbox has
 no translation for is listed on Other security as "Security event <ID>";
@@ -407,7 +411,10 @@ the logs were packed"), and the Original logs page, Audit health and
 the reports; only the original copy of that part is gone. A file whose
 hash no longer matches is packed as it was found, marked `changed` in
 `archive.json`, and the report has a High detection, "Saved original
-log changed before it was archived". On Linux, `blackbox check
+log changed before it was archived". It says it was found by Blackbox's
+own check when it bundled the logs for the report, not by an event: it
+is listed under "Found when this report was made" (after the period),
+and its panels name the system, the log and the file (UI21). On Linux, `blackbox check
 --audit-rules` also watches `/var/lib/blackbox/archive-pieces/` for
 writes by anything but Blackbox, a root script included.
 

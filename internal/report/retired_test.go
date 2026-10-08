@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/casea1/blackbox/internal/archive"
 	"github.com/casea1/blackbox/internal/event"
 	"github.com/casea1/blackbox/internal/store"
 )
@@ -102,5 +103,52 @@ func TestRetiredSystem(t *testing.T) {
 	}
 	if !strings.Contains(b.String(), `<span class="sv retired">Retired</span>`) {
 		t.Error("the page does not mark it retired")
+	}
+}
+
+// UI21: a detection Blackbox's own check made when it bundled the
+// original logs says so, has no empty panels, and is labelled "found when
+// this report was made" rather than timed after the period.
+func TestBundlingDetectionWording(t *testing.T) {
+	end := time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)
+	start := end.AddDate(0, 0, -7)
+	r := Build([]*event.Event{{Time: end.Add(-time.Hour), Host: "WS-07", OS: "windows", Category: event.CatLogon, Severity: event.SevInfo,
+		Action: "logon", User: "claude", Summary: "claude logged on."}}, nil,
+		Options{Location: time.UTC, WindowStart: start, WindowEnd: end, Generated: end.Add(2 * time.Minute), ArchivesKept: true,
+			Archives: []ArchiveRef{{Host: "WS-07", From: start, To: end, Name: "logs-WS-07.zip",
+				Changed: []archive.FileInfo{{Name: "Security.evtx", Source: "Security", Changed: true}}}},
+			Systems: []SystemInfo{{Name: "WS-07", OS: "windows", LastRun: end.Add(-time.Hour)}}})
+	var c *DetectionCard
+	for _, x := range r.detectionCards() {
+		if x.Title == "Saved original log changed before it was archived" {
+			c = &x
+		}
+	}
+	if c == nil || c.Day != FoundAtReport || c.Time != "" || !strings.HasPrefix(c.Detail, "Blackbox's own check, when it bundled WS-07's original logs for this report, found") {
+		t.Fatalf("card: %+v", c)
+	}
+	var v *DetectionView
+	for _, x := range r.detectionViews() {
+		if x.Index == c.Index {
+			v = &x
+		}
+	}
+	if v == nil || !strings.Contains(v.Range, "found when this report was made (Thu 8 Oct 2026, 00:02)") || len(v.Steps) != 1 ||
+		!strings.Contains(v.Steps[0].Text, "Blackbox's own check of the saved original logs when it bundled them") {
+		t.Fatalf("view: %+v", v)
+	}
+	var labels []string
+	for _, kv := range v.Involved {
+		labels = append(labels, kv.Label+"="+kv.Value)
+	}
+	if strings.Join(labels, "; ") != "System=WS-07; Found by=Blackbox; Log=Security; File=Security.evtx in logs-WS-07.zip" {
+		t.Errorf("involved: %v", labels)
+	}
+	var b bytes.Buffer
+	if err := r.WriteHTML(&b, nil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "The events behind this detection are not in this report") || strings.Contains(b.String(), "<span>WS-07 · </span>") {
+		t.Error("an empty panel or time")
 	}
 }
