@@ -15,6 +15,9 @@ type Gap struct {
 	// exported file was missing or unreadable when the logs were packed
 	// (AR5).
 	Reason string `json:"reason,omitempty"`
+	// Cleared is set when the log was cleared, not overwritten (LC2b):
+	// "by claude at 2026-10-07 16:24Z".
+	Cleared string `json:"cleared,omitempty"`
 }
 
 // LogState is how far back a log reaches now, and whether it is full and

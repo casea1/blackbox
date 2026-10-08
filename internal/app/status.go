@@ -94,25 +94,78 @@ func (a *App) Status(w io.Writer) error {
 		p("ORIGINAL LOGS NOT IN REPORT "+l.Report+":", "%s's logs for %s to %s: %s. The archive was set aside in %s; its events are in the report, the original copy of them only in that file.",
 			l.Host, stampLocal(l.From, a.loc()), stampLocal(l.To, a.loc()), strings.TrimRight(l.Reason, ". "), l.SetAside)
 	}
+	losses := lostSince(st, s.LastWindowEnd, now, a.Cfg.CollectEvery)
+	// Overwritten parts, one line per log (LOG1c), with the same advice
+	// as its "Events lost" line.
+	type overwrites struct {
+		source     string
+		n          int
+		since      time.Time
+		latestFrom time.Time
+		latestTo   time.Time
+		critical   bool
+	}
+	var byLog []*overwrites
+	logIdx := map[string]*overwrites{}
 	for _, g := range s.LogGaps {
 		// The audit record's gap makes status exit 4; another log's (the
 		// PowerShell log) is its own, lower line, as for lost events
 		// (LOG1b).
 		label := "Logs incomplete:"
-		if rollover.Critical(g.Source) {
+		critical := rollover.Critical(g.Source)
+		if critical && g.Cleared == nil {
 			label = "LOGS INCOMPLETE:"
-			attention = append(attention, "the saved original logs are incomplete")
 		}
-		if g.Reason != "" {
+		switch {
+		case g.Cleared != nil:
+			// Cleared, not overwritten: the clear is a High row in the
+			// report; no size advice (LC2b).
+			p("Log cleared:", "%s was cleared %s; its events from before then are not in the saved original logs.", g.Source, clearedText(*g.Cleared))
+			continue
+		case g.Reason != "":
+			if critical {
+				attention = append(attention, "the saved original logs are incomplete")
+			}
 			p(label, "%s: its events for that time are not in the saved original logs.", g.Reason)
 			continue
 		}
-		fix := "Make the log larger (blackbox check gives the size)"
-		if a.Cfg.CollectEvery > 15*time.Minute {
-			fix += ", or collect more often (blackbox config set collect_every 15m)"
+		o := logIdx[strings.ToLower(g.Source)]
+		if o == nil {
+			o = &overwrites{source: g.Source, critical: critical, since: g.From}
+			logIdx[strings.ToLower(g.Source)] = o
+			byLog = append(byLog, o)
 		}
-		p(label, "%s had already overwritten its events %s when the original logs were saved. %s.",
-			g.Source, gapSpan(g.From, g.To, a.loc()), fix)
+		o.n++
+		if g.From.Before(o.since) {
+			o.since = g.From
+		}
+		if !g.To.Before(o.latestTo) {
+			o.latestFrom, o.latestTo = g.From, g.To
+		}
+	}
+	for _, o := range byLog {
+		label := "Logs incomplete:"
+		if o.critical {
+			label = "LOGS INCOMPLETE:"
+			attention = append(attention, "the saved original logs are incomplete")
+		}
+		fix := "Make the log larger (blackbox check gives the size)."
+		if a.Cfg.CollectEvery > 15*time.Minute {
+			fix = "Make the log larger (blackbox check gives the size), or collect more often (blackbox config set collect_every 15m)."
+		}
+		for _, l := range losses {
+			if store.SystemKey(l.Host) == store.SystemKey(host) && strings.EqualFold(l.Channel, o.source) {
+				fix = l.Advice(true)
+				break
+			}
+		}
+		if o.n == 1 {
+			p(label, "the %s had already overwritten its events %s when the original logs were saved. %s",
+				rollover.Name(o.source), gapSpan(o.latestFrom, o.latestTo, a.loc()), fix)
+			continue
+		}
+		p(label, "the %s had already overwritten some of its events %d times when the original logs were saved, since %s; the latest %s. %s",
+			rollover.Name(o.source), o.n, stampLocal(o.since, a.loc()), gapSpan(o.latestFrom, o.latestTo, a.loc()), fix)
 	}
 
 	off := auditOffNow(st, now)
@@ -121,7 +174,7 @@ func (a *App) Status(w io.Writer) error {
 			p("AUDITING OFF:", "%s — nothing is being recorded. Start it with: systemctl start auditd (and auditctl -e 1 if needed)", why)
 		}
 	}
-	for _, l := range lostSince(st, s.LastWindowEnd, now, a.Cfg.CollectEvery) {
+	for _, l := range losses {
 		local := store.SystemKey(l.Host) == store.SystemKey(host)
 		if rollover.Critical(l.Channel) {
 			p("EVENTS LOST:", "%s", LostText(l, a.loc(), local))

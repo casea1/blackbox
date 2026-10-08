@@ -24,6 +24,7 @@ import (
 	"github.com/casea1/blackbox/internal/inventory"
 	"github.com/casea1/blackbox/internal/lan"
 	"github.com/casea1/blackbox/internal/report"
+	"github.com/casea1/blackbox/internal/rollover"
 	"github.com/casea1/blackbox/internal/scap"
 	"github.com/casea1/blackbox/internal/selfaudit"
 	"github.com/casea1/blackbox/internal/share"
@@ -236,20 +237,28 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 		}
 	}
 	var gaps []archive.Gap
+	clears := a.noteClears(st, run, states, from)
 	if !first {
-		// A log cleared since the last export reaches back only to the
-		// clear: that is the clear (a High row), not an overwrite (LC2).
-		// Its file keeps its size, so it still looks full.
-		cleared := map[string]bool{}
+		// A log cleared since it last had a record exported reaches back
+		// only to the clear: that is the clear (a High row), not an
+		// overwrite (LC2). Its file keeps its size, so it still looks
+		// full. The gap is labelled as the clear, with who and when
+		// (LC2b), even when the log stayed empty until a later run.
+		reset := map[string]bool{}
 		for _, c := range run.Channels {
-			if c.Cleared || c.Reset {
-				cleared[strings.ToLower(c.Channel)] = true
+			if c.Reset && !c.Cleared {
+				reset[strings.ToLower(c.Channel)] = true
 			}
 		}
 		for _, g := range archive.GapsIn(states, from, now) {
-			if !cleared[strings.ToLower(g.Source)] {
-				gaps = append(gaps, g)
+			k := strings.ToLower(g.Source)
+			if c, ok := clears[k]; ok && !c.At.After(g.To) {
+				g.Cleared = clearedText(c)
+				delete(st.State.Clears, k)
+			} else if reset[k] {
+				continue
 			}
+			gaps = append(gaps, g)
 		}
 	}
 	// A log this collection read nothing new from has nothing new to
@@ -276,12 +285,63 @@ func (a *App) saveLogPiece(st *store.Store, run *store.Run, prevCollect time.Tim
 		}
 	}
 	for _, g := range gaps {
+		if g.Cleared != "" {
+			a.logf("original logs: %s was cleared %s; its events before that are not in the saved original logs", g.Source, g.Cleared)
+			c := clears[strings.ToLower(g.Source)]
+			kept = append(kept, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: now, Cleared: &c})
+			continue
+		}
 		a.logf("ORIGINAL LOGS INCOMPLETE: %s had already overwritten its events from %s to %s when it was saved", g.Source, g.From.In(a.loc()).Format("2006-01-02 15:04"), g.To.In(a.loc()).Format("2006-01-02 15:04"))
 		kept = append(kept, store.LogGap{Source: g.Source, From: g.From, To: g.To, Noted: now})
 	}
 	st.State.LogGaps = kept
 	st.State.ArchivedUntil = now
 	st.State.ArchiveRestart = time.Time{}
+}
+
+// noteClears keeps the logs this run found cleared (LC2b), and forgets
+// those that have since had a record exported: a later gap in them is an
+// overwrite again. It returns the clears still open, before this run's
+// gaps use them.
+func (a *App) noteClears(st *store.Store, run *store.Run, states []archive.LogState, from time.Time) map[string]store.LogClear {
+	for _, c := range run.Channels {
+		if !c.Cleared {
+			continue
+		}
+		if st.State.Clears == nil {
+			st.State.Clears = map[string]store.LogClear{}
+		}
+		at := c.ClearedAt
+		if at.IsZero() {
+			at = from // some time since the last export
+		}
+		st.State.Clears[strings.ToLower(c.Channel)] = store.LogClear{Channel: c.Channel, At: at, By: c.ClearedBy}
+	}
+	for _, s := range states {
+		k := strings.ToLower(s.Source)
+		if c, ok := st.State.Clears[k]; ok && !s.Oldest.IsZero() && s.Oldest.After(c.At) && !s.Oldest.After(from) {
+			delete(st.State.Clears, k) // a record since the clear is in an earlier export
+		}
+	}
+	for k, c := range st.State.Clears {
+		if a.now().Sub(c.At) > logGapsKept {
+			delete(st.State.Clears, k)
+		}
+	}
+	out := map[string]store.LogClear{}
+	for k, c := range st.State.Clears {
+		out[k] = c
+	}
+	return out
+}
+
+// clearedText is "by claude at 2026-10-07 16:24Z".
+func clearedText(c store.LogClear) string {
+	who := c.By
+	if who == "" {
+		who = "someone"
+	}
+	return "by " + who + " at " + stampUTC(c.At)
 }
 
 // runsCovering are Blackbox's runs from an hour before the earliest event
@@ -673,6 +733,32 @@ func (a *App) bootTime() time.Time {
 	return bootTime()
 }
 
+// turnover is how fast this computer's logs were seen turning over since
+// the last report, as status says it, for the size check (LOG1d).
+func turnover(st *store.Store, now time.Time, every time.Duration) func(string) (rollover.Loss, bool) {
+	self := store.SystemKey(collect.LocalHost())
+	seen := map[string]rollover.Loss{}
+	for _, l := range lostSince(st, st.State.LastWindowEnd, now, every) {
+		if store.SystemKey(l.Host) == self && l.Held > 0 {
+			seen[strings.ToLower(l.Channel)] = l.Loss
+		}
+	}
+	return func(log string) (rollover.Loss, bool) {
+		l, ok := seen[strings.ToLower(log)]
+		return l, ok
+	}
+}
+
+// CheckTurnover is turnover for blackbox check, from the data folder (nil
+// if it can't be read).
+func (a *App) CheckTurnover() func(string) (rollover.Loss, bool) {
+	st, err := store.Open(a.Cfg.DataDir)
+	if err != nil {
+		return nil
+	}
+	return turnover(st, a.now(), a.Cfg.CollectEvery)
+}
+
 // recordChecks checks this system's audit settings and keeps the result,
 // so it reaches reports here or on the collector.
 func (a *App) recordChecks(st *store.Store, host string, force bool) error {
@@ -683,6 +769,7 @@ func (a *App) recordChecks(st *store.Store, host string, force bool) error {
 	if !force && !checkDue(st.State.LastCheck, a.bootTime(), now) {
 		return nil
 	}
+	check.Turnover = turnover(st, now, a.Cfg.CollectEvery)
 	rec := &store.CheckRecord{Time: now, Host: host, OS: runtime.GOOS, Results: check.Run(), Inventory: a.inventory()}
 	if err := st.AppendChecks(rec); err != nil {
 		return err

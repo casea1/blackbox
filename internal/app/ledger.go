@@ -69,6 +69,37 @@ func noteReport(st *store.Store, dir string, from, to, made time.Time) {
 	st.State.Reports = append(st.State.Reports, rec)
 }
 
+// fillReportFiles gives the reports recorded before 0.20, which have no
+// file list, one from their manifest, while the manifest is the one
+// written (LEDGER1b): a file moved out of one is then noticed at once,
+// not at the next daily hash. A file the manifest lists that is already
+// gone is kept as -1, so it is reported missing.
+func fillReportFiles(st *store.Store) bool {
+	changed := false
+	for i := range st.State.Reports {
+		r := &st.State.Reports[i]
+		if r.Files != nil || !r.Removed.IsZero() || r.Accepted != nil {
+			continue
+		}
+		if sum, err := manifestHash(r.Dir); err != nil || (r.Manifest != "" && sum != r.Manifest) {
+			continue // gone or changed: reported as such
+		}
+		files, err := manifestFiles(r.Dir)
+		if err != nil {
+			continue
+		}
+		r.Files = map[string]int64{}
+		for name := range files {
+			r.Files[name] = -1
+			if fi, err := os.Stat(filepath.Join(r.Dir, filepath.FromSlash(name))); err == nil {
+				r.Files[name] = fi.Size()
+			}
+		}
+		changed = true
+	}
+	return changed
+}
+
 // verifyEvery is how often every file of every scheduled report is hashed
 // again (LEDGER1); each run checks only that they are there, at their
 // size.
@@ -78,7 +109,7 @@ const verifyEvery = 24 * time.Hour
 // manifest, once a day, and keeps what it finds for status and reports.
 func (a *App) verifyReports(st *store.Store) {
 	now := a.now()
-	changed := false
+	changed := fillReportFiles(st)
 	for i := range st.State.Reports {
 		r := &st.State.Reports[i]
 		if !r.Removed.IsZero() || r.Accepted != nil || now.Sub(r.Verified) < verifyEvery {
@@ -206,8 +237,19 @@ func reportProblem(r store.ReportRecord) (problem, what string) {
 	case r.Manifest != "" && sum != r.Manifest:
 		return "changed", "manifest.sha256 was changed"
 	}
-	names := make([]string, 0, len(r.Files))
-	for n := range r.Files {
+	files := r.Files
+	if files == nil {
+		// Recorded before 0.20: the files the manifest lists must be
+		// there (LEDGER1b).
+		if m, err := manifestFiles(r.Dir); err == nil {
+			files = map[string]int64{}
+			for n := range m {
+				files[n] = -1
+			}
+		}
+	}
+	names := make([]string, 0, len(files))
+	for n := range files {
 		names = append(names, n)
 	}
 	sort.Strings(names)
@@ -216,7 +258,7 @@ func reportProblem(r store.ReportRecord) (problem, what string) {
 		switch {
 		case errors.Is(err, os.ErrNotExist):
 			return "changed", n + " is missing"
-		case err == nil && fi.Size() != r.Files[n]:
+		case err == nil && files[n] >= 0 && fi.Size() != files[n]:
 			return "changed", n + " was changed (its size differs)"
 		}
 	}
@@ -249,9 +291,14 @@ func (a *App) Reports(w io.Writer) error {
 		fmt.Fprintln(w, "No scheduled reports recorded yet (the record starts with the first scheduled report made by 0.19 or later).")
 		return nil
 	}
+	var bad []string
 	for _, r := range st.State.Reports {
 		state := "OK"
-		switch p, what := reportProblem(r); {
+		p, what := reportProblem(r)
+		if p != "" && r.Removed.IsZero() && r.Accepted == nil {
+			bad = append(bad, "a scheduled report is "+p)
+		}
+		switch {
 		case !r.Removed.IsZero():
 			state = "removed under retention_days on " + stampLocal(r.Removed, a.loc())
 		case r.Accepted != nil:
@@ -262,6 +309,10 @@ func (a *App) Reports(w io.Writer) error {
 			state = "CHANGED: " + what
 		}
 		fmt.Fprintf(w, "%s to %s  %s  %s\n", stampLocal(r.From, a.loc()), stampLocal(r.To, a.loc()), filepath.Base(r.Dir), state)
+	}
+	// Exit code 4, like status, when one is missing or changed (LEDGER1b).
+	if len(bad) > 0 {
+		return &NeedsAttention{What: bad}
 	}
 	return nil
 }

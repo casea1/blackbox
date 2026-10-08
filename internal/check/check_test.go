@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/casea1/blackbox/internal/rollover"
 	"github.com/casea1/blackbox/internal/winevt"
 )
 
@@ -538,5 +539,34 @@ func TestReadLogSizes(t *testing.T) {
 		if r.Item == "PowerShell log" && r.Status != Pass {
 			t.Errorf("1 GB holding 10 days: %+v", r)
 		}
+	}
+}
+
+// LOG1d: when collection has seen a log turn over, check gives the size
+// status gives, from the same rate, even when the log's history can't be
+// measured (the Server: "make it 1 GB" in check, "at least 2 GB" in
+// status).
+func TestReadLogSizesFromTurnover(t *testing.T) {
+	ps := "Microsoft-Windows-PowerShell/Operational"
+	get := func(n string) (winevt.LogSettings, error) {
+		if n == ps {
+			return winevt.LogSettings{Enabled: true, MaxSize: 15 << 20}, nil
+		}
+		return winevt.LogSettings{}, errors.New("not found")
+	}
+	history := func(string) (winevt.LogHistory, error) { return winevt.LogHistory{}, nil } // not measurable
+	loss := rollover.Loss{Host: "SRV", Channel: ps, Held: 20 * time.Second, MaxSize: 15 << 20, Every: 15 * time.Minute}
+	Turnover = func(n string) (rollover.Loss, bool) { return loss, n == ps }
+	defer func() { Turnover = nil }()
+	rs := readLogSizes(get, history)
+	if len(rs) != 1 || rs[0].Status != Warn {
+		t.Fatalf("results: %+v", rs)
+	}
+	want := "make it " + rollover.Size(loss.Needed())
+	if !strings.Contains(rs[0].Fix, want) || !strings.Contains(loss.Advice(true), "at least "+rollover.Size(loss.Needed())) {
+		t.Errorf("check %q and status %q disagree", rs[0].Fix, loss.Advice(true))
+	}
+	if rollover.Size(loss.Needed()) != "2 GB" || !strings.Contains(rs[0].Have, "turned over after about 1 minute") {
+		t.Errorf("size %s, have %q", rollover.Size(loss.Needed()), rs[0].Have)
 	}
 }

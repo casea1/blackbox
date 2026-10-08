@@ -332,10 +332,20 @@ warning, `summary.json` lists it under the archive's `gaps` (and the
 coverage under `logs`), and `blackbox status` says **LOGS INCOMPLETE**
 for 14 days and exits with code 4. For another log, such as the
 PowerShell log, the line is "Logs incomplete" and does not change the
-exit code. The fix is a larger log (`blackbox check` gives the size the
-STIG requires), or, on a system that collects less often than every 15
-minutes, collecting more often. A log cleared since the last export is
-not a gap here: the clear is its own High row.
+exit code. Each log has one line, however many times it overwrote
+itself: how many times since when, the latest part, and the same advice
+as its "Events lost" line. The fix is a larger log (`blackbox check`
+gives the size, from the same rate as `status`), or, on a system that
+collects less often than every 15 minutes and whose log holds more than
+that, collecting more often.
+
+A log cleared since it last had a record exported is not an overwrite:
+the clear is its own High row. The part it leaves out is labelled with
+who cleared it and when, also when the log stayed empty until a later
+collection: the Original logs page says "Cleared by claude at …: its
+events from before then are not in this archive", `archive.json` has
+`cleared` on that gap, and `blackbox status` has a "Log cleared:" line
+with no size advice and no exit code 4.
 
 **Exports lost or changed before packing.** Each export's files are
 hashed when they are written (`piece.json`). When they are packed, a file
@@ -431,7 +441,10 @@ compressed. It depends on how busy the Security log is.
   Every run checks that each file the manifest lists is there, at the
   size it was written with; once a day every file is hashed again. A
   file deleted or changed is named, e.g. "REPORT CHANGED: … logs-WS-07.zip
-  is missing". `blackbox reports` lists them; when one was moved or
+  is missing". Reports recorded by 0.19 have no file list: it is taken
+  from their manifest, so a file moved out of one is noticed at once too.
+  `blackbox reports` lists them, and exits 4 like `status` when one is
+  missing or changed; when one was moved or
   removed on purpose, `blackbox reports accept NAME "why"` records who,
   when and why (a row in the next report and a copy in the system log)
   and stops pointing it out. All reports keeps its row, muted: "Accepted
@@ -457,9 +470,11 @@ original logs, which are in no report yet. Keeping `archive_dir` on
 another disk of the same computer does not protect it.
 
 On Windows, deleting a report under `C:\ProgramData\Blackbox` is a High
-row ("deleted the report …") in the next report when that folder has an
-auditing entry (see [windows.md](windows.md)); a `report_dir` elsewhere
-needs its own. On Linux, Blackbox's audit rules watch `/var/lib/blackbox`;
+row in the next report when that folder has an
+auditing entry (see [windows.md](windows.md)): "deleted the report …"
+when its folder went, or the files by name when only some did ("deleted
+logs-WIN11-TEST.zip from the report …"). A `report_dir` elsewhere needs
+its own. On Linux, Blackbox's audit rules watch `/var/lib/blackbox`;
 a `report_dir` elsewhere is not watched unless you add a rule for it.
 
 ## STIG compliance (SCAP)

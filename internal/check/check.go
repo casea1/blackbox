@@ -353,6 +353,11 @@ var readLogs = []string{
 	"Microsoft-Windows-DriverFrameworks-UserMode/Operational",
 }
 
+// Turnover, when set, says how fast this computer's collections have seen
+// a log turn over (the shortest it held before overwriting), so the size
+// check gives the same size as blackbox status (LOG1d). Set by the app.
+var Turnover func(log string) (rollover.Loss, bool)
+
 // maxRecommend caps a size worked out from a burst of events (a week at
 // the rate of a burst is far more than needed), within what a REG_DWORD
 // MaxSize can hold; status gives the same cap.
@@ -386,10 +391,20 @@ func readLogSizes(get func(string) (winevt.LogSettings, error), history func(str
 			need = max(need, rollover.MinPowerShell)
 			r.Want = "at least 1 GB, or enough for 7 days of events (Blackbox's advice: not a STIG setting)"
 		} else {
-			if week == 0 {
-				continue // holds a week, or can't tell yet: nothing to say
-			}
 			r.Want = "enough for 7 days of events (Blackbox's advice: not a STIG setting)"
+		}
+		// Seen turning over at collection: the size status gives, from
+		// the same rate (LOG1d).
+		seen := false
+		if Turnover != nil {
+			if l, ok := Turnover(name); ok && l.Needed() > 0 {
+				need, seen = l.Needed(), true
+				r.Have += fmt.Sprintf("; turned over after about %s at a collection", rollover.Duration(l.Held))
+				r.Want = "large enough not to turn over between collections (Blackbox's advice, as in blackbox status: not a STIG setting)"
+			}
+		}
+		if need == 0 && !seen {
+			continue // holds a week, or can't tell yet: nothing to say
 		}
 		need = min(need, maxRecommend)
 		need = (need + 1<<20 - 1) / (1 << 20) * (1 << 20)

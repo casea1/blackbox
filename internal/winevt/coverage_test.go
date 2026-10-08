@@ -245,11 +245,17 @@ func TestBlackboxOwnActivity(t *testing.T) {
 	}
 
 	keys := map[string]bool{}
-	for _, f := range []string{`index.html`, `data\events.js`, `data`} {
+	// One file moved out names the file (LEDGER3); the folder itself is
+	// the report.
+	for f, want := range map[string]string{
+		`index.html`:     "mallory deleted index.html from the report 2026-10-04_2009_WIN11-TEST_interim (using explorer.exe)",
+		`data\events.js`: "mallory deleted data/events.js from the report 2026-10-04_2009_WIN11-TEST_interim (using explorer.exe)",
+		``:               "mallory deleted the report 2026-10-04_2009_WIN11-TEST_interim (using explorer.exe)",
+	} {
 		r := sec(4663, with(person, "ObjectType", "File", "ObjectName", `C:\ProgramData\Blackbox\reports\2026-10-04_2009_WIN11-TEST_interim\`+f, "AccessList", "%%1537", "ProcessName", `C:\Windows\explorer.exe`))
 		r.Task, r.Keywords = taskFileSystem, "0x8020000000000000"
 		e := tr.Translate(r)
-		if e == nil || e.Severity != event.SevHigh || !strings.Contains(e.Summary, "mallory deleted the report 2026-10-04_2009_WIN11-TEST_interim (using explorer.exe)") {
+		if e == nil || e.Severity != event.SevHigh || e.Summary != want+"." {
 			t.Fatalf("report delete: %+v", e)
 		}
 		keys[e.DedupeKey] = true

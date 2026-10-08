@@ -427,15 +427,16 @@ func firstNonBlank(v ...string) string {
 }
 
 // reportFolder is the report a path under Blackbox's reports folder
-// belongs to ("2026-10-04_2009_WIN11-TEST_manual"), or "".
-func reportFolder(p string) string {
+// belongs to ("2026-10-04_2009_WIN11-TEST_manual"), or "", and the file
+// in it ("" for the folder itself).
+func reportFolder(p string) (name, file string) {
 	const marker = "/programdata/blackbox/reports/"
 	i := strings.Index(strings.ToLower(p), marker)
 	if i < 0 {
-		return ""
+		return "", ""
 	}
-	name, _, _ := strings.Cut(p[i+len(marker):], "/")
-	return name
+	name, file, _ = strings.Cut(strings.TrimSuffix(p[i+len(marker):], "/"), "/")
+	return name, file
 }
 
 var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9.-]+`)
@@ -513,21 +514,23 @@ func (t *Translator) fileAccess(r *Raw) *event.Event {
 	// (A5): its settings, schedule state and collected events.
 	if lo := strings.ToLower(winPath(obj)); (strings.Contains(lo, "/programdata/blackbox/") || strings.HasSuffix(lo, "/programdata/blackbox")) && !failed {
 		self := strings.EqualFold(filepath.Base(winPath(proc)), "blackbox.exe") || strings.EqualFold(filepath.Base(winPath(proc)), "blackboxw.exe")
-		report := reportFolder(winPath(obj))
+		report, file := reportFolder(winPath(obj))
 		switch {
 		case self:
 			// Blackbox's own run, or config set (self-recorded, A15). The
 			// folder itself counts too, not only what is in it (T4).
 			return nil
 		case report != "":
-			// One row for a deleted report, not two per file (T4).
+			// One row for a deleted report, not two per file (T4); one
+			// file moved out names the file, not the report (LEDGER3).
 			e.Action, e.Severity, e.Category = "blackbox_files_changed", event.SevHigh, event.CatIntegrity
 			verb := "changed"
 			if op == "delete" {
 				verb = "deleted"
 			}
-			e.Summary = fmt.Sprintf("%s %s the report %s (using %s).", orUnknown(who), verb, report, filepath.Base(winPath(proc)))
+			e.Summary = event.ReportFilesSummary(orUnknown(who), verb, report, filepath.Base(winPath(proc)), []string{file})
 			e.Target = report
+			e.Fields = map[string]string{event.ReportFilesFlag: file}
 			e.DedupeKey = "bbreport|" + verb + "|" + strings.ToLower(who+"|"+report)
 			e.AddDetail("Report", report)
 			e.AddDetail("File", obj)

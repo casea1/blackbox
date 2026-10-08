@@ -703,7 +703,12 @@ func cmdReports(args []string) error {
 	rest := fs.Args()
 	switch {
 	case len(rest) == 0:
-		return a.Reports(os.Stdout)
+		err := a.Reports(os.Stdout)
+		var na *app.NeedsAttention
+		if errors.As(err, &na) {
+			exit(4) // a scheduled report is missing or changed (LEDGER1b)
+		}
+		return err
 	case len(rest) >= 3 && rest[0] == "accept":
 		if err := install.RequireAdmin(); err != nil {
 			return err
@@ -888,6 +893,11 @@ func cmdCheck(args []string) error {
 	}
 	if !check.Supported {
 		return errors.New("the audit settings check runs on Windows and Linux")
+	}
+	// The log sizes from the rate status uses, when the data folder can be
+	// read (LOG1d).
+	if cfg, err := config.Load(config.DefaultPath()); err == nil {
+		check.Turnover = newApp(cfg, nil).CheckTurnover()
 	}
 	rs := check.Run()
 	printChecks(rs, *all)
