@@ -427,8 +427,15 @@ func (r *Report) collectionBar(s SystemRow, cleared []*Row) template.HTML {
 		t, _ := time.ParseInLocation("20060102", d, r.Location)
 		fmt.Fprintf(&labels, `<span style="left:%.2f%%">%s</span>`, x(t)/w*100, t.Format(layout))
 	}
-	return template.HTML(fmt.Sprintf(`<div class="cbar"><div class="cbar-l">%s</div><svg viewBox="0 13 %.0f %.0f" width="100%%" height="16" preserveAspectRatio="none" role="img">%s</svg></div>`,
-		labels.String(), w, h-13, b.String()))
+	name := fmt.Sprintf("Collection this period: %d collections", len(s.runTimes))
+	if len(s.gaps) > 0 {
+		name += fmt.Sprintf(", events lost %s", plural(len(s.gaps), "time"))
+	}
+	if len(cleared) > 0 {
+		name += fmt.Sprintf(", a log cleared %s", plural(len(cleared), "time"))
+	}
+	return template.HTML(fmt.Sprintf(`<div class="cbar"><div class="cbar-l">%s</div><svg viewBox="0 13 %.0f %.0f" width="100%%" height="16" preserveAspectRatio="none" role="img" aria-label="%s">%s</svg></div>`,
+		labels.String(), w, h-13, template.HTMLEscapeString(name), b.String()))
 }
 
 // systemHealth is one computer's health checklist.

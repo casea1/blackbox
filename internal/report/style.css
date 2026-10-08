@@ -188,7 +188,7 @@ table.dir td b{font-weight:600}
 .slist a i{width:8px;height:8px;display:block}.slist a i.ok{background:#C4CCDC}.slist a i.retired{background:none;box-shadow:inset 0 0 0 1px #8A96B3}.sv.retired{color:#5A6785}.sv.retired:before{background:none;box-shadow:inset 0 0 0 1px #8A96B3}.slist a i.bad{background:#D12C2C}.slist a i.warn{background:#E08A00}
 .slist .search{margin:0 14px 6px;padding:8px 10px;border:1px solid rgba(0,30,98,.12);background:rgba(255,255,255,.7);font-size:12.5px;color:#8A96B3;display:flex;gap:8px;align-items:center}
 .dh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
-.dh h3{margin:0;font-size:22px;font-weight:700;letter-spacing:-.3px}.dh p{margin:3px 0 0;color:#5A6785;font-size:13px}
+.dh h2,.dh h3{display:block;margin:0;font-size:22px;font-weight:700;letter-spacing:-.3px}.dh p{margin:3px 0 0;color:#5A6785;font-size:13px}
 .facts4{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid rgba(0,30,98,.08);background:rgba(255,255,255,.6);margin-bottom:12px}
 .facts4 div{padding:11px 14px;border-left:1px solid rgba(0,30,98,.08);font-size:12px;color:#5A6785}.facts4 div:first-child{border-left:0}
 .facts4 b{display:block;font:650 17px 'Public Sans';color:#0B1630;margin-top:2px}.facts4 b.bad{color:#C22020}.facts4 b.warn{color:#A35A00}
@@ -460,7 +460,9 @@ button.btn{font:inherit;font-size:13px;font-weight:550;cursor:pointer}
 }
 @media (max-width:1050px){
   body{grid-template-columns:64px 1fr}
-  aside .brand div,aside .site,aside .grp,nav a span,nav a small{display:none}
+  aside .brand div,aside .site,aside .grp,nav a small,nav.jump a span{display:none}
+  /* The icon rail's names stay for screen readers (UI19). */
+  aside nav a span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   aside .brand{padding:0 0 16px;justify-content:center}nav a{justify-content:center;padding:9px 0}
   nav a em{position:absolute;top:2px;right:8px}
   .md2{grid-template-columns:1fr!important}
@@ -492,6 +494,14 @@ aside .fold.shut{display:none}
   .dc .b{min-width:0;padding-bottom:4px;overflow-wrap:anywhere}
   .dc .m2{grid-column:2;text-align:left;white-space:normal;overflow-wrap:anywhere;padding:0 14px 10px 0}
   .dc .m2 small{display:inline;margin:0 0 0 8px}
+  /* Overview tiles wrap their text instead of cutting it (UI20). */
+  .kpi .kv,.ec .v{white-space:nowrap}.kpi .kv{font-size:26px}
+  .kr{flex-wrap:wrap}.ks{white-space:normal}
+  .ec .l{white-space:normal;overflow:visible}
+  .ec .d{grid-column:1/3;grid-row:auto;white-space:normal;text-align:left;padding-bottom:0}
+  /* The manual banner's label sits above its text (UI20). */
+  .alertbar.lab{display:grid;grid-template-columns:18px minmax(0,1fr);gap:2px 10px;align-items:start}
+  .alertbar.lab>svg{grid-row:span 2;margin-top:1px}
 }
 @media print{
   @page{margin:16mm}
@@ -538,7 +548,7 @@ a.panel.ec{color:inherit;text-decoration:none}
 table.mxs th{white-space:nowrap}
 table.mxs td.nm,table.mxs th:first-child{position:sticky;left:0;z-index:1;background:#F8FAFE}
 table.mxs tr.g td{position:sticky;left:0;background:transparent}
-.mxbox{position:relative}
+.mxbox{position:relative}@media (max-width:1050px){#h-scap table.stig th,#h-scap table.stig td{padding-left:5px;padding-right:5px}#h-scap table.stig th{white-space:normal;letter-spacing:0}#h-scap .fixline a{word-break:break-all}}.mxkey{margin:10px 0 0;line-height:1.6}.mxkey span{font-weight:650;color:#3A4766}
 .morecue{display:none;position:absolute;top:0;right:0;z-index:2;padding:2px 8px 2px 28px;font-size:11.5px;font-weight:650;color:#0B5FFF;background:linear-gradient(90deg,rgba(248,250,254,0),#F8FAFE 35%)}
 .mxbox.scrolls .morecue{display:inline-block}
 .mxbox.scrolls.end .morecue{display:none}
@@ -567,10 +577,10 @@ td.invdr .invm{font-weight:500;color:#0B1630}
 /* Inventory (UI15): tabs, systems that open in place, flat lists. */
 table.inv tr.invrow{cursor:pointer}table.inv tr.invrow:hover td{background:rgba(11,95,255,.04)}
 .invcaret{display:inline-block;width:14px;color:#5A6785;transition:transform .15s}
-tr.invrow[aria-expanded="true"] .invcaret{transform:rotate(90deg)}
+.invname[aria-expanded="true"] .invcaret{transform:rotate(90deg)}button.invname{background:none;border:0;padding:0;font:inherit;cursor:pointer;text-align:left}
 tr.invdetail>td{background:rgba(0,30,98,.025);padding:14px 16px 16px}
 .invgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:18px}
-.invgrid h4{margin:0 0 6px;font-size:13px;font-weight:650;color:#0B1630}
+.invgrid h2{display:block;margin:0 0 6px;font-size:13px;font-weight:650;color:#0B1630}
 @media (max-width:1100px){.invgrid{grid-template-columns:1fr}}
 .invhint{margin:0 0 8px}.invhint button{font:600 12.5px 'Public Sans';color:#0B5FFF;background:none;border:0;padding:0;cursor:pointer;margin-left:6px}
 [data-inv] .toolbar{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}

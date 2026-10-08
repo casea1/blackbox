@@ -706,9 +706,20 @@ check (logon, account management, policy change, privilege use, process
 creation, removable storage, PowerShell logging, log size, reporting, logs
 intact), the gaps with how to fix them, and each system's own settings
 table. Blackbox only reports audit settings; it never changes them.
-The grid takes the page's full width, with short headings (hover one for
-its full name) and the System column always in view; on a narrow screen
-it scrolls sideways and says **more →** until its last column is in view.
+The grid takes the page's full width, with short headings and the System
+column always in view; a key under the grid gives each short heading's
+full name ("Accounts: Account management"), so nothing needs hovering
+(UI19). On a narrow screen the grid scrolls sideways and says **more →**
+until its last column is in view; at 768 pixels the page itself, the
+STIG compliance table included, needs no sideways scrolling.
+
+The report is checked with axe-core for the accessibility rules on
+names and structure (UI19): every filter list (Search, and the filters
+on each event page) has a name; each chart is an image named for what it
+shows, the activity heatmap a named group (its hours are links), and
+icons are hidden from screen readers; Inventory's rows open with a
+button; each menu has its own name; headings never skip a level; and on
+the narrow icon menu each page's name is still read out.
 Systems that match on every check are folded under **Show the N systems
 that match on every check**, so the sections below stay in reach; a bar
 at the top of the page links to each section (the grid, Gaps, Antivirus,
@@ -788,6 +799,9 @@ their counts, and a timeline with times of day for a short period.
   history.
 - **A manual report** says so in a banner on the Overview, and in a
   "Manual" chip by the title on every other page.
+- **On a phone** (390 pixels wide) the page never scrolls sideways: the
+  Overview's tiles wrap their text instead of cutting it, and the manual
+  banner puts its label above its text (UI20).
 - **SSH logons on Windows** show the address they came from: the 4624
   Windows writes for an OpenSSH sign-in has none, so Blackbox reads the
   OpenSSH server's log (`OpenSSH/Operational`) and joins sshd's

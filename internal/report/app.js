@@ -222,7 +222,8 @@
       var d = row.nextElementSibling;
       if (open === undefined) open = d.hidden;
       d.hidden = !open;
-      row.setAttribute('aria-expanded', open ? 'true' : 'false');
+      var b = row.querySelector('[data-invbtn]');
+      if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
     if (root) {
       root.addEventListener('click', function (e) {
@@ -238,10 +239,6 @@
         }
         var r = e.target.closest('[data-invtoggle]');
         if (r && !e.target.closest('a')) toggle(r);
-      });
-      root.addEventListener('keydown', function (e) {
-        var r = e.target.closest('[data-invtoggle]');
-        if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(r); }
       });
       root.querySelector('[data-invfind]').addEventListener('input', filter);
     }
@@ -761,7 +758,8 @@
           lab += '<span style="left:' + ((k * 24 + h) / n * 100).toFixed(2) + '%">' + (h < 10 ? '0' : '') + h + ':00</span>';
         });
       });
-      box.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + (H - 16) + '" width="100%" height="' + (H - 16) + '" preserveAspectRatio="none">' + svg + '</svg><div class="cbar-l">' + lab + '</div>';
+      box.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + (H - 16) + '" width="100%" height="' + (H - 16) + '" preserveAspectRatio="none" role="img" aria-label="' +
+        rows.length + ' matching events by hour over the period">' + svg + '</svg><div class="cbar-l">' + lab + '</div>';
     }
     Object.keys(q).forEach(function (k) {
       q[k].addEventListener(k === 'text' ? 'input' : 'change', function () { extra = null; run(); });

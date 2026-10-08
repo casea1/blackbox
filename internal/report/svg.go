@@ -172,7 +172,13 @@ func stackedBars(labels []string, series []Series, hot []bool, faded bool, w, h 
 			fmt.Fprintf(&b, `<text x="%.1f" y="%d" text-anchor="middle" class="ax"%s>%s</text>`, lx, h-6, weight, template.HTMLEscapeString(labels[i]))
 		}
 	}
-	return template.HTML(fmt.Sprintf(`<svg viewBox="0 0 %d %d" width="100%%" role="img">%s</svg>`, w, h, b.String()))
+	// Its name says what it shows, for a screen reader (UI19).
+	parts := make([]string, n)
+	for i := range labels {
+		parts[i] = fmt.Sprintf("%s %d", labels[i], tot[i])
+	}
+	return template.HTML(fmt.Sprintf(`<svg viewBox="0 0 %d %d" width="100%%" role="img" aria-label="%s">%s</svg>`, w, h,
+		template.HTMLEscapeString("Bar chart: "+strings.Join(parts, ", ")), b.String()))
 }
 
 // weekBars draws twelve weekly bars with a dashed line at the average of
@@ -226,7 +232,12 @@ func weekBars(vals []int, labels []string, badWhenHigh bool, w, h int) template.
 		fmt.Fprintf(&b, `<text x="2" y="%d" class="ax">%s</text>`, h-2, template.HTMLEscapeString(labels[0]))
 	}
 	fmt.Fprintf(&b, `<text x="%d" y="%d" text-anchor="end" class="ax" style="font-weight:700;fill:#0B1630">This week</text>`, w-2, h-2)
-	return template.HTML(fmt.Sprintf(`<svg viewBox="0 0 %d %d" width="100%%">%s</svg>`, w, h, b.String()))
+	name := fmt.Sprintf("By week: this week %d", vals[n-1])
+	if avg >= 0 {
+		name += fmt.Sprintf(", average of the earlier weeks %.0f", avg)
+	}
+	return template.HTML(fmt.Sprintf(`<svg viewBox="0 0 %d %d" width="100%%" role="img" aria-label="%s">%s</svg>`, w, h,
+		template.HTMLEscapeString(name), b.String()))
 }
 
 func shortNum(v float64) string {

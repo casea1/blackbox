@@ -426,7 +426,8 @@ func heatmap(heat [7][24]int, hot [7][24]bool, person string) template.HTML {
 	for h := 0; h < 24; h += 6 {
 		fmt.Fprintf(&b, `<text x="%.0f" y="9" class="ax">%02d:00</text>`, 40+float64(h)*cw, h)
 	}
-	return template.HTML(fmt.Sprintf(`<svg viewBox="0 0 %.0f 142" width="100%%">%s</svg>`, w, b.String()))
+	// A group, not an image: its hours are links (UI19).
+	return template.HTML(fmt.Sprintf(`<svg viewBox="0 0 %.0f 142" width="100%%" role="group" aria-label="When they were active, by day of the week and hour">%s</svg>`, w, b.String()))
 }
 
 func lerpColor(r1, g1, b1, r2, g2, b2 int, t float64) string {

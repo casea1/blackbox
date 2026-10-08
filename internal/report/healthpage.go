@@ -27,8 +27,10 @@ type HealthCol struct{ Short, Full string }
 var healthShort = map[string]string{"Account mgmt": "Accounts", "Policy change": "Policy", "Privilege use": "Privilege",
 	"Process creation": "Process", "Removable storage": "USB", "PowerShell logging": "PS log", "Antivirus": "AV", "Logs intact": "Intact"}
 
-// healthFull is a heading's name on hover, where it says more than the column.
-var healthFull = map[string]string{"Log size": "Log size and space settings"}
+// healthFull is a heading's full name, where it says more than the
+// column: on hover, and in the key under the table (UI19).
+var healthFull = map[string]string{"Account mgmt": "Account management", "Log size": "Log size and space settings",
+	"Logs intact": "Logs intact (none cleared)", "Reporting": "Reporting (data received)"}
 
 func healthHeadings() []HealthCol {
 	var out []HealthCol
@@ -123,8 +125,11 @@ type GapCard struct {
 
 // HealthPage is the Audit health page.
 type HealthPage struct {
-	Stats   []EventCard
-	Cols    []HealthCol
+	Stats []EventCard
+	Cols  []HealthCol
+	// ColKey are the columns whose heading is short for more, in a key
+	// under the table: the full names without hovering (UI19).
+	ColKey  []HealthCol
 	Groups  []HealthGroup
 	Gaps    []GapCard
 	Single  string // a report of one system opens its table directly
@@ -197,6 +202,11 @@ func (r *Report) healthPage() *HealthPage {
 		}
 	}
 	hp := &HealthPage{Cols: healthHeadings(), Other: r.otherEvents(), Scap: r.scapView(), AV: r.avRows()}
+	for _, c := range hp.Cols {
+		if c.Short != c.Full {
+			hp.ColKey = append(hp.ColKey, c)
+		}
+	}
 	cleared := map[string][]*Row{}
 	for _, row := range r.rows {
 		if row.Action == "log_cleared" {
