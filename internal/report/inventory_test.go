@@ -34,20 +34,26 @@ func TestInventoryPage(t *testing.T) {
 	cs.Inventory = inv
 	r := Build(evs, nil, Options{WindowEnd: end, Location: time.UTC, CheckSets: []CheckSet{cs}})
 	ip := r.inventoryPage()
-	if len(ip.Rows) != 1 || len(ip.Missing) != 1 || ip.Missing[0].Host != "ubu-01" || ip.Stats[0].Value != "1 / 2" {
+	if len(ip.Rows) != 2 || ip.Have != 1 || len(ip.Missing) != 1 || ip.Missing[0].Host != "ubu-01" {
 		t.Fatalf("page: %+v", ip)
 	}
-	row := ip.Rows[0]
+	var row *InvRow
+	for _, x := range ip.Rows {
+		if x.Host == "WS-07" {
+			row = x
+		}
+	}
 	if row.Make != "Dell Inc. OptiPlex 7090" || row.Memory != "16.0 GB" || row.Admins != 2 || row.Drives[0].Size != "1.0 TB" ||
+		row.Drives[0].Note != "internal" || row.Drives[0].Type != "SCSI · SSD" ||
 		row.Accounts[0].Name != "localadmin" || row.Accounts[1].Name != "Administrator" || row.Accounts[1].Status != "Disabled" || row.Accounts[2].Key != "jsmith" {
 		t.Errorf("row: %+v", row)
 	}
 	csv := r.inventoryCSV(ip)
 	for _, want := range []string{
-		"WS-07,system,Dell Inc. OptiPlex 7090,7XK2PQ3,16.0 GB,Microsoft Windows 11 Enterprise 10.0.26100; Intel i7-11700; corp.example.mil,2026-10-05 09:00:00 +00:00",
-		"WS-07,drive,Samsung SSD 980 PRO 1TB,S5GXNX0T123456A,1.0 TB,SCSI SSD,",
-		"WS-07,account,localadmin,…1001,,Local; Enabled; administrator,",
-		`WS-07,account,CORP\jsmith,…3105,,Domain (profile); Enabled; last logon 2026-10-05 10:00:00 +00:00,2026-10-05 09:00:00 +00:00`,
+		"system,item,name,type,size,serial_or_id,note,inventoried",
+		"WS-07,drive,Samsung SSD 980 PRO 1TB,SCSI · SSD,1.0 TB,S5GXNX0T123456A,internal,2026-10-05 09:00:00 +00:00",
+		"WS-07,account,localadmin,Local administrator,,…1001,Enabled,",
+		`WS-07,account,CORP\jsmith,Domain (profile) user,,…3105,Enabled; last used 2026-10-05 10:00:00 +00:00,2026-10-05 09:00:00 +00:00`,
 	} {
 		if !strings.Contains(csv, want) {
 			t.Errorf("csv lacks %q:\n%s", want, csv)
@@ -58,10 +64,20 @@ func TestInventoryPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-	for _, want := range []string{`data-view="inventory"`, `href="#inventory"`, "Samsung SSD 980 PRO 1TB", "S5GXNX0T123456A", "Accounts on WS-07", "<b>ubu-01</b>: it has sent no settings check yet", `"pagecsv":{`, `"inventory":{"label":"Systems, drives and accounts"`, `href="#search?user=jsmith"`} {
+	for _, want := range []string{`data-view="inventory"`, `href="#inventory"`, "Samsung SSD 980 PRO 1TB", "S5GXNX0T123456A", `data-keys="S5GXNX0T123456A"`,
+		"<b>ubu-01</b>: it has sent no settings check yet", `"inventory":{"label":"Drives and accounts"`, `href="#search?user=jsmith"`,
+		"No inventory yet: it has sent no settings check yet."} {
 		if !strings.Contains(string(html), want) {
 			t.Errorf("report lacks %q", want)
 		}
+	}
+	// The accounts are in a data file, recorded in the manifest.
+	data, err := os.ReadFile(filepath.Join(dir, "data", "inventory-accounts.js"))
+	if err != nil || !strings.HasPrefix(string(data), `BB.put("inventory/accounts",`) {
+		t.Errorf("accounts data file: %v", err)
+	}
+	if man, _ := os.ReadFile(filepath.Join(dir, "manifest.sha256")); !strings.Contains(string(man), "data/inventory-accounts.js") {
+		t.Error("the accounts data file is not in the manifest")
 	}
 }
 
@@ -96,36 +112,65 @@ func TestInventoryMissingWhy(t *testing.T) {
 	}
 }
 
-// UI15: the Inventory page has Systems, Drives and Accounts tabs; each
-// system's drives and accounts open under its own row (no panel whose
-// accounts change); the tiles open their tab.
-func TestInventoryTabs(t *testing.T) {
-	end := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
-	mk := func(host, serial string, admin bool) CheckSet {
-		cs := NewCheckSet(host, end.Add(-time.Hour), nil)
-		cs.Inventory = &inventory.Inventory{Manufacturer: "Dell Inc.", Model: "OptiPlex 7090", Serial: serial,
-			Drives:   []inventory.Drive{{Model: "Samsung SSD", Serial: "SN-" + host, Size: 512110190592}},
-			Accounts: []inventory.Account{{Name: "localadmin", ID: "…1001", Enabled: true, Admin: admin, Kind: "Local"}, {Name: "guest", ID: "…501", Kind: "Local"}}}
-		return cs
-	}
-	r := Build(nil, nil, Options{WindowEnd: end, Location: time.UTC, CheckSets: []CheckSet{mk("WS-01", "AAA", true), mk("WS-02", "BBB", false)}})
+// UI-R1 (design 11): the systems on the left, found by name or drive
+// serial, grouped Servers / Workstations; the one selected on the right
+// with its drives (serial numbers; a removable drive seen in the USB
+// events, "not connected now" when the settings check after it did not
+// find it) and five accounts, the rest in the data file.
+func TestInventoryUIR1(t *testing.T) {
+	r, _ := demo30(t)
 	ip := r.inventoryPage()
-	if ip.DriveN != 2 || ip.AccountN != 4 {
-		t.Errorf("counts: %d drives, %d accounts", ip.DriveN, ip.AccountN)
+	if len(ip.Groups) != 2 || ip.Groups[0].Label != "Servers · 11" || ip.Groups[1].Label != "Workstations · 19" || ip.Have != 30 {
+		t.Fatalf("groups: %+v", ip.Groups)
+	}
+	by := map[string]*InvRow{}
+	for _, row := range ip.Rows {
+		by[row.Host] = row
+	}
+	app := by["SRV-APP01"]
+	var usb *InvDrive
+	for i, d := range app.Drives {
+		if d.Serial == "4C530001230615117" {
+			usb = &app.Drives[i]
+		}
+	}
+	if usb == nil || usb.Type != "USB · removable" || usb.Note != "seen 7 Oct 10:18 · not connected now" || app.DrivesNote != "2 internal · 1 removable seen" ||
+		!strings.Contains(app.Keys, "4C530001230615117") {
+		t.Errorf("SRV-APP01 drives: %+v", app.Drives)
+	}
+	adm := by["WS-ADM-01"]
+	if d := adm.Drives[len(adm.Drives)-1]; d.Type != "USB · removable" || d.Note != "connected at the settings check" {
+		t.Errorf("WS-ADM-01 USB stick: %+v", d)
+	}
+	if len(app.Shown) != 5 || app.More != len(app.Accounts)-5 || app.Used < 10 || !app.Shown[0].Admin {
+		t.Errorf("accounts: %d shown, %d more, %d used", len(app.Shown), app.More, app.Used)
 	}
 	var b bytes.Buffer
 	if err := r.WriteHTML(&b, nil); err != nil {
 		t.Fatal(err)
 	}
 	h := b.String()
-	for _, want := range []string{`data-invtab="systems"`, `data-invtab="drives"`, `data-invtab="accounts"`, `data-invsys="WS-01"`, `data-invtoggle`,
-		`class="invdetail" hidden`, "Drives on WS-01", "Accounts on WS-02", `data-invacct="admin"`, `data-invitem data-admin data-enabled`,
-		`data-scroll="inv-tab-drives"`, `data-scroll="inv-tab-admin"`, `href="#inventory/WS-02"`, "SN-WS-02"} {
+	for _, want := range []string{`placeholder="Find a system or serial"`, `data-pick="SRV-DC02"`, `data-pane="SRV-DC02"`, "4C530001230615117",
+		"seen 7 Oct 10:18 · not connected now", `data-invall="SRV-APP01"`, "Show all"} {
 		if !strings.Contains(h, want) {
 			t.Errorf("Inventory lacks %q", want)
 		}
 	}
-	if strings.Contains(h, `data-pane="WS-01"`) {
-		t.Error("the old one-system-at-a-time panel is still there")
+	// Five accounts per system in the page, not 2,000 of them.
+	inv := h[strings.Index(h, `data-view="inventory"`):]
+	inv = inv[:strings.Index(inv, "</section>")]
+	if n := strings.Count(inv, `href="#search?user=`); n != 5*30 {
+		t.Errorf("%d accounts in the page", n)
+	}
+	// The CSV: one row per drive and one per account.
+	csv := r.inventoryCSV(ip)
+	if n := strings.Count(csv, ",drive,"); n != ip.DriveN {
+		t.Errorf("%d drive rows, %d drives", n, ip.DriveN)
+	}
+	if n := strings.Count(csv, ",account,"); n != ip.AccountN {
+		t.Errorf("%d account rows, %d accounts", n, ip.AccountN)
+	}
+	if !strings.Contains(csv, "SRV-APP01,drive,SanDisk Cruzer Blade,USB · removable,—,4C530001230615117,seen 7 Oct 10:18 · not connected now,") {
+		t.Error("the CSV lacks the removable drive")
 	}
 }

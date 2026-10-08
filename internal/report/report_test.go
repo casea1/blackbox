@@ -396,8 +396,8 @@ func TestSystemsPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := html.String()
-	for _, want := range []string{`data-view="systems"`, `data-pick="WS-03"`, `data-pane="WS-01"`, "Virtual machine on WS-01",
-		"Audit settings to fix", "No collection received in this period", "Silent",
+	for _, want := range []string{`data-view="systems"`, `data-pick="WS-03"`, `data-sys="WS-01"`, `data-sysrow="WS-03"`, "virtual machine on WS-01",
+		"Audit settings", "nothing since", "Problem: not reporting",
 		"No data received", `href="#health/WS-01"`} { // Audit health
 		if !strings.Contains(h, want) {
 			t.Errorf("report HTML missing %q", want)

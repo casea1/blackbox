@@ -87,7 +87,7 @@ func TestRetiredSystem(t *testing.T) {
 		t.Errorf("card: %+v", v)
 	}
 	for _, f := range v.Facts {
-		if f.Value == "nothing" || f.Bad {
+		if f.Value == "nothing" || f.Level != "" {
 			t.Errorf("fact %+v", f)
 		}
 	}
@@ -101,7 +101,7 @@ func TestRetiredSystem(t *testing.T) {
 	if err := r.WriteHTML(&b, nil); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(b.String(), `<span class="sv retired">Retired</span>`) {
+	if !strings.Contains(b.String(), `<span class="schip retired">Retired 7 Oct</span>`) {
 		t.Error("the page does not mark it retired")
 	}
 }

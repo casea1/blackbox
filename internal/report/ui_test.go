@@ -46,7 +46,7 @@ func TestAntivirusTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-	for _, want := range []string{`id="h-av"`, "Definitions dated", "<b>2 Oct 2026 12:00</b>", "Antivirus definitions", "Defender definitions dated 2 Oct 2026 12:00 (3 days old)"} {
+	for _, want := range []string{`id="h-av"`, "Definitions dated", "<b>2 Oct 2026 12:00</b>", "Antivirus definitions", "Defender, definitions 2 Oct"} {
 		if !strings.Contains(string(html), want) {
 			t.Errorf("report lacks %q", want)
 		}

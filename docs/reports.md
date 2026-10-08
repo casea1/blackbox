@@ -637,25 +637,35 @@ checked**) and the next report at once, not after the next daily check:
   with a key or through sudo; one whose shell refuses logons, or that has
   expired, is disabled. Nothing about passwords is read or kept.
 
-The page has three tabs, each with a filter box:
+The page (UI-R1) has the systems on the left, grouped **Servers** and
+**Workstations**, each with its operating system, and the one selected on
+the right. **Find a system or serial** finds a system by its name or by a
+drive's serial number. A link to `#inventory/WS-07` opens that system.
 
-- **Systems**: one row per system (make, model and serial, operating
-  system, processor and memory, how many drives and accounts, how many
-  administrators). Click a row, or press Enter on it, to open that
-  system's drives (with serial numbers) and accounts right under it;
-  several can be open at once, and **Expand all** opens every one. A link
-  to `#inventory/WS-07` opens that system.
-- **Drives**: every drive on every system, with its serial number.
-- **Accounts**: every account on every system, with **Administrators** and
-  **Enabled** filters, so all administrator accounts on the network are in
-  one list. Click an account to search its events.
+- **The system:** its name; operating system, role and make and model;
+  serial number, memory, and accounts ("63 (9 administrators, 12 used this
+  period)"), then processor, BIOS, domain and when it was read.
+- **Drives:** model, type ("NVMe · SSD", "SATA · HDD", "USB ·
+  removable"), size, **serial number** and a note: "internal"; for a
+  removable drive in the inventory, "connected at the settings check"; and
+  for a removable drive seen only in the USB events, "seen 7 Oct 10:18",
+  with "not connected now" when the settings check after that did not
+  find it. The serial of a drive seen in the events comes from the event
+  (its "Serial number" detail).
+- **Accounts:** five shown (administrators first, then the most recently
+  used): name, the last digits of its SID or its UID, admin or user,
+  disabled, and when it was last used (its last logon, or its latest event
+  in this report). "N more · Show all" lists the rest. The accounts are in
+  `data/inventory-accounts.js`, read when the page opens, so a network of
+  thousands of accounts keeps the page light; the file is in the manifest
+  like the event data. Click an account to search its events.
 
-The four tiles at the top open their tab (Administrators opens Accounts
-filtered to administrators). **Export > Inventory as CSV** saves every
-system, drive and account, one per line. Systems with no inventory yet
-are named under the table with the reason: it has sent nothing since a
-given time, it runs a Blackbox from before 0.13, or it has sent no
-settings check yet.
+**Export CSV** saves one row per drive (system, model, type, size, serial
+number, note) and one row per account (system, name, kind and rights,
+SID or UID, status and last use), with the time each system was read.
+Systems with no inventory yet are listed with the reason (on the right,
+and under the page): it has sent nothing since a given time, it runs a
+Blackbox from before 0.13, or it has sent no settings check yet.
 
 How it is read: on Windows, one PowerShell query of CIM
 (`Win32_ComputerSystem`, `Win32_BIOS`, `Win32_DiskDrive`,
@@ -827,6 +837,32 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
   in one line), **Health** with each problem once and a line for what is
   fine, and **Detections**. The trends below it, which count every
   report by calendar week, appear once there are two full weeks.
+- **Systems** (UI-R1). One table of every system, grouped **Servers** and
+  **Workstations**, worst first, with a filter bar: **Find a system**,
+  **All / Problems / Warnings / OK** with their counts, **OS** and
+  **Role**. Each row: a status dot and the name, the OS, six squares
+  (green ok, amber warning, red problem, grey no data) for **Reporting**
+  (collections received against those expected), **Logs intact** (none
+  cleared, nothing overwritten), **Settings** (audit settings to fix),
+  **Antivirus**, **Orig. logs** (its zip in this report) and **SCAP**,
+  then its events, detections and when it was last seen. A square links to
+  where the detail is; a row opens the system.
+- **One system** (`#systems/NAME`): "Systems › Servers › NAME", **Search
+  this system** and **Prev / Next** through the list. Its problem in one
+  chip, then what it is (OS · role · make and model · the collector it
+  sends to, when known). Six facts: events, detections, last collection
+  and how often it collects (read from its collections), audit settings
+  to fix of those checked, SCAP score and open CAT I, and the size of its
+  original logs. The **collection strip** has one cell for each
+  collection expected in the period (24 for an hourly system over a
+  day; a long period puts several in one cell): green when it came, grey
+  when it was missed, amber when events were overwritten before they were
+  collected, and a red mark where a log was cleared. Then the six
+  **Checks** in one line each (problems first, with **Audit health →**),
+  **Detections** on it, its **Activity** per hour with a red dot on each
+  hour with a detection, **Who was active** (the busiest accounts, what
+  they are and their events) and **Events by kind** (noting a kind well
+  above the typical system on the network).
 - **Each fact once.** The Systems page gives a system's audit settings
   to fix as a count that links to Audit health, which lists them. A
   system that sent nothing says so once.

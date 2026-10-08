@@ -189,6 +189,12 @@ func (r *Report) buildData() ([]*EventPage, []dataFile, error) {
 		}
 	}
 	r.fillPages(pages)
+	// Inventory's accounts, read when the page needs them (UI-R1).
+	if f, ok, err := r.inventoryData(); err != nil {
+		return nil, nil, err
+	} else if ok {
+		files = append(files, f)
+	}
 	r.dataSums = map[string]string{}
 	for _, f := range files {
 		r.dataSums[f.Name] = dataSum(f.Body)

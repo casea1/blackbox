@@ -175,7 +175,8 @@ func (r *Report) pageCSVs(hp *HealthPage, ip *InventoryPage) map[string]CSVFile 
 		m["health"] = csvFile("Audit settings, every system", "audit-settings", r.healthRows(hp))
 	}
 	if ip != nil && len(ip.Rows) > 0 {
-		m["inventory"] = csvFile("Systems, drives and accounts", "inventory", r.inventoryRows(ip))
+		// The accounts are added in app.js from the data file (UI-R1).
+		m["inventory"] = csvFile("Drives and accounts", "inventory", r.inventoryDriveRows(ip))
 	}
 	if len(r.Archives)+len(r.NoArchive) > 0 {
 		m["logs"] = csvFile("Original-log zips", "original-logs", r.archiveRows())
@@ -287,10 +288,30 @@ func (r *Report) systemsDrivesRows() [][]string {
 
 // systemsRows are the Systems page's list.
 func (r *Report) systemsRows() [][]string {
-	rows := [][]string{{"system", "role", "operating system", "status", "note", "events", "high", "last collection", "data via"}}
+	head := []string{"system", "role", "operating system", "status", "note", "events", "high", "last collection", "data via", "detections"}
+	// The six checks of the list (UI-R1): level, then what was found.
+	views := map[string]*SystemView{}
+	if sp := r.systemsPage(); sp != nil {
+		for _, g := range sp.Groups {
+			for _, v := range g.Systems {
+				views[v.Name] = v
+			}
+		}
+	}
+	for _, c := range sysCheckCols {
+		head = append(head, strings.ToLower(c))
+	}
+	rows := [][]string{head}
 	for _, s := range r.systemsByKind() {
-		rows = append(rows, []string{s.Name, kindWord(systemKind(s)), osLabel(s), s.Status, s.StatusMsg, fmt.Sprint(s.Events), fmt.Sprint(s.High),
-			r.csvTime(s.LastRun), s.Via})
+		row := []string{s.Name, kindWord(systemKind(s)), osLabel(s), s.Status, s.StatusMsg, fmt.Sprint(s.Events), fmt.Sprint(s.High),
+			r.csvTime(s.LastRun), s.Via, ""}
+		if v := views[s.Name]; v != nil {
+			row[9] = fmt.Sprint(v.Det)
+			for _, c := range v.Cells {
+				row = append(row, c.Word()+": "+c.Title)
+			}
+		}
+		rows = append(rows, row)
 	}
 	return rows
 }
