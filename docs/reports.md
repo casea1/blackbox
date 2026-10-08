@@ -348,8 +348,8 @@ the last byte of each log file (finishing a file rotated since) and the
 journal's cursor. So a record written in the same second as an export,
 and anything stamped while the clock was set back, are in the next one.
 The times in `piece.json` and `archive.json` are for reading only, and
-all in UTC (ending in `Z`), the gaps and each log's coverage included
-(TZ1); `blackbox status` shows times in local time only, and names the
+all in UTC (ending in `Z`), the gaps and each log's coverage included,
+in each piece as well as in the archive (TZ1, TZ1b); `blackbox status` shows times in local time only, and names the
 zone once, on its first line (`Times: local time, EDT (UTC-04:00)`). A log
 the collection read nothing new from is left out of that export. If the
 log no longer holds the records after the last export (it overwrote
@@ -521,7 +521,11 @@ compressed. It depends on how busy the Security log is.
   is hashed again, and one that can't be read is a problem, not verified.
   A file deleted, changed or added is named, e.g. "REPORT CHANGED: …
   logs-WS-07.zip is missing" or "… extra/report.html was added after the
-  report was written". Reports recorded by 0.19 have no file list: it is taken
+  report was written". "It held the only copy of that period's original
+  logs" is added only when that is so: the whole report is gone, or a
+  `logs-*.zip` in it is missing or changed. Another file (`events.zip`,
+  `report.html`) can be made again from what Blackbox keeps (LEDGER4b).
+  Reports recorded by 0.19 have no file list: it is taken
   from their manifest, so a file moved out of one is noticed at once too.
   `blackbox reports` lists them, and exits 4 like `status` when one is
   missing or changed; when one was moved or

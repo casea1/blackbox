@@ -400,7 +400,10 @@ collector**. It appears on the Systems page after its first collection.
 **Retiring a computer.** On the collector, run
 `blackbox systems remove NAME`. It stops being listed and reported as
 silent. Its events stay in earlier reports, and it is listed again if it
-ever sends again. The report whose period it was retired in shows it
+ever sends again. Until then it is left out of every warning about
+senders in `status`, `blackbox inbox` and the report: missing batches,
+"no batch since", silence, delivering into the shared folder (SEC1d).
+`blackbox gaps` still lists its missing batches. The report whose period it was retired in shows it
 under **Retired** on the Systems page, "retired 7 Oct by alice" (the
 account that ran the command), with its events up to then; it is not
 counted in **Systems reporting**, the Health checks or **Original logs
@@ -467,7 +470,9 @@ A sender keeps everything until the collector has it.
   They are then no longer missing: they stop making `blackbox status`
   exit 4, `status` and `gaps` list them as accepted with who, when and
   why, and the next report has a row saying who accepted them and why
-  (recorded like a setting change, in the system log too). Open gaps make
+  (recorded like a setting change, in the system log too). Options such
+  as `--config FILE` may go before, between or after the arguments; `--`
+  ends them, for a reason that starts with a dash (CLI2). Open gaps make
   `blackbox status` exit 4. A gap from batch 1, noticed when the
   collector first heard from a sender, clears by itself once that
   sender's batches say where its earlier batches went. A gap recorded
