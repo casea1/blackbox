@@ -14,7 +14,7 @@ import (
 func TestDeliveredFileOwnerOnly(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "batch")
 	os.WriteFile(src, []byte("x"), 0o644)
-	dst := filepath.Join(t.TempDir(), "HOST_id_0000000001_0123456789ab.bbx")
+	dst := filepath.Join(t.TempDir(), "HOST_id_0000000001-0123456789ab.bbx")
 	if err := writeNew(src, dst); err != nil {
 		t.Fatal(err)
 	}

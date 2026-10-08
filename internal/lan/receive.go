@@ -275,15 +275,12 @@ func importArchive(st *store.Store, dir, name, archivesDir string, now time.Time
 	return st.Save()
 }
 
-// parseInboxName reads HOST_ID_SEQ_RANDOM.bbx (0.24, DESIGN1), and
-// HOST_ID_SEQ.bbx or HOST_ID_SEQ-N.bbx from earlier senders.
+// parseInboxName reads HOST_ID_SEQ-RANDOM.bbx (0.24, DESIGN1), and
+// HOST_ID_SEQ.bbx or HOST_ID_SEQ-N.bbx from earlier senders: what follows
+// the first dash in the last part is not the sequence number.
 func parseInboxName(n string) (id string, seq uint64, ok bool) {
 	parts := strings.Split(strings.TrimSuffix(n, batchExt), "_")
-	switch len(parts) {
-	case 3:
-	case 4:
-		parts = parts[:3] // the random part
-	default:
+	if len(parts) != 3 {
 		return "", 0, false
 	}
 	last, _, _ := strings.Cut(parts[2], "-")
@@ -357,18 +354,15 @@ func MigrateSenderFolders(st *store.Store, inbox string, logf func(string, ...an
 }
 
 // migratedName is a file's name once moved out of a 0.23 sender folder: a
-// random part is added, so it can't clash with a file in the inbox.
+// random part is added (after a dash, as a 0.24 sender names its files),
+// so it can't clash with a file in the inbox.
 func migratedName(n string) string {
 	for _, ext := range []string{scapExt, batchExt, archiveExt} {
 		if strings.HasSuffix(n, ext) {
-			base := strings.TrimSuffix(n, ext)
-			if parts := strings.Split(base, "_"); ext == batchExt && len(parts) == 4 {
-				base = strings.Join(parts[:3], "_") // a 0.24 sender's: a new random part
-			}
-			return base + "_" + randomPart() + ext
+			return strings.TrimSuffix(n, ext) + "-" + randomPart() + ext
 		}
 	}
-	return n + "_" + randomPart()
+	return n + "-" + randomPart()
 }
 
 // rejectedDir is where unusable files are set aside, in the inbox.

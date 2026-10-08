@@ -326,9 +326,10 @@ one delivery account.
 **How a sender delivers.** A sender can't look in the inbox, so:
 
 - it writes each file straight under its final name,
-  `HOST_SENDERID_SEQ_RANDOM.bbx` (log archives and SCAP results likewise
-  carry a random part), and only if no file has that name (`O_EXCL`,
-  `CREATE_NEW`). A name already taken means someone else made that file;
+  `HOST_SENDERID_SEQ-RANDOM.bbx` (log archives and SCAP results likewise
+  end in `-RANDOM`), and only if no file has that name (`O_EXCL`,
+  `CREATE_NEW`). The random part follows a dash, so a 0.23 collector reads
+  the name too. A name already taken means someone else made that file;
   the batch then goes under a new random part;
 - a batch counts as delivered when it was written and closed without an
   error. The collector's list of missing batches (`blackbox gaps`, then
@@ -345,10 +346,22 @@ its next run), what waits in them is moved into the inbox and imported
 like any other delivery, and the folders are removed. Each sender's
 import record (its last number, its missing batches and the hashes behind
 "already imported") is kept by sender ID, not by folder, so nothing is
-missed or imported twice. `blackbox inbox add` is gone. Senders from
-before 0.24 rename their files into place, which the drop-only inbox does
-not allow on a Windows collector: upgrade them soon after the collector.
-Their batches wait on the sender, safely, until then.
+missed or imported twice. `blackbox inbox add` is gone.
+
+Upgrade the senders first, then the collector:
+
+- a 0.24 sender's files are read by a 0.23 collector as well. While the
+  collector is still 0.23, a sender that had its own folder there keeps
+  delivering into it (a 0.23 collector refuses a file in the inbox itself
+  from a computer that has a folder); once the collector is upgraded and
+  the folder is gone, it delivers into the inbox. A 0.23 collector reads
+  a file in the inbox itself (not a folder) as soon as it sees it, so a
+  batch it catches half written is set aside as incomplete; `blackbox
+  gaps` lists it and `blackbox send --resend` on the sender sends it again;
+- senders from before 0.24 rename their files into place, which the
+  drop-only inbox does not allow on a Windows collector. If the collector
+  is upgraded first, their batches wait on the sender, safely, until the
+  sender is upgraded too.
 
 **What the collector checks** (each file it can't accept is moved to
 `inbox\rejected` with a `NAME.why.txt` note saying why and which account
@@ -554,7 +567,7 @@ This section is for reviewers.
   JSON lines with a SHA-256 checksum and a closing record, so a damaged or
   cut-short file is detected. It then copies waiting batches, oldest
   first, into the inbox:
-  - written in place under a name of its own, `HOST_SENDERID_SEQ_RANDOM.bbx`,
+  - written in place under a name of its own, `HOST_SENDERID_SEQ-RANDOM.bbx`,
     made only if no file has it; the sender can't rename, read or delete
     anything in the inbox. The collector leaves a file that is not
     complete yet for 10 minutes

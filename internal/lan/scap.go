@@ -84,7 +84,7 @@ func DeliverScap(st *store.Store, inbox string) (int, error) {
 	for _, name := range list {
 		src := filepath.Join(OutboxDir(st), name)
 		base := scapPrefix + st.State.Send.ID + "_" + strings.TrimSuffix(strings.TrimPrefix(name, scapPrefix), scapExt)
-		if _, err := drop(src, inbox, base, scapExt); err != nil {
+		if _, err := drop(src, deliveryDir(st, inbox), base, scapExt); err != nil {
 			return sent, fmt.Errorf("copy SCAP result %s to %s: %w", name, inbox, err)
 		}
 		if err := os.Remove(src); err != nil {
@@ -97,11 +97,10 @@ func DeliverScap(st *store.Store, inbox string) (int, error) {
 
 // importScap checks a delivered scan result and files it under the
 // computer it is for. Its contents must match the hash in its name
-// (scap_ID_HASH_RANDOM.xml.gz; earlier senders gave no random part).
+// (scap_ID_HASH-RANDOM.xml.gz; earlier senders gave no random part).
 func importScap(st *store.Store, dir, name, scapDir string, now time.Time) error {
 	rest := strings.TrimSuffix(strings.TrimPrefix(name, scapPrefix), scapExt)
 	id, sum, _ := strings.Cut(rest, "_")
-	sum, _, _ = strings.Cut(sum, "_")
 	sum, _, _ = strings.Cut(sum, "-")
 	if st.State.Send != nil && id == st.State.Send.ID {
 		return fmt.Errorf("it was sent by this computer (a system cannot send to itself)")

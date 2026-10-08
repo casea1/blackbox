@@ -62,14 +62,14 @@ func TestDropOnlyInboxAsSender(t *testing.T) {
 	if err := lan.PrepareInbox(dir, "COL"); err != nil {
 		t.Fatal(err)
 	}
-	other := filepath.Join(dir, "OTHER_id_0000000001_0123456789ab.bbx")
+	other := filepath.Join(dir, "OTHER_id_0000000001-0123456789ab.bbx")
 	if err := os.WriteFile(other, []byte("another sender's batch"), 0o640); err != nil {
 		t.Fatal(err)
 	}
 	if err := DropOnlyInbox(dir, SendersGroup, filepath.Join(dir, lan.MarkerFile)); err != nil {
 		t.Fatal(err)
 	}
-	mine := filepath.Join(dir, "MINE_id_0000000001_0123456789ab.bbx")
+	mine := filepath.Join(dir, "MINE_id_0000000001-0123456789ab.bbx")
 	marker := filepath.Join(dir, lan.MarkerFile)
 	type check struct {
 		what string

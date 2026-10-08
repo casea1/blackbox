@@ -226,7 +226,7 @@ func Deliver(st *store.Store, inbox, host string, keep bool) (int, error) {
 			continue
 		}
 		src := filepath.Join(OutboxDir(st), name)
-		if _, err := drop(src, inbox, inboxBase(host, st.State.Send.ID, seq), batchExt); err != nil {
+		if _, err := drop(src, deliveryDir(st, inbox), inboxBase(host, st.State.Send.ID, seq), batchExt); err != nil {
 			return sent, fmt.Errorf("copy batch %d to %s: %w", seq, inbox, err)
 		}
 		if err := retire(st, src, name, keep); err != nil {
@@ -329,7 +329,7 @@ func Resend(st *store.Store, inbox, host string, from, to uint64) (sent []uint64
 			}
 			continue
 		}
-		if _, err := drop(src, inbox, inboxBase(host, st.State.Send.ID, seq), batchExt); err != nil {
+		if _, err := drop(src, deliveryDir(st, inbox), inboxBase(host, st.State.Send.ID, seq), batchExt); err != nil {
 			return sent, missing, fmt.Errorf("copy batch %d to %s: %w", seq, inbox, err)
 		}
 		sent = append(sent, seq)
@@ -361,7 +361,7 @@ func DeliverArchives(st *store.Store, inbox string) (int, error) {
 	sent := 0
 	for _, name := range list {
 		src := filepath.Join(OutboxDir(st), name)
-		if _, err := drop(src, inbox, archivePrefix+st.State.Send.ID+"_"+strings.TrimSuffix(name, archiveExt), archiveExt); err != nil {
+		if _, err := drop(src, deliveryDir(st, inbox), archivePrefix+st.State.Send.ID+"_"+strings.TrimSuffix(name, archiveExt), archiveExt); err != nil {
 			return sent, fmt.Errorf("copy log archive %s to %s: %w", name, inbox, err)
 		}
 		if err := os.Remove(src); err != nil {
@@ -380,7 +380,7 @@ func InboxName(host, id string, seq uint64) string {
 }
 
 // inboxBase is a batch's name in the inbox without its random part and
-// extension: HOST_SENDERID_SEQ.
+// extension: HOST_SENDERID_SEQ (delivered as HOST_SENDERID_SEQ-RANDOM.bbx).
 func inboxBase(host, id string, seq uint64) string {
 	return fmt.Sprintf("%s_%s_%010d", safeName(host), id, seq)
 }
@@ -395,11 +395,34 @@ func safeName(s string) string {
 	return s
 }
 
+// deliveryDir is the folder this sender drops its files into: the inbox
+// itself, or, while the collector is still 0.23, the sender's own folder
+// there (DESIGN1). A 0.23 collector refuses a file in the inbox itself
+// from a computer that has a folder, so a sender upgraded before the
+// collector keeps using the folder 0.23 recorded for it, for as long as
+// that folder's marker is there. A 0.24 collector moves what the folder
+// holds into the inbox and removes it, and from then on the sender drops
+// into the inbox. Nothing is listed: the marker is looked up by name.
+func deliveryDir(st *store.Store, inbox string) string {
+	s := st.State.Send
+	if s == nil || s.Folder == "" || s.Folder != filepath.Base(s.Folder) || s.Folder == "." || s.Folder == ".." {
+		return inbox
+	}
+	dir := filepath.Join(inbox, s.Folder)
+	if fi, err := os.Stat(filepath.Join(dir, legacyMarker)); err != nil || !fi.Mode().IsRegular() {
+		return inbox
+	}
+	return dir
+}
+
 // dropTries is how many random names a delivery tries before giving up.
 const dropTries = 8
 
-// drop writes src into the drop-only inbox as base_RANDOM.ext, and
-// returns the name used (DESIGN1). The file is created only if no file
+// drop writes src into the drop-only inbox as base-RANDOM.ext, and
+// returns the name used (DESIGN1). The random part follows a dash, not an
+// underscore, so a 0.23 collector reads the name too (it takes the dash
+// and what follows for the "-N" of a batch delivered again): senders can
+// be upgraded before the collector. The file is created only if no file
 // has that name (O_EXCL, CREATE_NEW), written, flushed and closed: the
 // sender can't rename or delete anything in the inbox, so it writes the
 // final name straight away, and the collector waits for a file that is
@@ -408,7 +431,7 @@ const dropTries = 8
 // inbox is listed or read.
 func drop(src, inbox, base, ext string) (string, error) {
 	for i := 0; i < dropTries; i++ {
-		name := base + "_" + randomPart() + ext
+		name := base + "-" + randomPart() + ext
 		err := writeNew(src, filepath.Join(inbox, name))
 		if errors.Is(err, fs.ErrExist) {
 			continue
