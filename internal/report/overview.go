@@ -3,22 +3,13 @@ package report
 import (
 	"fmt"
 	"github.com/casea1/blackbox/internal/rollover"
-	"html/template"
 	"slices"
 	"sort"
 	"strings"
-
-	"github.com/casea1/blackbox/internal/event"
 )
 
-// The Overview page (design M2, docs/redesign/SPEC.md).
-
-// KPI is one of the four main stat cards.
-type KPI struct {
-	Label, Value, Note, Href string
-	Bad                      bool
-	Spark                    template.HTML
-}
+// The Overview page's health checklist and detection cards (the page
+// itself is built in overviewpage.go).
 
 // EventCard is one of the important-event cards.
 type EventCard struct {
@@ -51,39 +42,6 @@ type DetectionCard struct {
 	Time                          string
 	Index                         int    // position in Findings, for links
 	Slots                         string // on a person's page: the weekday-hour slots (heatmap) it involved them
-}
-
-// SmallTrend is one of the Overview's twelve-week charts.
-type SmallTrend struct {
-	Title, Note string
-	From, To    string // the x-axis ends: the first week shown, and this week
-	Chart       template.HTML
-}
-
-// Overview is everything the Overview page shows.
-type Overview struct {
-	Alert       string
-	AlertDetail string
-	KPIs        []KPI
-	// PeriodNoun is "week" or "period" (see Report.periodNoun).
-	PeriodNoun string
-	// Quiet names the activity counters that are zero, in one line.
-	Quiet string
-	// Problems are the health lines to fix, ChecksOK the titles of those
-	// that are fine (UX3).
-	Problems   []CheckLine
-	ChecksOK   []string
-	Cards      []EventCard
-	OK, Warn   int
-	Bad        int
-	Checks     []CheckLine
-	Detections []DetectionCard
-	High, Med  int
-	Trends     []SmallTrend
-	Changes    []Change // What changed: the biggest moves against earlier weeks
-	HistoryN   int      // complete weeks compared with (0: not enough history)
-	TrendSpan  string   // "last 6 weeks · 1 Sep – 12 Oct 2026"
-	Standalone bool
 }
 
 // joinOr is "a, b or c".
@@ -120,196 +78,6 @@ func isServer(s SystemRow) bool {
 		return true
 	}
 	return strings.Contains(b, "Server") || strings.Contains(b, "RHEL") || strings.Contains(b, "Alma")
-}
-
-// overview builds the Overview page.
-func (r *Report) overview(pages []*EventPage) *Overview {
-	o := &Overview{PeriodNoun: r.periodNoun()}
-	m := r.metrics()
-	byHost := map[string]int{} // logs cleared, per computer
-	clearRows := map[string][]*Row{}
-	people := map[string]bool{}
-	for _, row := range r.rows {
-		if row.Action == "log_cleared" {
-			// By lower-case name: a system's name and its rows' can
-			// differ in case (UX10).
-			byHost[strings.ToLower(row.Host)]++
-			clearRows[strings.ToLower(row.Host)] = append(clearRows[strings.ToLower(row.Host)], row)
-		}
-		if row.Category == event.CatPrivileged && person(row.User) {
-			people[strings.ToLower(row.User)] = true
-		}
-	}
-	systems := r.SystemRows
-	if len(systems) == 0 {
-		for _, h := range r.Hosts {
-			systems = append(systems, SystemRow{SystemInfo: SystemInfo{Name: h}, Status: "ok"})
-		}
-	}
-	o.Standalone = !r.IsLAN()
-
-	// Level of each computer: a cleared log or silence is a problem.
-	level := map[string]string{}
-	for _, s := range systems {
-		switch {
-		case s.Status == "silent" || byHost[s.Name] > 0:
-			level[s.Name] = "bad"
-			o.Bad++
-		case s.Status == "warn":
-			level[s.Name] = "warn"
-			o.Warn++
-		default:
-			level[s.Name] = "ok"
-			o.OK++
-		}
-	}
-
-	// Alert bar: the problems, in a sentence.
-	var probs []string
-	for _, s := range systems {
-		switch {
-		case byHost[strings.ToLower(s.Name)] > 0:
-			probs = append(probs, fmt.Sprintf("%s: %s cleared%s", s.Name, clearedWhat(clearRows[strings.ToLower(s.Name)]), times(byHost[strings.ToLower(s.Name)])))
-		case s.Status == "silent":
-			probs = append(probs, s.Name+": no collection received")
-		}
-	}
-	if len(probs) > 0 {
-		o.Alert = fmt.Sprintf("%d %s attention.", len(probs), map[bool]string{true: "system needs", false: "systems need"}[len(probs) == 1])
-		o.AlertDetail = strings.Join(probs, " · ")
-	}
-
-	// Main stat cards.
-	total := len(systems)
-	rep := m[MSystems]
-	o.KPIs = append(o.KPIs, KPI{Label: "Systems reporting", Href: "#systems", Value: fmt.Sprintf("%d / %d", rep, total), Bad: rep < total,
-		Note: silentNote(systems), Spark: r.weekSpark(MSystems, rep < total)})
-	high, med := 0, 0
-	for _, f := range r.Findings {
-		if f.Severity == event.SevHigh {
-			high++
-		} else {
-			med++
-		}
-	}
-	o.High, o.Med = high, med
-	o.KPIs = append(o.KPIs, KPI{Label: "Detections", Href: "#detections", Value: commas(len(r.Findings)), Bad: len(r.Findings) > 0,
-		Note: map[bool]string{true: "none this " + r.periodNoun(), false: fmt.Sprintf("%d high · %d medium", high, med)}[len(r.Findings) == 0], Spark: r.weekSpark(MDetections, len(r.Findings) > 0)})
-	o.KPIs = append(o.KPIs, KPI{Label: "Events collected", Href: "#search", Value: shortCount(len(r.Events)), Note: r.vsAverage(MEvents),
-		Spark: r.weekSpark(MEvents, false)})
-	// Audit health: systems whose settings match the STIG (UX3).
-	checked, matching := 0, 0
-	for _, s := range systems {
-		if s.Checks != nil {
-			checked++
-			if s.Checks.STIGFail == 0 { // STIG rules only, not Blackbox's advice (COMP2)
-				matching++
-			}
-		}
-	}
-	ah := KPI{Label: "Audit health", Href: "#health", Value: fmt.Sprintf("%d / %d", matching, checked), Bad: matching < checked,
-		Note: "systems matching the STIG"}
-	if checked == 0 {
-		ah.Value, ah.Note = "—", "settings not checked in this report"
-	}
-	o.KPIs = append(o.KPIs, ah)
-
-	// Important-event cards.
-	where := func(action string, newAdmin bool) string {
-		hosts := map[string]bool{}
-		var last string
-		for _, row := range r.rows {
-			if row.Action == action && (!newAdmin || row.Severity == event.SevHigh) {
-				hosts[row.Host] = true
-				last = row.Host
-			}
-		}
-		switch len(hosts) {
-		case 0:
-			return ""
-		case 1:
-			return last
-		}
-		return fmt.Sprintf("%d systems", len(hosts))
-	}
-	card := func(icon, label, metric, level, note, href string) {
-		v := m[metric]
-		lv := level
-		if v == 0 {
-			lv = "zero"
-		}
-		o.Cards = append(o.Cards, EventCard{Icon: icon, Label: label, Value: commas(v), Note: note, Level: lv, Href: href})
-	}
-	// Logs cleared is a Health line, not also a counter (UX3).
-	card("user-plus", "New admins", MNewAdmins, "bad", where("group_member_added", true), "#accounts")
-	card("settings", "Policy changes", MPolicyChanges, "warn", where("audit_policy_changed", false), "#integrity")
-	lockNote := where("account_locked", false)
-	if t := r.metricTrend(MLockouts); t.OK && lockNote == "" {
-		lockNote = fmt.Sprintf("normal: %.0f a week", t.Avg)
-	}
-	card("lock", "Lockouts", MLockouts, "warn", lockNote, "#failed")
-	card("moon", "After-hours admin", MAfterHours, "warn", afterHoursNote(r), "#privileged")
-	card("usb", "New USB devices", MNewUSB, "", commas(m[MUSB])+" events", "#usb")
-	// Only the counters with something in them; the rest in one line
-	// (UX3).
-	var shown []EventCard
-	var zero []string
-	for _, c := range o.Cards {
-		if c.Value == "0" {
-			zero = append(zero, strings.ToLower(c.Label[:1])+c.Label[1:])
-			continue
-		}
-		shown = append(shown, c)
-	}
-	o.Cards = shown
-	if len(zero) > 0 {
-		o.Quiet = "No " + joinOr(zero) + " in this report."
-	}
-
-	// Health checklist.
-	o.Checks = r.checklist(systems, clearRows)
-	// Each problem once; what is fine in one line (UX3).
-	var problems []CheckLine
-	for _, c := range o.Checks {
-		if c.Level == "ok" {
-			o.ChecksOK = append(o.ChecksOK, c.Title)
-			continue
-		}
-		problems = append(problems, c)
-	}
-	o.Problems = problems
-
-	// Detections, newest first, grouped by day.
-	o.Detections = r.detectionCards()
-
-	// Trends, by calendar week (UI1).
-	o.Changes = r.whatChanged()
-	if t := r.metricTrend(MEvents); t.OK {
-		o.HistoryN = t.Complete
-	}
-	ws := r.weeks()
-	// Scope in the label (UX5): these count every report's events, by
-	// calendar week, not this report's.
-	o.TrendSpan = "all reports, by calendar week · last " + r.weeksCrumb()
-	if c := ws[len(ws)-1]; c.Current {
-		o.TrendSpan += " · this week: " + trimFloat(c.Days) + " of 7 days so far"
-	}
-	small := func(title, metric string, bad bool) SmallTrend {
-		t := r.metricTrend(metric)
-		st := SmallTrend{Title: title, From: "Week of " + ws[0].Start.In(r.Location).Format("2 Jan"), To: "This week (so far)",
-			Note: commas(t.Now) + " so far"}
-		if !ws[len(ws)-1].Current {
-			st.Note = commas(t.Now) + " last week"
-		}
-		if t.OK {
-			st.Note += " · avg " + shortNum(t.Avg) + "/wk"
-			st.Chart = sparkline(t.Values, bad, 300, 70)
-		}
-		return st
-	}
-	o.Trends = []SmallTrend{small("High-severity events", MHighEvents, true), small("Failed logons", MFailedLogons, false),
-		small("Privileged actions", MPrivileged, false)}
-	return o
 }
 
 // checklist is the six-line health checklist.
@@ -471,7 +239,7 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []Che
 			parts = append(parts, fmt.Sprintf("%s: %s overwritten", name, plural(int(otherBy[k]), "event")))
 		}
 		lines = append(lines, CheckLine{Level: "warn", Icon: "circle-check", Title: "Other logs overwrote events", Who: strings.Join(otherOn, ", "),
-			What: strings.Join(parts, "; ") + " · see Audit health", Href: "#health", Count: frac(len(otherOn))})
+			What: strings.Join(parts, "; ") + " · see Audit health", Href: "#health/@logs", Count: frac(len(otherOn))})
 	}
 
 	if n := len(r.MissingReports); n > 0 {
@@ -480,7 +248,7 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []Che
 			names = append(names, m.Name)
 		}
 		lines = append(lines, CheckLine{Level: "bad", Icon: "history", Title: "Earlier reports missing or changed",
-			What: plural(n, "scheduled report") + " deleted, moved or changed, with the only copy of their original logs: " + strings.Join(names, ", "), Href: "#health", Count: ""})
+			What: plural(n, "scheduled report") + " deleted, moved or changed, with the only copy of their original logs: " + strings.Join(names, ", "), Href: "#logs", Count: ""})
 	}
 	if l, ok := r.avCheckLine(r.avRows()); ok {
 		lines = append(lines, l)
@@ -519,6 +287,21 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []Che
 		}
 		lines = append(lines, CheckLine{Level: "bad", Icon: "hard-drive", Title: title, Who: strings.Join(hosts, ", "),
 			What: "archive failed its check and was set aside: " + strings.Join(why, "; "), Count: frac(len(hosts))})
+	}
+	// Original logs that waited past retention_days without a report
+	// (RET1): kept, and raised here as well as on Original logs.
+	if len(r.Overdue) > 0 {
+		bad = true
+		var hosts []string
+		most := 0
+		for _, o := range r.Overdue {
+			if !containsFold(hosts, o.Host) {
+				hosts = append(hosts, o.Host)
+			}
+			most = max(most, o.Days)
+		}
+		lines = append(lines, CheckLine{Level: "bad", Icon: "hard-drive", Title: "Original logs never put in a report", Who: strings.Join(hosts, ", "),
+			What: fmt.Sprintf("waiting up to %d days; kept, as they may be the only copy", most), Href: "#logs", Count: frac(len(hosts))})
 	}
 	switch {
 	case len(r.NoArchive) > 0:
@@ -577,84 +360,6 @@ func times(n int) string {
 		return " twice"
 	}
 	return fmt.Sprintf(" %d times", n)
-}
-
-func silentNote(systems []SystemRow) string {
-	var silent []string
-	for _, s := range systems {
-		if !s.reporting() {
-			silent = append(silent, s.Name)
-		}
-	}
-	switch len(silent) {
-	case 0:
-		return "all reporting"
-	case 1:
-		return silent[0] + ": nothing received"
-	}
-	return fmt.Sprintf("%d sent nothing", len(silent))
-}
-
-// average is the mean of the earlier values in a series (not the last),
-// or -1 when there are none.
-// weekSpark is a KPI tile's small chart: the metric by calendar week,
-// drawn once there is enough history (UI1).
-func (r *Report) weekSpark(metric string, bad bool) template.HTML {
-	t := r.metricTrend(metric)
-	if !t.OK {
-		return ""
-	}
-	return sparkline(t.Values, bad, 120, 34)
-}
-
-// vsAverage compares this week so far with the same part of an average
-// complete week.
-func (r *Report) vsAverage(metric string) string {
-	t := r.metricTrend(metric)
-	if !t.OK {
-		return "trends start after 2 full weeks"
-	}
-	if t.Expected <= 0 {
-		return "normal"
-	}
-	d := (float64(t.Now) - t.Expected) / t.Expected * 100
-	switch {
-	case d > -15 && d < 15:
-		return "normal for this point of the week"
-	case d > 0:
-		return fmt.Sprintf("+%.0f%% on an average week so far", d)
-	}
-	return fmt.Sprintf("%.0f%% on an average week so far", d)
-}
-
-func afterHoursNote(r *Report) string {
-	if !r.WorkingHours.Set() {
-		return "set working_hours"
-	}
-	users := map[string]bool{}
-	var last, host string
-	for _, row := range r.rows {
-		for _, f := range row.Flags {
-			if f == "Outside working hours" {
-				users[row.User] = true
-				last, host = row.User, row.Host
-			}
-		}
-	}
-	switch len(users) {
-	case 0:
-		return ""
-	case 1:
-		return last + " · " + host
-	}
-	return fmt.Sprintf("%d people", len(users))
-}
-
-func shortCount(n int) string {
-	if n >= 10000 {
-		return fmt.Sprintf("%.1fk", float64(n)/1000)
-	}
-	return commas(n)
 }
 
 func shortOS(s SystemRow) string {

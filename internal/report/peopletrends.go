@@ -37,7 +37,7 @@ func (r *Report) peopleTotals() []PersonSummary { return r.peopleCounts(nil) }
 func (r *Report) peopleCounts(keep func(*Row) bool) []PersonSummary {
 	by := map[string]*PersonSummary{}
 	get := func(u string) *PersonSummary {
-		k := personKey(u)
+		k := r.pkey(u)
 		p := by[k]
 		if p == nil {
 			p = &PersonSummary{Key: k, Name: u}
@@ -79,7 +79,7 @@ func (r *Report) peopleCounts(keep func(*Row) bool) []PersonSummary {
 			}
 		}
 		if person(e.User) {
-			k := personKey(e.User)
+			k := r.pkey(e.User)
 			for _, fi := range findingRows[i] {
 				if inFinding[k] == nil {
 					inFinding[k] = map[int]bool{}

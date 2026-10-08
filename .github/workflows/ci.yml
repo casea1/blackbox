@@ -237,7 +237,12 @@ jobs:
           if ($sum.systems | Where-Object { $_.status -eq "silent" }) { throw "a system is wrongly reported as silent" }
           if (-not (Select-String -Path "$dir\report.html" -Pattern 'data-view="systems"' -Quiet)) { throw "report has no Systems page" }
           # The inventory read with the settings check (PowerShell CIM, as SYSTEM).
-          if (-not (Select-String -Path "$dir\report.html" -Pattern "Accounts on $env:COMPUTERNAME" -SimpleMatch -Quiet)) { throw "no inventory for this computer in the report" }
+          # Accounts are in the report's data file, by computer (UI-R1): base64 of gzipped JSON.
+          $js = Get-Content -Raw "$dir\data\inventory-accounts.js"
+          if ($js -notmatch 'BB\.put\("[^"]*","([^"]*)"\)') { throw "no inventory data file in the report" }
+          $gz = New-Object System.IO.Compression.GZipStream((New-Object System.IO.MemoryStream(,[Convert]::FromBase64String($Matches[1]))), [System.IO.Compression.CompressionMode]::Decompress)
+          $accounts = (New-Object System.IO.StreamReader($gz)).ReadToEnd()
+          if ($accounts.IndexOf('"' + $env:COMPUTERNAME + '":[[', [StringComparison]::OrdinalIgnoreCase) -lt 0) { throw "no inventory for this computer in the report" }
           if (Get-ChildItem C:\BlackboxInbox -Filter *.bbx) { throw "batches left in the inbox after import" }
           # The report folder holds the original logs: this computer's own
           # (.evtx, exported as SYSTEM) and the Linux one's.
@@ -380,7 +385,8 @@ jobs:
           sudo find /srv/bb-reports-2 -name report.html | grep -q report.html || { sudo journalctl -u blackbox.service --no-pager | tail -30; exit 1; }
           echo "Sandboxed service wrote a report to /srv/bb-reports-2"
           # The inventory read with the settings check, from inside the sandbox.
-          sudo sh -c "grep -q 'Accounts on $(hostname)' /srv/bb-reports-2/*/report.html" || { echo "no inventory in the report"; exit 1; }
+          # Accounts are in the report's data file, by computer (UI-R1).
+          sudo sh -c 'cat /srv/bb-reports-2/*/data/inventory-accounts.js' | sed 's/^BB.put("[^"]*","//; s/");$//' | base64 -d | gunzip | grep -qF "\"$(hostname)\":[[" || { echo "::error::no inventory accounts for $(hostname) in the report"; exit 1; }
           # The report folder holds the original logs, in its manifest.
           sudo sh -c 'ls /srv/bb-reports-2/*/logs-*.zip' || { sudo journalctl -u blackbox.service --no-pager | tail -30; exit 1; }
           sudo sh -c 'unzip -l /srv/bb-reports-2/*/logs-*.zip' | grep -q audit.log
@@ -430,7 +436,7 @@ jobs:
           systemctl is-enabled blackbox-shutdown.service
           # The sandboxed service (no network of its own) mounts the share and delivers.
           sudo systemctl start blackbox.service || { sudo journalctl -u blackbox.service -u var-lib-blackbox-collector.mount --no-pager | tail -40; exit 1; }
-          sudo /usr/local/bin/blackbox status
+          scripts/ci-status.sh /usr/local/bin/blackbox status
           sudo sh -c 'ls /srv/inbox/*.bbx' || { sudo journalctl -u blackbox.service -u var-lib-blackbox-collector.mount --no-pager | tail -40; exit 1; }
           # The original logs came too.
           sudo sh -c 'ls /srv/inbox/archive_*.zip' || { echo "no log archive delivered"; exit 1; }
@@ -439,7 +445,7 @@ jobs:
           sudo ./blackbox report --preview --config col.conf
           if sudo sh -c 'ls /srv/inbox/*.bbx /srv/inbox/*.zip' 2>/dev/null; then echo "batches or archives not imported"; exit 1; fi
           sudo sh -c 'ls /tmp/col/archives/*/*.zip' || { echo "log archive not kept for the collector's next report"; exit 1; }
-          sudo ./blackbox status --config col.conf
+          scripts/ci-status.sh ./blackbox status --config col.conf
           sudo ./blackbox uninstall
           sudo test ! -e /etc/systemd/system/var-lib-blackbox-collector.mount
           sudo test ! -e /etc/blackbox/share.cred

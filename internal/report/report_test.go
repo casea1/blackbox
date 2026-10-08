@@ -147,7 +147,7 @@ func TestWriteAndVerify(t *testing.T) {
 		`data-view="privileged"`, `data-view="usb"`, `data-view="failed"`, `data-view="accounts"`, `data-view="integrity"`,
 		`data-view="powershell"`, `data-view="other"`, `data-view="logons"`,
 		`data-view="health"`, `data-view="trends"`, `data-view="logs"`, "Test Site",
-		`data-pick="admin_jd"`, `data-pane="admin_jd"`, "When they were active", // People
+		`data-pick="admin_jd"`, `data-pane="admin_jd"`, "Where and when", // People
 		`data-preset="psdownload"`, `data-q="text"`, // Search
 		`href="../index.html"`,                                                   // the date range opens the list of reports
 		`data-pop="export"`, `data-pop="verified"`, `href="events.zip" download`, // Export menu, Verified
@@ -195,6 +195,13 @@ func TestWriteAndVerify(t *testing.T) {
 	for _, row := range r.rows {
 		if inFinding[row.ID] {
 			shown[row.Summary] = true
+		}
+	}
+	// A detection's "What happened" shows the events ten minutes either
+	// side of it (UI-R1): those are in the page too, and only those.
+	for _, v := range r.detectionViews() {
+		for _, l := range v.Timeline {
+			shown[l.Text] = true
 		}
 	}
 	checked := 0
@@ -396,9 +403,9 @@ func TestSystemsPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := html.String()
-	for _, want := range []string{`data-view="systems"`, `data-pick="WS-03"`, `data-pane="WS-01"`, "Virtual machine on WS-01",
-		"Audit settings to fix", "No collection received in this period", "Silent",
-		"No data received", `href="#health/WS-01"`} { // Audit health
+	for _, want := range []string{`data-view="systems"`, `data-pick="WS-03"`, `data-sys="WS-01"`, `data-sysrow="WS-03"`, "virtual machine on WS-01",
+		"Audit settings", "nothing since", "Problem: not reporting",
+		`href="#health/WS-01"`} { // Audit health
 		if !strings.Contains(h, want) {
 			t.Errorf("report HTML missing %q", want)
 		}
@@ -447,13 +454,14 @@ func TestSingleSystemHasNoSystemsPage(t *testing.T) {
 	if err := r.WriteHTML(&html, nil); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(html.String(), `<span>System</span><b>`) {
+	if !strings.Contains(html.String(), `<div><span>System</span><a href="#systems/WS-07">WS-07</a>`) {
 		t.Error("a standalone report names its system in the sidebar")
 	}
-	// This one has a gap (the Security log was cleared): Audit health
-	// opens on the gaps, not hidden behind the system's settings.
-	if strings.Contains(html.String(), `data-single=`) || !strings.Contains(html.String(), "Settings on WS-07") || !strings.Contains(html.String(), "Security log was cleared") {
-		t.Error("a report of one system with gaps opens Audit health on them")
+	// This one has no setting to fix (the Security log was cleared, which
+	// is on Overview and Detections since UI-R1): Audit health opens on
+	// the system's settings, where Logs intact shows the clear.
+	if !strings.Contains(html.String(), `data-single="WS-07"`) || !strings.Contains(html.String(), "Settings on WS-07") || !strings.Contains(html.String(), "Security log was cleared") {
+		t.Error("a report of one system opens its audit settings")
 	}
 	// With no gaps it opens the system's settings directly.
 	sets := []CheckSet{NewCheckSet("WS-07", time.Now(), []check.Result{{Area: "a", Item: "b", Status: check.Pass}})}
@@ -543,7 +551,7 @@ func TestVMOffIsNotFlagged(t *testing.T) {
 	if len(r.Silent) != 1 || r.Silent[0].Name != "WS-04" {
 		t.Errorf("silent: %+v", r.Silent)
 	}
-	if k := r.overview(nil).KPIs[0]; k.Value != "2 / 4" || !k.Bad || k.Note != "2 sent nothing" {
+	if k := r.overview(nil).Strip[1]; k.Label != "Systems reporting" || k.Value != "2 / 4" || !k.Bad || k.Note != "2 silent" {
 		t.Errorf("systems reporting: %+v", k)
 	}
 }

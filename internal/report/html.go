@@ -33,6 +33,7 @@ type pageData struct {
 	Pages       []*EventPage
 	Overview    *Overview
 	Detections  []DetectionView
+	DetPage     *DetectionsPage
 	SystemsPage *SystemsPage
 	PeoplePage  *PeoplePage
 	HealthPage  *HealthPage
@@ -169,9 +170,17 @@ func funcs(loc *time.Location) template.FuncMap {
 		"js":       func() template.JS { return template.JS(appJS) },
 		"icon":     icon,
 		"lower":    strings.ToLower,
-		"minus":    func(a, b int) int { return a - b },
-		"gridCols": gridCols,
-		"css2":     func(s string) template.CSS { return template.CSS(s) },
+		// acctBreak lets "HOST\account" wrap after the backslash in a
+		// narrow column, never inside a name.
+		"acctBreak": func(s string) template.HTML {
+			h, n, ok := strings.Cut(s, `\`)
+			if !ok {
+				return template.HTML(template.HTMLEscapeString(s))
+			}
+			return template.HTML(`<span class="an">` + template.HTMLEscapeString(h) + `\</span><wbr><span class="an">` + template.HTMLEscapeString(n) + `</span>`)
+		},
+		"minus": func(a, b int) int { return a - b },
+		"css2":  func(s string) template.CSS { return template.CSS(s) },
 		// avOK counts the antivirus rows that are current, folded under a
 		// button when others need attention.
 		"sub": func(a, b int) int { return a - b },
@@ -193,13 +202,13 @@ func funcs(loc *time.Location) template.FuncMap {
 		"overviewTitle": overviewTitleOf,
 		"dayBefore":     func(ds []DetectionCard, i int) string { return ds[i-1].Day },
 		"healthCrumb": func(p pageData) string {
-			return "audit settings compared with the STIG for each system's OS · Blackbox only reports, it never changes settings"
+			return "each system against the STIG for its OS · Blackbox never changes settings"
 		},
 		"searchCrumb": func(p pageData) string {
 			return fmt.Sprintf("%s events from %s · searched in your browser, nothing leaves this report", commas(len(p.Events)), plural(len(p.Hosts), "system"))
 		},
-		"searchCols": func() template.CSS { return gridCols(searchCols) },
 		"periodDays": func(p pageData) []string { return p.periodDays() },
+		"finder":     func(p pageData, kind string) finderData { return p.finder(kind) },
 		"periodWord": func(p pageData) string {
 			if p.periodNoun() == "week" {
 				return "Week"
@@ -215,22 +224,16 @@ func funcs(loc *time.Location) template.FuncMap {
 			if p.PeoplePage != nil {
 				n = p.PeoplePage.Count
 			}
-			return fmt.Sprintf("%s active on %s", plural(n, "account"), plural(len(p.Hosts), "system"))
+			who := commas(n) + " people and accounts"
+			if n == 1 {
+				who = "1 person or account"
+			}
+			return fmt.Sprintf("%s active on %s", who, plural(len(p.Hosts), "system"))
 		},
 		"detectionsCrumb": func(p pageData) string {
-			high, med := 0, 0
-			for _, d := range p.Detections {
-				if d.Severity == "high" {
-					high++
-				} else {
-					med++
-				}
-			}
+			// High and medium are counted on the page's severity filter (UI-R1).
 			n := len(p.Detections)
 			s := fmt.Sprintf("%s %s", commas(n), map[bool]string{true: "detection", false: "detections"}[n == 1])
-			if n > 0 {
-				s += fmt.Sprintf(" · %d high, %d medium", high, med)
-			}
 			return s
 		},
 		"sevCount": func(ds []DetectionView, sev string) int {
@@ -243,21 +246,9 @@ func funcs(loc *time.Location) template.FuncMap {
 			return n
 		},
 		"detDayBefore": func(ds []DetectionView, i int) string { return ds[i-1].Day },
+		// eventsCrumb is what an event page (Events by kind) holds.
 		"eventsCrumb": func(p pageData, e *EventPage) string {
-			unit := "events"
-			if spec, ok := pageSpecs[e.ID]; ok {
-				unit = spec.unit
-			}
-			if e.Total == 1 {
-				unit = strings.TrimSuffix(unit, "s")
-			}
-			s := fmt.Sprintf("Events · %s %s", commas(e.Total), unit)
-			if n := len(e.Hosts); n > 1 {
-				s += fmt.Sprintf(" on %d systems", n)
-			} else if n == 1 {
-				s += " on " + e.Hosts[0]
-			}
-			return s
+			return pageSpecs[e.ID].desc
 		},
 		// head builds a page heading: "Daily report · 7 Oct 00:00 – 8 Oct
 		// 00:00 EDT", then what the page holds (extra), the one place the
@@ -463,10 +454,24 @@ func (r *Report) WriteHTML(w io.Writer, pages []*EventPage) error {
 		kinds[sr.Name] = systemKind(sr)
 	}
 	meta["hostKind"] = kinds
+	// The event panel's Person: each account's rights on its system.
+	meta["rights"] = r.eventRights()
 	if w := r.WorkingHours; w.Set() {
 		meta["hours"] = map[string]any{"days": w.Days, "start": w.Start, "end": w.End}
 	}
 	people := r.peoplePage()
+	// Search's Person filter: People's groups, each [title, [[key, name]…]].
+	var peopleOpts [][]any
+	if people != nil {
+		for _, g := range people.Groups {
+			var l [][2]string
+			for _, p := range g.People {
+				l = append(l, [2]string{p.Key, p.Name})
+			}
+			peopleOpts = append(peopleOpts, []any{g.Title, l})
+		}
+	}
+	meta["people"] = peopleOpts
 	if pp := people; pp != nil && len(pp.Groups) > 0 && len(pp.Groups[0].People) > 0 {
 		meta["firstPerson"] = pp.Groups[0].People[0].Key
 	}
@@ -477,12 +482,19 @@ func (r *Report) WriteHTML(w io.Writer, pages []*EventPage) error {
 	// made here (the event pages and Search add their tables' rows in
 	// app.js), and the whole report's.
 	meta["pagecsv"], meta["reportcsv"] = r.pageCSVs(health, inv), r.reportCSVs(health)
+	if people != nil {
+		meta["pagecsv"].(map[string]CSVFile)["people"] = people.csv()
+	}
+	if len(r.PeopleAliases) > 0 {
+		meta["palias"] = r.PeopleAliases // people_aliases, for links to a person
+	}
 	b, err := json.Marshal(meta)
 	if err != nil {
 		return err
 	}
+	dp := r.detectionsPage()
 	return t.ExecuteTemplate(w, "layout", pageData{Report: r, Pages: pages, Overview: overview,
-		Detections: r.detectionViews(), SystemsPage: r.systemsPage(), PeoplePage: people, HealthPage: health, TrendsPage: r.trendsPage(),
+		Detections: dp.Views, DetPage: dp, SystemsPage: r.systemsPage(), PeoplePage: people, HealthPage: health, TrendsPage: r.trendsPage(),
 		LogsPage: r.logsPage(), Inventory: inv, Verify: r.verification(), Card: r.reportCard(), Print: r.printOut(overview, health), Meta: template.JS(b)})
 }
 

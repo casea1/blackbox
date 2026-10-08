@@ -31,10 +31,8 @@ func TestHealthListWording(t *testing.T) {
 	if cleared == nil || cleared.Count != "1 of 3 systems" {
 		t.Fatalf("checks: %+v", o.Checks)
 	}
-	for _, ok := range o.ChecksOK {
-		if ok == "Logs intact" {
-			t.Error(`"Logs intact" next to a clear`)
-		}
+	if strings.Contains(o.Fine, "Logs intact") {
+		t.Error(`"Logs intact" next to a clear`)
 	}
 	if got := lostNote(0, 2); got != "checked at 2 collections" {
 		t.Errorf("lost note: %q", got)

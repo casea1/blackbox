@@ -70,22 +70,21 @@ func TestTrendsByCalendarWeek(t *testing.T) {
 	if !tr.OK || tr.Avg != 70 || tr.Now != 25 || tr.Expected != 25 || tr.Complete != 3 { // 70 a week: 25 by Wednesday noon
 		t.Errorf("privileged actions: %+v", tr)
 	}
-	if got := r.nowLabel(); got != "so far this week (2.5 of 7 days)" {
-		t.Errorf("now: %q", got)
-	}
 	if l := r.weekLabels(); l[len(l)-1] != "This week" || l[len(l)-2] != "28 Sep" || l[0] != "7 Sep (part)" {
 		t.Errorf("labels: %v", l)
 	}
+	tp := r.trendsPage()
 	// Two and a half days against an average week is not "down 96%".
-	for _, c := range r.whatChanged() {
-		if strings.Contains(c.Text, "Privileged actions") {
-			t.Errorf("a normal week so far reported as a change: %s", c.Text)
+	for _, c := range tp.Ranges[1].Changes {
+		if strings.Contains(c.Name+" "+c.Measure, "Privileged actions") {
+			t.Errorf("a normal week so far reported as a change: %+v", c)
 		}
 	}
-	tp := r.trendsPage()
-	if tp.NotEnough || tp.Cards[3].Title != "Privileged actions" || tp.Cards[3].Avg != "avg 70/wk" || tp.Cards[3].Class != "flat" ||
-		!strings.Contains(tp.Crumb, "5 weeks · 7 Sep – 11 Oct 2026") {
-		t.Errorf("trends page: %+v %q", tp.Cards[3], tp.Crumb)
+	// UI-R1: "usual" is the median of the complete earlier weeks; 25 by
+	// Wednesday noon is a usual week so far, so the bar is blue.
+	if c := tp.Ranges[1].Cards[2]; tp.NotEnough || c.Title != "Privileged actions (people)" || c.Usual != "usual 70" || c.Class != "" ||
+		!strings.Contains(tp.Crumb(), "5 weeks · 7 Sep – 7 Oct 2026") || tp.Ranges[1].Weeks != 5 || tp.Ranges[0].Weeks != 4 {
+		t.Errorf("trends page: %+v %q", c, tp.Crumb())
 	}
 
 	// The manual report's 900 are nowhere.
@@ -106,30 +105,26 @@ func TestTrendsNotEnoughHistory(t *testing.T) {
 	}
 	now := mon.AddDate(0, 0, 2).Add(12 * time.Hour)
 	r := Build(privileged(42, "claude", mon.AddDate(0, 0, 2), now), nil, Options{WindowStart: mon.AddDate(0, 0, 2), WindowEnd: now, Location: time.UTC, History: hist, Interim: true})
-	if c := r.whatChanged(); c != nil {
-		t.Errorf("what changed with no complete week: %+v", c)
-	}
-	o := r.overview(nil)
-	if o.HistoryN != 0 || o.Trends[2].Chart != "" || !strings.Contains(o.Trends[2].Note, "120 so far") || !strings.Contains(o.TrendSpan, "2.5 of 7 days so far") || strings.Contains(o.Trends[2].Note, "avg") {
-		t.Errorf("overview: %d %+v", o.HistoryN, o.Trends[2])
-	}
-	if tp := r.trendsPage(); !tp.NotEnough || tp.Cards[3].Note != notEnoughHistory || tp.Cards[3].Chart != "" {
-		t.Errorf("trends page: %+v", tp.Cards[3])
+	if tp := r.trendsPage(); !tp.NotEnough || tp.Ranges[1].Cards[2].Usual != "usual —" || tp.Ranges[1].Cards[2].Class != "" || tp.Ranges[1].ChangesNote != notEnoughHistory {
+		t.Errorf("trends page: %+v", tp.Ranges[1])
 	}
 	dir := filepath.Join(t.TempDir(), "rep")
 	if err := r.Write(dir); err != nil {
 		t.Fatal(err)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-	if strings.Count(string(html), "Not enough history yet: trends start after 2 full weeks") < 3 {
+	// The Trends page and each person's page say so (the Overview no
+	// longer has trends, UI-R1).
+	if strings.Count(string(html), "Not enough history yet: trends start after 2 full weeks") < 2 {
 		t.Error("the report does not say there is not enough history")
 	}
 }
 
 // Each report keeps per-person counts by day; later reports show a
 // person's activity over time, privileged actions by person on Trends, and
-// the biggest changes on the Overview, by calendar week.
-func TestPeopleTrendsAndWhatChanged(t *testing.T) {
+// Trends' biggest changes (which replaced the Overview's "What changed"),
+// by calendar week.
+func TestPeopleTrendsAndBiggestChanges(t *testing.T) {
 	mon := time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC)
 	jd := func(n int) []PersonSummary {
 		return []PersonSummary{{Key: "admin_jd", Name: "admin_jd", Privileged: n}}
@@ -159,70 +154,32 @@ func TestPeopleTrendsAndWhatChanged(t *testing.T) {
 		t.Errorf("person trend: %d %+v", pt.Weeks, pt.Rows[0])
 	}
 
-	var texts []string
-	for _, c := range r.whatChanged() {
-		texts = append(texts, c.Class+" "+c.Text)
-	}
-	all := strings.Join(texts, "\n")
-	for _, want := range []string{
-		`up CORP\admin_jd: 60 privileged actions in the week to 11 Oct (average 14 by this point of a week)`,
-		"new tempuser: 4 privileged actions in the week to 11 Oct, none in the 3 complete weeks before",
-	} {
-		if !strings.Contains(all, want) {
-			t.Errorf("what changed lacks %q:\n%s", want, all)
+	// UI-R1: Trends' biggest changes have each person's activity against
+	// their usual week.
+	tp := r.trendsPage()
+	found, fresh := false, false
+	for _, c := range tp.Ranges[1].Changes {
+		if c.Href == "#people/admin_jd" && c.Measure == "Privileged actions" && c.Usual == "14" && c.Now == "60" {
+			found = true
+		}
+		// Privileged actions for the first time: new, so red.
+		if c.Href == "#people/tempuser" && c.Measure == "Privileged actions" && c.Level == "bad" && c.Usual == "0" && c.Now == "4" {
+			fresh = true
 		}
 	}
-
-	tp := r.trendsPage()
-	if len(tp.People) != 2 || tp.People[0].Href != "#people/admin_jd" || tp.People[0].Cells[0].N != 14 || tp.People[0].Cells[3].N != 60 {
-		t.Errorf("people by week: %+v", tp.People)
+	if !found || !fresh {
+		t.Errorf("biggest changes: %+v", tp.Ranges[1].Changes)
 	}
 	dir := filepath.Join(t.TempDir(), "rep")
 	if err := r.Write(dir); err != nil {
 		t.Fatal(err)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-	for _, want := range []string{"What changed", "Over time", "Privileged actions by person, by week", "tempuser: 4 privileged actions"} {
+	// "What changed" left the Overview (UI-R1); Trends shows the biggest
+	// changes.
+	for _, want := range []string{"Over time", "Biggest changes this week"} {
 		if !strings.Contains(string(html), want) {
 			t.Errorf("report lacks %q", want)
 		}
-	}
-}
-
-// UI8: the list of reports' "Detections per week" has one bar per
-// calendar week, labelled with its dates, the current week "so far", no
-// manual report, and nothing before two complete weeks.
-func TestIndexChartByWeek(t *testing.T) {
-	mon := time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC)
-	det := func(at time.Time, sev string) []Detection {
-		return []Detection{{Severity: sev, Time: at, Host: "WS-07", Title: "x"}}
-	}
-	var entries []IndexEntry
-	add := func(s Summary) {
-		entries = append(entries, IndexEntry{Summary: s, Dir: s.WindowEnd.Format("2006-01-02_1504")})
-	}
-	for d := 0; d < 9; d++ {
-		s := dailyReport(mon.AddDate(0, 0, d), 1, nil)
-		s.Detections = det(mon.AddDate(0, 0, d).Add(time.Hour), "high")
-		add(s)
-	}
-	chart, n := indexChart(entries, time.UTC)
-	if chart != "" || n != 0 {
-		t.Errorf("drawn with one complete week: %d weeks", n)
-	}
-	for d := 9; d < 16; d++ {
-		s := dailyReport(mon.AddDate(0, 0, d), 1, nil)
-		s.Detections = det(mon.AddDate(0, 0, d).Add(time.Hour), "medium")
-		add(s)
-	}
-	// Two manual reports this week, from the tray and from "blackbox report".
-	for i := 0; i < 2; i++ {
-		add(Summary{Interim: true, WindowStart: mon.AddDate(0, 0, 16), WindowEnd: mon.AddDate(0, 0, 16).Add(time.Duration(i+1) * time.Hour),
-			Detections: det(mon.AddDate(0, 0, 16).Add(30*time.Minute), "high")})
-	}
-	chart, n = indexChart(entries, time.UTC)
-	svg := string(chart)
-	if n != 3 || !strings.Contains(svg, "14–20 Sep") || !strings.Contains(svg, "This week (so far)") || strings.Count(svg, "<rect") > 3*2+3 {
-		t.Errorf("chart: %d weeks\n%s", n, svg)
 	}
 }

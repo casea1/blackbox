@@ -7,41 +7,38 @@
 <link rel="icon" href="{{logo}}">
 <style>
 {{fontCSS}}{{css}}
-table.rx{width:100%;border-collapse:collapse}table.rx th{padding:0 12px 9px;white-space:nowrap}table.rx th.n{text-align:right}
-table.rx td{padding:14px 12px;border-bottom:1px solid rgba(0,30,98,.07);font-size:13px;white-space:nowrap}table.rx td.n{text-align:right;font:12.5px 'Source Code Pro'}
-table.rx tr:first-child td{background:rgba(11,95,255,.05)}table.rx td b{font-weight:650}
-table.rx .hi{color:#C22020;font-weight:600}table.rx .md{color:#A35A00;font-weight:600}table.rx .z{color:#9AA5BF}
-.trail.ok{color:#147A3D;font-weight:550}.trail.bad{color:#B01C1C;font-weight:550}.trail.warn{color:#8F4F00;font-weight:550}.trail.mute{color:#6B7385}
-.int{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:1px 7px;border:1px solid #F3D9A8;background:#FDF3E1;color:#7A4300;margin-left:8px}
-a.open{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border:1px solid rgba(0,30,98,.18);background:#fff;color:#0B1630;font-size:12.5px;font-weight:550;text-decoration:none}
-a.open:hover{border-color:#0B5FFF}.find{display:inline-flex;align-items:center;gap:8px}.find input{border:0;background:none;outline:0;font:inherit;width:150px}
-.chips span{cursor:pointer}
-table.rx tbody tr{cursor:pointer}table.rx tbody tr:hover td{background:rgba(11,95,255,.07)}
-.latest{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:1px 7px;border:1px solid #BFD3FF;background:#EAF1FF;color:#0B4FD6;margin-left:8px}
-.intro{margin:0 0 12px;color:#4A5675;font-size:13.5px;max-width:860px}
 </style>
 </head>
-<body>
-<aside>
-  <div class="brand"><img src="{{logo}}" alt=""><div><b>Blackbox</b></div></div>
-  {{if .Site}}<div class="site"><span>Network</span><b>{{.Site}}</b></div>{{end}}
-  <nav aria-label="Reports"><a class="on" href="#">{{icon "history" 17}}<span>All reports</span><small>{{len .Entries}}</small></a>{{with .Latest}}<a href="{{.}}/report.html">{{icon "layout-dashboard" 17}}<span>Latest report</span></a>{{end}}</nav>
+<body class="rxpage">
+<aside aria-label="Report menu">
+  <div class="brand"><img src="{{logo}}" alt=""><div><b>Blackbox</b>{{if .Site}}<span>{{.Site}}</span>{{end}}</div>
+  <button type="button" class="menubtn" data-menu aria-expanded="false" aria-controls="sidemenu">{{icon "list" 18}}<span>Menu</span></button></div>
+  <div class="side" id="sidemenu">
+  {{$g := ""}}{{range .Nav}}{{if ne .Group $g}}{{if $g}}</nav>{{end}}{{$g = .Group}}<div class="grp" aria-hidden="true">{{.Group}}</div>
+  <nav aria-label="{{.Group}} (latest report)">{{end}}<a href="{{.Href}}">{{icon .Icon 17}}<span>{{.Title}}</span>{{if .Count}}{{if eq .Title "Detections"}}<em>{{.Count}}</em>{{else}}<small>{{commas .Count}}</small>{{end}}{{end}}</a>{{end}}{{if $g}}</nav>{{end}}
+  {{with .Card}}<div class="rcard"><b>{{.Kind}}</b><span>{{.Period}}</span><span>{{.Systems}}{{with .Generated}} · {{.}}{{end}}</span>{{with .Check}}<span class="rxck">✓ {{.}}</span>{{end}}</div>{{end}}
+  </div>
 </aside>
 <main>
-<div class="head"><div><div class="crumb"><span data-folder>Reports folder</span>{{if .Schedule}} · {{.Schedule}}{{end}}</div><h1>All reports</h1></div>
-<div class="tools"><label class="btn find">{{icon "search" 15}}<input type="search" placeholder="Find a report" data-findreport></label>{{with .Latest}}<a class="btn primary" href="{{.}}/report.html">Open the latest report</a>{{end}}</div></div>
-<p class="intro">Every report in this folder, newest first. Each one covers one period; click a row to open it. Reports marked <b>Manual</b> were made by hand between scheduled reports.</p>
+<div class="head"><div><div class="crumb">{{if .Site}}{{.Site}} · {{end}}<span data-folder>reports folder</span>{{if .Schedule}} · {{.Schedule}}{{end}}</div><h1>All reports</h1></div>
+<div class="tools">{{if .Rows}}<button type="button" class="btn" data-rxcsv>Export list CSV</button>{{end}}</div></div>
+<div class="rxcards">{{range .Cards}}<div class="panel rxc"><span class="l">{{.Label}}</span><b{{with .Class}} class="{{.}}"{{end}}>{{.Title}}</b><span class="d">{{.Note}}{{if .Href}} · <a href="{{.Href}}">Open →</a>{{end}}</span></div>{{end}}</div>
 {{if .Rows}}
-{{if .Chart}}<div class="panel" style="margin-bottom:12px"><div class="row" style="grid-template-columns:260px 1fr;margin:0;align-items:center"><div><div class="ph" style="margin-bottom:6px"><h2>{{icon "trending-up" 17}}Detections per week</h2></div><p class="pm" style="margin:0 0 10px">Last {{.Weeks}} weeks, Monday to Sunday · manual reports not included</p>
-<div class="legend"><span><i style="background:#D12C2C"></i>High</span><span><i style="background:#E08A00"></i>Medium</span><span>Faded = earlier weeks</span></div></div><div>{{.Chart}}</div></div></div>{{end}}
-<div class="panel"><div class="toolbar"><h2>{{icon "scroll-text" 17}}Reports · newest first</h2><div class="chips" data-chips><span class="on" data-show="">All<i>{{len .Rows}}</i></span><span data-show="bad">Incomplete<i>{{.Incomplete}}</i></span></div></div>
-<table class="rx"><thead><tr><th>Period</th><th class="n">Systems</th><th class="n">Events</th><th class="n">High</th><th class="n">Medium</th><th>Audit trail</th><th></th></tr></thead><tbody>
-{{range $i, $r := .Rows}}{{if .Missing}}<tr data-row="{{.Search}}"{{if not .Accepted}} data-bad{{end}} class="gone"><td><b>{{.Week}}</b></td><td class="n z">—</td><td class="n z">—</td><td class="n z">—</td><td class="n z">—</td><td style="white-space:normal;min-width:240px"><span class="trail {{.TrailClass}}">{{.Trail}}</span></td><td class="mono mute" title="{{.Dir}}">{{.Dir}}</td></tr>{{else}}<tr data-row="{{.Search}}" data-href="{{.Dir}}/report.html"{{if .Incomplete}} data-bad{{end}}><td><b>{{.Week}}</b>{{if eq .Dir $.Latest}}<span class="latest">Latest</span>{{end}}{{if .Interim}}<span class="int">Manual</span>{{end}}</td><td class="n">{{.Systems}}</td><td class="n">{{commas .Events}}</td>
-<td class="n {{if .High}}hi{{else}}z{{end}}">{{.High}}</td><td class="n {{if .Medium}}md{{else}}z{{end}}">{{.Medium}}</td><td style="white-space:normal;min-width:240px"><span class="trail {{.TrailClass}}">{{.Trail}}</span></td>
-<td><a class="open" href="{{.Dir}}/report.html">Open {{icon "chevron-right" 14}}</a></td></tr>{{end}}{{end}}
-</tbody></table></div>
+<div class="panel"><div class="ph rxph"><h2>Reports · newest first</h2><div class="trseg rxf" role="group" aria-label="Show">
+<button type="button" class="on" aria-pressed="true" data-rxf="">All {{.Counts.all}}</button><button type="button" aria-pressed="false" data-rxf="scheduled">Scheduled {{.Counts.scheduled}}</button><button type="button" aria-pressed="false" data-rxf="manual">Manual {{.Counts.manual}}</button><button type="button" aria-pressed="false" data-rxf="high">With high {{.Counts.high}}</button><button type="button" aria-pressed="false" data-rxf="problem">Problems {{.Counts.problems}}</button></div></div>
+<div class="tscroll"><table class="rx2"><thead><tr><th>Report</th><th>Notes</th><th class="n">Systems</th><th class="n">Events</th><th class="n">High</th><th class="n">Medium</th><th class="n">Original logs</th><th class="c">Check</th></tr></thead><tbody>
+{{range .Months}}<tr class="mh" data-month="{{.Label}}"{{if .Older}} data-older hidden{{end}}><th colspan="8" scope="colgroup">{{.Label}}</th></tr>
+{{range .Rows}}<tr data-month="{{.Month}}" data-k="{{if .Interim}}manual{{else}}scheduled{{end}}{{if .High}} high{{end}}{{if .Problem}} problem{{end}}"{{if .Older}} data-older hidden{{end}}{{if not .Missing}} data-href="{{.Dir}}/report.html"{{end}}{{if .Missing}} class="gone"{{end}}>
+<td class="rl">{{if .Missing}}<b>{{.Label}}</b>{{else}}<a href="{{.Dir}}/report.html">{{.Label}}</a>{{end}}{{if .Latest}}<span class="latest">Latest</span>{{end}}{{if .Interim}}<span class="int">Manual</span>{{end}}</td>
+<td class="nt">{{if .Missing}}<span class="trail {{.TrailClass}}">{{.Trail}}</span>{{else}}{{with .Reason}}<span class="why">{{.}}</span>{{end}}{{if and .Reason .Notes}} · {{end}}{{.Notes}}{{end}}</td>
+<td class="n">{{.SystemsText}}</td><td class="n">{{if .Missing}}—{{else}}{{commas .Events}}{{end}}</td><td class="n{{if .High}} hi{{end}}">{{if .Missing}}—{{else if .High}}{{.High}}{{else}}—{{end}}</td><td class="n">{{if .Missing}}—{{else if .Medium}}{{.Medium}}{{else}}—{{end}}</td><td class="n">{{.Logs}}</td>
+<td class="c">{{if .Check}}<span class="rxchk {{.Check}}"{{with .CheckTitle}} title="{{.}}"{{end}}>{{.CheckText}}</span>{{end}}</td></tr>
+{{end}}{{end}}</tbody></table></div>
+{{if .Older}}<div class="trfoot" data-olderfoot><span>{{.Older}} {{plural .Older "older report"}}</span><button type="button" class="link" data-showolder>Show older ↓</button></div>{{end}}
+</div>
 {{else}}<div class="panel"><p class="pm" style="margin:0">No reports yet. The first scheduled report appears here once it has been made.</p></div>{{end}}
 </main>
+<script type="application/json" id="bb-index">{{.CSV}}</script>
 <script>
 (function () {
   var p = decodeURIComponent(location.pathname).replace(/[^/]*$/, '');
@@ -50,24 +47,45 @@ table.rx tbody tr{cursor:pointer}table.rx tbody tr:hover td{background:rgba(11,9
     else if (location.host) p = '\\\\' + location.host + p.replace(/\//g, '\\');
     var f = document.querySelector('[data-folder]'); if (f) f.textContent = p;
   }
-  var show = '', q = '';
+  var aside = document.querySelector('aside'), mb = document.querySelector('[data-menu]');
+  if (mb) mb.addEventListener('click', function () {
+    var open = !aside.classList.contains('open');
+    aside.classList.toggle('open', open);
+    mb.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  var show = '', older = false;
   function apply() {
-    document.querySelectorAll('[data-row]').forEach(function (r) {
-      r.hidden = (show === 'bad' && !r.hasAttribute('data-bad')) || (q && r.getAttribute('data-row').toLowerCase().indexOf(q) < 0);
+    var seen = {};
+    document.querySelectorAll('tr[data-k]').forEach(function (r) {
+      var k = ' ' + r.getAttribute('data-k') + ' ';
+      r.hidden = (show && k.indexOf(' ' + show + ' ') < 0) || (!show && !older && r.hasAttribute('data-older'));
+      if (!r.hidden) seen[r.getAttribute('data-month')] = true;
     });
+    document.querySelectorAll('tr.mh').forEach(function (h) { h.hidden = !seen[h.getAttribute('data-month')]; });
+    var foot = document.querySelector('[data-olderfoot]');
+    if (foot) foot.hidden = !!show || older;
   }
-  document.querySelectorAll('[data-chips] span').forEach(function (c) {
+  document.querySelectorAll('[data-rxf]').forEach(function (c) {
     c.addEventListener('click', function () {
-      show = c.getAttribute('data-show');
-      document.querySelectorAll('[data-chips] span').forEach(function (x) { x.classList.toggle('on', x === c); });
+      show = c.getAttribute('data-rxf');
+      document.querySelectorAll('[data-rxf]').forEach(function (x) { x.classList.toggle('on', x === c); x.setAttribute('aria-pressed', x === c ? 'true' : 'false'); });
       apply();
     });
   });
+  var so = document.querySelector('[data-showolder]');
+  if (so) so.addEventListener('click', function () { older = true; apply(); });
   document.querySelectorAll('tr[data-href]').forEach(function (r) {
     r.addEventListener('click', function (e) { if (!e.target.closest('a')) location.href = r.getAttribute('data-href'); });
   });
-  var box = document.querySelector('[data-findreport]');
-  if (box) box.addEventListener('input', function () { q = box.value.toLowerCase(); apply(); });
+  var x = document.querySelector('[data-rxcsv]');
+  if (x) x.addEventListener('click', function () {
+    var rows = JSON.parse(document.getElementById('bb-index').textContent);
+    var csv = '﻿' + rows.map(function (r) { return r.map(function (v) { return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(','); }).join('\r\n') + '\r\n';
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'reports.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
 })();
 </script>
 </body>

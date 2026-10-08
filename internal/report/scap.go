@@ -413,6 +413,20 @@ type OpenRule struct {
 // ScapHref is where a system's open STIG rules are listed.
 func ScapHref(host string) string { return "#health/" + host + "/scap" }
 
+// scapLink is where a system's SCAP check points: its open STIG rules;
+// with no scan found, Audit health's SCAP tab, which lists the systems
+// without one; with no SCAP results in the report, its settings.
+func (r *Report) scapLink(host string) string {
+	g, ok := r.scapGlance(host)
+	switch {
+	case !ok:
+		return "#health/" + host
+	case g.Missing:
+		return "#health/@scap"
+	}
+	return ScapHref(host)
+}
+
 func (r *Report) scapOpen(host string) []ScapOpen {
 	var out []ScapOpen
 	for _, row := range r.scapTable {
