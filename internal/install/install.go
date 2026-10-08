@@ -604,3 +604,10 @@ func recordRemoval(logf func(string, ...any)) {
 		logf("Note: recording the removal in the system log failed: %v", err)
 	}
 }
+
+// versionLine is the first line of "blackbox version": later lines (the
+// FIPS 140-3 state, COMP3) are not part of the version.
+func versionLine(out []byte) string {
+	l, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+	return strings.TrimSpace(l)
+}

@@ -15,7 +15,8 @@ import (
 // Supported reports whether the live check works on this OS.
 const Supported = true
 
-// Run checks the local Linux system.
+// Run checks the local Linux system, citing the STIG rules of its
+// distribution where they exist (COMP2).
 func Run() []Result {
 	var out []Result
 	svc := Result{Area: "Audit service", Item: "auditd running", Want: "active",
@@ -98,7 +99,8 @@ func Run() []Result {
 		sys.Fix = "mkdir -p /var/log/journal && systemctl restart systemd-journald"
 	}
 	out = append(out, sys)
-	return out
+	osRelease, _ := os.ReadFile("/etc/os-release")
+	return CiteLinuxSTIG(string(osRelease), out)
 }
 
 func exists(p string) bool {

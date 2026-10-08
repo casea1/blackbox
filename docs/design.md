@@ -75,7 +75,9 @@ with no runtime to install: no Python, .NET, Java or Node.
     serial number.
 - **Normalize**
   - Put every event into one schema: time, host, OS, category, severity,
-    actor (user and SID/UID), target, action, outcome, source IP, process,
+    actor (user and SID/UID), target, action, outcome (success or failure,
+    from the Security event's audit keywords or auditd's success=/res=;
+    "not recorded" in events.csv when the source has none), source IP, process,
     command line, raw event.
 - **Classify and translate**
   - A built-in catalog (`internal/winevt/translate*.go`) maps each raw event
@@ -114,9 +116,11 @@ with no runtime to install: no Python, .NET, Java or Node.
 
 ## 4. Event coverage (initial rule set)
 
-Each category is tagged with the NIST 800-53 controls it supports.
+Each report section is tagged with the NIST SP 800-53 controls it
+supports. The tags here are the ones in the code (`Categories` in
+`internal/event/event.go`), and a test keeps the two the same.
 
-### 4.1 Privileged activity — AC-6(9), AU-2, AU-12
+### 4.1 Privileged Activity — AC-6(9), AU-2, AU-12
 
 | Windows | Linux |
 |---|---|
@@ -126,7 +130,7 @@ Each category is tagged with the NIST 800-53 controls it supports.
 | 4673 / 4674 privileged service or object operations | STIG `privileged-*` keys (passwd, chage, usermod, mount, and so on) |
 | 4104 PowerShell script block logging | Changes to sudoers, sudo config |
 
-### 4.2 USB and removable media — MP-7, AC-19, AU-2
+### 4.2 USB & Removable Media — MP-7, AU-2
 
 | Windows | Linux |
 |---|---|
@@ -138,7 +142,7 @@ Each category is tagged with the NIST 800-53 controls it supports.
 The report pairs each connect with its disconnect, links the device to the
 logged-on user, and flags devices not seen before.
 
-### 4.3 Failed logons and lockouts — AC-7, AU-2, IA-2
+### 4.3 Failed Logons & Lockouts — AC-7, AU-2
 
 | Windows | Linux |
 |---|---|
@@ -152,16 +156,34 @@ source trying many accounts, and failures followed by a success.
 
 ### 4.4 Other security events
 
-| Area | Windows | Linux | Controls |
+| Area | Windows | Linux | Report section — controls |
 |---|---|---|---|
-| **Audit log cleared / audit stopped** | 1102, 104, 4719 (audit policy changed), 1100 (event log service shut down) | `DAEMON_END`, `CONFIG_CHANGE`, auditd rules changed, gaps in the log | AU-5, AU-9 |
-| Account management | 4720 / 4722 / 4725 / 4726 / 4738 / 4781, group membership changes 4728 / 4732 / 4756 | `ADD_USER`, `DEL_USER`, `USER_MGMT`, `ADD_GROUP`, identity file changes | AC-2 |
-| Successful logon / logoff | 4624 / 4634 / 4647 (summarized, not listed one by one) | `USER_LOGIN`, `USER_END` | AC-2, AU-2 |
-| System time changed | 4616 | `adjtimex` / `settimeofday` / `clock_settime` | AU-8 |
-| New services / scheduled tasks | 7045, 4697, 4698 | systemd unit changes, cron changes | CM-7, SI-4 |
-| Malware / security software | Defender 1116 / 1117 / 5001 (real-time protection off) | — | SI-3 |
-| Mandatory access control | — | SELinux AVC denials (Alma), AppArmor DENIED (Ubuntu) | AC-3 |
-| System start / shutdown | 4608, 1074, 6005 / 6006 / 6008 | boot / shutdown records | AU-2 |
+| **Audit log cleared / audit stopped** | 1102, 104, 4719 (audit policy changed), 1100 (event log service shut down) | `DAEMON_END`, `CONFIG_CHANGE`, auditd rules changed, gaps in the log | Audit & System Integrity — AU-5, AU-8, AU-9, AU-2 |
+| Account management | 4720 / 4722 / 4725 / 4726 / 4738 / 4781, group membership changes 4728 / 4732 / 4756 | `ADD_USER`, `DEL_USER`, `USER_MGMT`, `ADD_GROUP`, identity file changes | Account & Group Changes — AC-2(4), AU-2 |
+| Successful logon / logoff | 4624 / 4634 / 4647 (summarized, not listed one by one) | `USER_LOGIN`, `USER_END` | Logon Activity — AC-2, AU-2 |
+| System time changed | 4616 | `adjtimex` / `settimeofday` / `clock_settime` | Audit & System Integrity |
+| New services / scheduled tasks | 7045, 4697, 4698 | systemd unit changes, cron changes | Other Security Events — CM-7, SI-3, SI-4 |
+| Malware / security software | Defender 1116 / 1117 / 5001 (real-time protection off) | — | Other Security Events |
+| Mandatory access control | — | SELinux AVC denials (Alma), AppArmor DENIED (Ubuntu) | Other Security Events |
+| System start / shutdown | 4608, 1074, 6005 / 6006 / 6008 | boot / shutdown records | Audit & System Integrity |
+
+What the tags mean in practice:
+
+- **AU-5** (response to audit logging process failures): Blackbox reports
+  auditing stopped, a log cleared, events lost and collection gaps, but
+  only when it looks: at each collection, in `blackbox status`, and in the
+  next report. It sends no alert beyond the status icon on the computer
+  itself. AU-5 is met only within that
+  interval, and only when `blackbox status` (exit code 4 when something
+  needs attention) is wired into the site's monitoring.
+- **AU-8** (time stamps): the time checks are basic. `blackbox check`
+  only looks for a time service running (Windows Time synchronising, or
+  chrony or systemd-timesyncd). It does not check the STIG's time rules,
+  such as UBTU-24-600160 (compare with an authoritative time server every
+  24 hours) and UBTU-24-600180 (correct a drift over one second), and it
+  is Blackbox's advice, not a STIG rule. Time changes are reported.
+- **AU-9** (protection of audit information): see the Integrity bullet in
+  section 9.
 
 ---
 
@@ -171,7 +193,8 @@ A report is only as good as the auditing turned on underneath it. Every report
 begins with an **audit health** panel:
 
 - **Coverage window.** The time period this report covers, and any **gaps**
-  since the previous report, detected from the bookmark (AU-6, AU-5).
+  since the previous report, detected from the bookmark (AU-6; AU-5 only
+  within the collection and `status` interval, see 4.4).
 - **Log cleared or audit stopped** during the period. Always shown at the top
   and never hidden.
 - **Log rollover.** A warning when the Security log wrapped before it was read,
@@ -186,13 +209,12 @@ begins with an **audit health** panel:
   - For example: "USB auditing is **not** enabled on WS-04, so the USB section
     for this host is incomplete."
 
-`blackbox check` runs the configuration check on its own. We also ship a
-recommended baseline so hosts can be brought into compliance:
-
-- an `auditpol` backup file for Windows
-- an auditd rules file for Linux
-
-The tool **never changes audit settings unless you explicitly ask it to**.
+`blackbox check` runs the configuration check on its own, and for each
+gap names the Group Policy setting or command that fixes it. On Linux,
+`blackbox check --audit-rules` prints Blackbox's recommended auditd rules
+(`--missing`: only those not already loaded) for an administrator to
+install. Blackbox **never changes audit settings**: it has no command
+that applies a baseline.
 
 ---
 
@@ -353,15 +375,26 @@ blackbox uninstall            # remove the task/timer; reports are kept
 
 ## 9. Security and approval considerations
 
-- **Read-only.** Blackbox reads logs and never modifies or deletes them. The
-  only exception is `blackbox install`, and applying the audit baseline, which
-  only happens when explicitly requested.
+- **Never alters log records.** Blackbox never alters, clears or deletes
+  log records. It does write its own change records: when a setting is
+  changed or Blackbox is installed, upgraded or removed, it adds an event
+  to the Windows Application log (source Blackbox, event ID 100) or, on
+  Linux, a line to the journal (identifier `blackbox`). It never changes
+  audit settings.
+- **Collects often, and detects and reports any loss.** Blackbox cannot stop
+  a full log from overwriting events. It collects every 15 minutes by
+  default, and when a log turned over before it was read, or was cleared,
+  it says so in `blackbox status` and in the report.
 - **No network access at all.** No listening ports and no outbound calls.
 - **Least privilege.** Runs as SYSTEM or root only because reading the Security
   log and `audit.log` requires it. Outputs are restricted to Administrators or
   root.
-- **Integrity.** A SHA-256 manifest for every run (AU-9). Signing reports with
-  a site key is an optional later addition.
+- **Integrity.** A SHA-256 manifest for every report. It detects accidental
+  damage and missing files, which supports AU-9 b (detect unauthorized
+  modification) as far as that goes. It does not protect the records
+  (AU-9 a) or give cryptographic protection (AU-9(3)): anyone who can
+  change a report can rewrite its manifest. That needs signed reports,
+  which Blackbox does not have yet.
 - **Retention.** A configurable retention period that defaults to **keep
   everything**. It never deletes anything automatically unless configured to.
   The period is the site's records schedule (NARA GRS or the DoD component's
@@ -370,12 +403,16 @@ blackbox uninstall            # remove the task/timer; reports are kept
   original logs not yet in a report are never deleted: past the period they
   are pointed out instead (RET1).
 - **Supply chain.**
-  - Dependencies kept to a minimum and vendored into the repository, so the
-    code builds fully offline.
+  - No third-party dependencies (Go standard library only), so the code
+    builds fully offline.
   - Reproducible builds.
-  - An SBOM (CycloneDX) and SHA-256 checksums published with every release.
-- **FIPS.** Build with Go's FIPS 140-3 module (`GOFIPS140`) so hashing uses
-  validated cryptography.
+  - An SBOM (SPDX 2.3) and SHA-256 checksums published with every release.
+- **FIPS.** Releases are built with `GOFIPS140=v1.0.0` (`scripts/build.sh`),
+  which links the Go Cryptographic Module v1.0.0 (CMVP certificate #5247)
+  and turns FIPS 140-3 mode on by default, so hashing uses validated
+  cryptography. `blackbox version` prints the module and whether FIPS mode
+  is on; `GODEBUG=fips140=on` turns it on for a build made without
+  `GOFIPS140` (see security.md).
 
 ---
 
@@ -429,7 +466,7 @@ The answers are in section 13. The original questions were:
 
 | Topic | Decision |
 |---|---|
-| Report schedule | Windows LAN hosts currently run PowerStrux daily because a noisy tool overwrites logs within a week. Blackbox separates **collection (hourly by default, `--collect-every`)** from **reporting (`report_every`: daily/weekly/monthly, default weekly)**. Hourly collection captures events before rollover, so weekly reports lose nothing. Linux reports are weekly. |
+| Report schedule | Windows LAN hosts currently run PowerStrux daily because a noisy tool overwrites logs within a week. Blackbox separates **collection (every 15 minutes by default, `collect_every`)** from **reporting (`report_every`: daily/weekly/monthly, default weekly)**. Collecting often keeps ahead of rollover on most systems; Blackbox cannot stop a full log overwriting events, so it detects and reports any loss. Linux reports are weekly. |
 | Reviewers | ISSO/Auditor, then ISSM. Reviews are recorded on a separate platform and reports are not printed, so the report has **no signature or review section**, and `blackbox review` is dropped from the roadmap. |
 | Audit baseline | **Report only.** `check` and the report's health panel show what is missing and the command that fixes it. Blackbox never changes settings. |
 | Classification banner | Not needed, and removed. |

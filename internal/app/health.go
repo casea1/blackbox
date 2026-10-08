@@ -220,7 +220,7 @@ func (a *App) Health() (Health, error) {
 				}
 				if r.Area == "Antivirus" {
 					h.AVOld = append(h.AVOld, c.Host)
-				} else if r.Area != "Baseline" {
+				} else if r.Area != "Baseline" && !r.IsAdvice() { // STIG rules only (COMP2)
 					h.AuditGaps[c.Host]++
 				}
 			}

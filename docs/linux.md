@@ -201,11 +201,16 @@ system, `/sbin/modprobe` and `/usr/sbin/modprobe` are one file, and
 - a large enough audit backlog
 - what auditd does as its disk fills (`auditd.conf`): `space_left_action`
   must tell someone (email, exec or syslog), `admin_space_left_action`
-  single or halt, and `disk_full_action` and `disk_error_action` anything
-  but SUSPEND or IGNORE, which stop recording without anyone knowing;
-  `action_mail_acct` set
-- the audit log readable only by root (log 0600 or 0640, folder 0750)
-- time synchronisation: chrony or systemd-timesyncd running (AU-8)
+  single or halt, and `disk_full_action` and `disk_error_action` halt,
+  single or syslog (SUSPEND or IGNORE stop recording without anyone
+  knowing); `action_mail_acct` set
+- the audit log readable only by root (log 0600 or 0640, folder 0750;
+  the STIGs ask for log 0600, so this is Blackbox's advice)
+- time synchronisation: a basic check that chrony or systemd-timesyncd
+  is running (AU-8). It does not check the STIG's time rules
+  (UBTU-24-600160 and 600180: comparing with an authoritative source
+  every 24 hours and correcting a drift over one second), and the
+  Ubuntu STIG forbids systemd-timesyncd (UBTU-24-100010)
 - sudo-rs, which records no audit events of sudo commands, and does not
   log a refused command anywhere
 - ClamAV, when installed: definitions built within the last 30 days, and
@@ -215,6 +220,55 @@ system, `/sbin/modprobe` and `/usr/sbin/modprobe` are one file, and
   advice to enable it. On a FIPS host, a note says ClamAV's engine is not
   FIPS 140 validated
 - a system log that survives reboots
+
+### STIG rule IDs
+
+`blackbox check` and Audit health show each check's STIG rule ID where
+the STIG for the system's distribution has one. The STIG is picked from
+`/etc/os-release`:
+
+| System | Compared with |
+|---|---|
+| Ubuntu 24.04 | Ubuntu 24.04 LTS STIG V1R5 (UBTU-24) |
+| Ubuntu 22.04 | Ubuntu 22.04 LTS STIG V2R10 (UBTU-22) |
+| AlmaLinux 9 | AlmaLinux OS 9 STIG V1R8 (ALMA-09) |
+| RHEL 9 | RHEL 9 STIG V2R10 (RHEL-09) |
+| AlmaLinux 8, RHEL 8 | RHEL 8 STIG V2R9 (RHEL-08; DISA has no AlmaLinux 8 STIG, so sites apply RHEL 8's) |
+| anything else | no STIG: every check is Blackbox's advice |
+
+The IDs were checked against the stigaview.com copy of each DISA release
+on 8 October 2026 (the DISA library at cyber.mil could not be read by
+script that day). A cited ID means the check covers the main part of
+that rule; your SCAP scan is the full test.
+
+| Check | Ubuntu 24.04 (UBTU-24-) | Ubuntu 22.04 (UBTU-22-) | AlmaLinux 9 (ALMA-09-) | RHEL 9 (RHEL-09-) | RHEL 8, AlmaLinux 8 (RHEL-08-) |
+|---|---|---|---|---|---|
+| auditd running | advice (100400 only asks for the package) | advice (653010 only asks for the package) | 054910 | 653015 | 030181 |
+| Watch /etc/passwd, /etc/group, /etc/shadow, /etc/gshadow | 200280, 200290, 200300, 200310 | 654145, 654130, 654150, 654135 | 005410, 005080, 005960, 005190 | 654240, 654225, 654245, 654230 | 030150, 030170, 030130, 030160 |
+| Watch /etc/sudoers and /etc/sudoers.d | 900510, 900520 | 654220, 654225 | 004970, 006070 | 654215, 654220 | 030171, 030172 |
+| Programs run with raised privileges (execve) | 200580 | 654230 | 007280 | 654010 | 030000 |
+| Kernel module loading | 900340 | 654175 | 046660 | 654080 | 030360 |
+| Filesystem mounts | 900090 | 654065 | 047650 | 654180 | 030300 |
+| Unsuccessful file access | 900160 | 654165 | 048090 | 654070 | 030420 |
+| chmod, chown, setxattr | 900150, 900140, 900130 | 654155, 654160, 654180 | 048530, 048640, 051390 | 654015, 654020, 654025 | 030490, 030480, 030200 |
+| utmp, wtmp, btmp watched | 900600, 900590, 900610 | 654205, 654200, 654195 | advice | advice | advice |
+| kmod, setfacl, chacl | 900740, 900230, 900240 | 654055, 654085, 654015 | 049300, 050180, 048200 | 654105, 654040, 654035 | 030580, 030330, 030570 |
+| Rules locked (`-e 2`) | 909000 | 654240 | 057110 | 654275 | 030121 |
+| `audit=1` at boot | 102010 | 212015 | 047980 | 212055 | 030601 |
+| `audit_backlog_limit` at boot | advice | advice | 051830 | 653120 | 030602 |
+| `log_format = ENRICHED` | advice | advice | 046880 | 653100 | 030063 |
+| `space_left_action` | 900960 | 653040 | 053590 | 653040 | 030731 |
+| `admin_space_left_action` | advice | advice | 053370 | 653050 | advice |
+| `disk_full_action` | advice | 653030 | 054140 | 653025 | 030060 |
+| `disk_error_action` | advice | advice | 054030 | 653020 | 030040 |
+| `action_mail_acct` | 900980 | 653025 | 053810 | 653070 | 030020 |
+
+Everything else (commands run as root, time changes, `/etc/audit` and
+`/etc/blackbox` watched, the kernel audit backlog, audit log
+permissions, time synchronisation, sudo-rs, a persistent system log) is
+Blackbox's advice on every distribution. The report words it "Blackbox
+recommends", not "the STIG requires", leaves it out of "Systems matching
+STIG", and counts it on its own as "Blackbox's advice".
 
 ## Where things are
 

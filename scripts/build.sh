@@ -11,6 +11,12 @@ cd "$(dirname "$0")/.."
 VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
 VERSION="${VERSION#v}"
 LDFLAGS="-s -w -buildid= -X main.version=${VERSION}"
+# Go's FIPS 140-3 module (COMP3): GOFIPS140=v1.0.0 links the Go
+# Cryptographic Module v1.0.0 (CMVP certificate #5247) and turns FIPS
+# 140-3 mode on by default. "blackbox version" prints both. Needs Go 1.24
+# or later; GOFIPS140=off builds without it.
+GOFIPS140="${GOFIPS140:-v1.0.0}"
+export GOFIPS140
 rm -rf dist && mkdir -p dist/stage
 
 # Authenticode signing, when a certificate is given (CI secrets):
@@ -69,6 +75,16 @@ package() { # os arch
 package windows amd64
 package linux amd64
 package linux arm64
+# The Linux amd64 program must report the module it was built with.
+if [ "$GOFIPS140" != off ] && [ "$(uname -s)-$(uname -m)" = Linux-x86_64 ]; then
+	fips=$("dist/stage/blackbox-${VERSION}-linux-amd64/blackbox" version | tail -1)
+	echo "$fips"
+	case "$fips" in
+	# Newer Go names the snapshot in full: v1.0.0-c2097c7c.
+	*"Go Cryptographic Module ${GOFIPS140}"[\ -]*"FIPS mode on") ;;
+	*) echo "the build does not report the FIPS 140-3 module ${GOFIPS140}" >&2; exit 1 ;;
+	esac
+fi
 rm -rf dist/stage
 # A software bill of materials (SPDX), from the module and the Go
 # toolchain that built it: no third-party modules to list.

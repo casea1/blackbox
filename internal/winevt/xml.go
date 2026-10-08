@@ -47,9 +47,39 @@ func (r *Raw) Get(name string) string {
 }
 
 // AuditFailure reports whether the Security event is an audit failure.
-func (r *Raw) AuditFailure() bool {
-	k, err := strconv.ParseUint(strings.TrimPrefix(strings.ToLower(r.Keywords), "0x"), 16, 64)
-	return err == nil && k&0x0010000000000000 != 0
+func (r *Raw) AuditFailure() bool { return r.keywords()&keywordAuditFailure != 0 }
+
+// AuditSuccess reports whether the Security event is an audit success.
+func (r *Raw) AuditSuccess() bool { return r.keywords()&keywordAuditSuccess != 0 }
+
+// The Audit Success and Audit Failure keywords of Security events.
+const (
+	keywordAuditFailure = 0x0010000000000000
+	keywordAuditSuccess = 0x0020000000000000
+)
+
+func (r *Raw) keywords() uint64 {
+	k, err := strconv.ParseUint(strings.TrimPrefix(strings.ToLower(strings.TrimSpace(r.Keywords)), "0x"), 16, 64)
+	if err != nil {
+		return 0
+	}
+	return k
+}
+
+// Outcome is a Security event's outcome from its Audit Success or Audit
+// Failure keyword, or "" when it has neither (AU3). Only the Security log
+// uses these keywords to record an outcome; other logs do not say.
+func (r *Raw) Outcome() string {
+	if r.Channel != "Security" && r.Provider != "Microsoft-Windows-Security-Auditing" {
+		return ""
+	}
+	switch {
+	case r.AuditFailure():
+		return "failure"
+	case r.AuditSuccess():
+		return "success"
+	}
+	return ""
 }
 
 type xmlEvent struct {

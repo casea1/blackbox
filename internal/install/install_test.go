@@ -177,3 +177,15 @@ func TestSetCollectEvery(t *testing.T) {
 		t.Error("7 minutes accepted")
 	}
 }
+
+// COMP3: the installer reads the version from the first line only.
+func TestVersionLine(t *testing.T) {
+	for in, want := range map[string]string{
+		"blackbox 0.23.0\r\nFIPS 140-3: Go Cryptographic Module v1.0.0 (built with GOFIPS140=v1.0.0); FIPS mode on\r\n": "blackbox 0.23.0",
+		"blackbox 0.22.0\n": "blackbox 0.22.0",
+	} {
+		if got := versionLine([]byte(in)); got != want {
+			t.Errorf("%q: %q", in, got)
+		}
+	}
+}

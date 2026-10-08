@@ -33,6 +33,11 @@ jobs:
           echo "tag=v$v" >> "$GITHUB_OUTPUT"
       - name: Test
         run: go test ./...
+      # Releases link Go's FIPS 140-3 module, Go Cryptographic Module
+      # v1.0.0, and run in FIPS mode by default (COMP3): scripts/build.sh
+      # sets GOFIPS140=v1.0.0 and checks the built program reports it.
+      - name: Test in FIPS 140-3 mode
+        run: GOFIPS140=v1.0.0 go test ./...
       # Code signing (A10) uses repository secrets, and is skipped cleanly
       # when they are not set: the release is then unsigned, as before.
       #   WINDOWS_SIGN_PFX_BASE64  code-signing certificate (.pfx), base64

@@ -38,15 +38,16 @@ func EvaluateAuditdActions(conf map[string]string) []Result {
 			return false
 		}
 	}
-	notStop := func(v string) bool { return v != "" && v != "suspend" && v != "ignore" }
+	// What the STIGs accept (ALMA-09-054140/054030, RHEL-09-653025/653020).
+	stigAction := in("syslog", "single", "halt")
 	const conf_ = "/etc/audit/auditd.conf"
 	act("space_left_action", "email, exec or syslog (someone is told)", in("email", "exec", "syslog", "single", "halt"),
 		"Audit & System Integrity: nobody is warned before the audit disk fills", "set space_left_action = email in "+conf_+", then restart auditd")
 	act("admin_space_left_action", "single or halt", in("single", "halt"),
 		"Audit & System Integrity: events stop being recorded when the disk is nearly full", "set admin_space_left_action = single in "+conf_+", then restart auditd")
-	act("disk_full_action", "halt, single or syslog (not SUSPEND or IGNORE)", notStop,
+	act("disk_full_action", "halt, single or syslog (not SUSPEND or IGNORE)", stigAction,
 		"Audit & System Integrity: auditing silently stops when the disk is full", "set disk_full_action = halt (or single) in "+conf_+", then restart auditd")
-	act("disk_error_action", "halt, single or syslog (not SUSPEND or IGNORE)", notStop,
+	act("disk_error_action", "halt, single or syslog (not SUSPEND or IGNORE)", stigAction,
 		"Audit & System Integrity: auditing silently stops on a disk error", "set disk_error_action = halt (or syslog) in "+conf_+", then restart auditd")
 	mail := Result{Area: "auditd settings", Item: "action_mail_acct", Have: orNotSet(conf["action_mail_acct"]), Want: "root, or an administrator's mailbox"}
 	if conf["action_mail_acct"] != "" || conf["space_left_action"] == "" {
@@ -92,7 +93,7 @@ func EvaluateAuditLogPerms(file, dir os.FileMode, fileErr, dirErr error) Result 
 // from several computers only line up if their clocks agree (AU-8).
 // active maps a service name to its `systemctl is-active` answer.
 func EvaluateTimeSync(active map[string]string) Result {
-	r := Result{Area: "Time", Item: "Time synchronisation", Want: "chrony or systemd-timesyncd active",
+	r := Result{Area: "Time", Item: "Time synchronisation", Want: "chrony or systemd-timesyncd active (a basic AU-8 check: the STIG's time rules, such as UBTU-24-600160/600180, are not checked)",
 		Affects: "Every section: event times from different computers only line up if their clocks agree"}
 	for _, svc := range []string{"chronyd", "chrony", "systemd-timesyncd", "ntpd", "ntp"} {
 		if active[svc] == "active" {
@@ -182,7 +183,7 @@ func firstLineOf(s string) string {
 // Time service running, synchronising from a domain or an NTP server.
 // state is `sc query w32time` output, typ the Parameters\Type value.
 func EvaluateW32Time(state, typ string) Result {
-	r := Result{Area: "Time", Item: "Windows Time service", Want: "running, synchronising (NT5DS or NTP)",
+	r := Result{Area: "Time", Item: "Windows Time service", Want: "running, synchronising from the domain (NT5DS) or NTP (a basic AU-8 check: how often and how closely the clock is corrected is not checked)",
 		Affects: "Every section: event times from different computers only line up if their clocks agree"}
 	running := strings.Contains(strings.ToUpper(state), "RUNNING")
 	t := strings.ToUpper(strings.TrimSpace(typ))

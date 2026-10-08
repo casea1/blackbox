@@ -191,8 +191,12 @@ func (r *Report) systemsPage() *SystemsPage {
 		settings, settingsBad := "not checked", false
 		if s.Checks != nil {
 			settings = "match STIG"
-			if s.Checks.Fail > 0 {
-				settings, settingsBad = plural(s.Checks.Fail, "gap"), true
+			if s.Checks.STIGFail > 0 {
+				settings, settingsBad = plural(s.Checks.STIGFail, "gap"), true
+			}
+			if s.Checks.Advice > 0 {
+				// Blackbox's advice is not a STIG gap (COMP2).
+				settings += fmt.Sprintf(" · %d Blackbox advice", s.Checks.Advice)
 			}
 		}
 		last := "—"
@@ -425,7 +429,10 @@ func (r *Report) systemHealth(s SystemRow, cleared []*Row, on int) []CheckLine {
 		for _, res := range s.Checks.Results {
 			if res.Status == check.Fail && res.Area != "Antivirus" {
 				t := res.Item
-				if res.STIG != "" {
+				switch {
+				case res.IsAdvice():
+					t += " (Blackbox's advice)"
+				case res.STIG != "":
 					t += " (" + res.STIG + ")"
 				}
 				items = append(items, t)

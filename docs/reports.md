@@ -6,8 +6,17 @@ Blackbox **collects** every 15 minutes (by default) and **reports** on the sched
 choose:
 
 - **Collecting:** each run copies only the security-relevant events out of
-  the logs and remembers where it stopped. Events are captured before a
-  busy log overwrites them, and the copy stays small.
+  the logs and remembers where it stopped, so the copy stays small.
+  Collecting often keeps ahead of a busy log, but Blackbox cannot stop a
+  full log from overwriting events: it detects and reports any loss
+  (Audit health shows it as "Events lost to log rollover").
+- **Watching between reports (AU-5).** Auditing stopped, a log cleared or
+  events lost are seen at the next collection and shown by `blackbox
+  status` (which exits 4 when something needs attention) and in the next
+  report. Blackbox sends no alert of its own beyond the status icon on
+  Windows, so for AU-5 run `blackbox status` from your monitoring (for
+  example a scheduled task or a monitoring agent's check) and alert on
+  exit code 4.
 - **Reporting:**
   - The first report is produced at install time. Installing again (to
     upgrade or change settings) does not produce one, so the schedule is
@@ -687,6 +696,19 @@ In the **Antivirus** table, systems with current definitions are folded
 the same way. The gaps follow below the grid as a table, one row per gap (its STIG ID, the systems and the result; a gap systems share under different STIGs lists each one's IDs with its OS, e.g. "WN25-AU-000070, WN25-AU-000080 (Windows Server 2025) · WN11-AU-000010, WN11-AU-000005 (Windows 11)", and the CSV gives each system its own); click a gap for what it means and how to fix it. **Log size and space settings** counts the
 systems whose logs are smaller than the STIG asks, or, on Linux, whose
 auditd space and disk actions differ from it.
+
+**Systems matching STIG** counts only checks that cite a STIG rule ID.
+A check with no STIG ID (for example Windows Time, the USB logs,
+Defender real-time protection, the other logs' sizes, and on Windows 11
+File System auditing, which the STIG dropped in V2R8) is **Blackbox's
+advice**: its gap row says "Advice" with "Blackbox's advice" in the STIG
+ID column, its text says "Blackbox recommends …", never "the STIG
+requires …", it shows as a warning (!) in the grid, and the
+**Blackbox's advice** card counts these on their own. The overview's
+Audit health figure counts the same way. On Linux the IDs come from the
+STIG for the distribution (UBTU-24, UBTU-22, ALMA-09, RHEL-09, and RHEL-08
+for AlmaLinux 8; see linux.md).
+
 "How to fix" gives the Group Policy location and setting for each gap
 (for example Computer Configuration > Policies > Windows Settings >
 Security Settings > Advanced Audit Policy Configuration > Audit Policies >
@@ -761,12 +783,12 @@ Every report is a folder containing:
 | `report.html` | The report. Open it in any browser; it works offline |
 | `data/` | The events the report's pages list, compressed, one file per page and day. `report.html` reads them only when a page needs them; keep them next to it |
 | `logs-COMPUTER.zip` | The original logs, one per computer (see above) |
-| `events.zip` | Every event as `events.csv`, for Excel. Double-click to open. Times are local with their offset (`2026-10-05 06:28:28 -07:00`), and `time_utc` gives them in UTC, like the archive names. A field that starts with `=`, `+`, `-` or `@` gets a `'` in front, so Excel shows it as text and never runs it as a formula |
+| `events.zip` | Every event as `events.csv`, for Excel. Double-click to open. `outcome` is `success` or `failure` as the source recorded it (the Audit Success or Audit Failure keyword of a Windows Security event, auditd's `success=` or `res=`), or `not recorded` where the source does not say (other Windows logs, syslog lines) (AU-3). Times are local with their offset (`2026-10-05 06:28:28 -07:00`), and `time_utc` gives them in UTC, like the archive names. A field that starts with `=`, `+`, `-` or `@` gets a `'` in front, so Excel shows it as text and never runs it as a formula |
 | `summary.json` | Counts and period, used by the report list |
 | `README.txt` | For someone who receives only the folder: what each file is, how to check them without Blackbox (`sha256sum -c manifest.sha256`, or `Get-FileHash` in PowerShell), how to open the original logs (`Get-WinEvent -Path …`, `ausearch -if audit.log`) and the time zone |
 | `manifest.sha256` | SHA-256 hash of each file |
 
-To confirm a report has not been altered, run
+To check a report for damage or changes, run
 `blackbox verify <report folder>`, or `sha256sum -c manifest.sha256`.
 The report also checks each data file as it loads it: if one was changed,
 **Verified** at the top of every page turns red.
@@ -795,9 +817,12 @@ when it doesn't; the CSV a page downloads has it after each time, and
 **What this proves, and what it doesn't.** The manifest is not signed, so
 it finds accidental damage, a copy that went wrong, and careless edits.
 Someone who edits a file and also rewrites its hash in the manifest is not
-caught. For that, keep the reports where only administrators can change
-them (the default report folder is), or copy each report to write-once
-storage when it is made.
+caught. In AU-9 terms, the manifest supports detecting a change (AU-9 b);
+it does not protect the reports (AU-9 a) or give cryptographic
+protection (AU-9(3)) until reports are signed, which Blackbox does not do
+yet. For protection, keep the reports where only administrators can
+change them (the default report folder is), or copy each report to
+write-once storage when it is made.
 
 **Large networks.** A report lists up to 2,000,000 events. Above that,
 routine Info events (mostly logons) are counted and charted but not

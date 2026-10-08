@@ -443,6 +443,7 @@ button.btn{font:inherit;font-size:13px;font-weight:550;cursor:pointer}
 @media (max-width:1500px){
   .ev6{grid-template-columns:repeat(3,1fr)!important}
   .ev6[style*="repeat(4"]{grid-template-columns:repeat(4,1fr)!important}
+  .ev6[style*="repeat(5"]{grid-template-columns:repeat(5,1fr)!important}
   .facts4 b{font-size:15px}
 }
 @media (max-width:1250px){
@@ -451,6 +452,7 @@ button.btn{font:inherit;font-size:13px;font-weight:550;cursor:pointer}
   .row,.r1,.r2,.r3{grid-template-columns:1fr!important}
   .kpis,.sm,.saved{grid-template-columns:repeat(2,1fr)!important}
   .ev6[style*="repeat(4"]{grid-template-columns:repeat(2,1fr)!important}
+  .ev6[style*="repeat(5"]{grid-template-columns:repeat(3,1fr)!important}
   .dstrip{grid-template-columns:1fr!important}
   .facts4{grid-template-columns:repeat(3,1fr)!important}
   .facts4>*:nth-child(4){border-left:0}

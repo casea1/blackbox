@@ -42,11 +42,20 @@ jobs:
         run: go vet ./... && GOOS=windows go vet ./...
       - name: Test
         run: go test -race ./...
+      # Releases link Go's FIPS 140-3 module and run in FIPS mode (COMP3).
+      - name: Test in FIPS 140-3 mode
+        run: GOFIPS140=v1.0.0 go test ./...
       - name: Build release binaries
         run: |
-          scripts/build.sh
+          # A failure's last lines become annotations, readable without the log.
+          if ! scripts/build.sh > build.log 2>&1; then
+            cat build.log
+            tail -15 build.log | while IFS= read -r l; do echo "::error title=build.sh::$l"; done
+            exit 1
+          fi
+          cat build.log
           # The Windows setup file opens no console: it is marked windowed.
-          python3 -c "import struct,glob,sys; b=open(glob.glob('dist/Blackbox-Setup-*.exe')[0],'rb').read(); pe=struct.unpack_from('<I',b,0x3c)[0]; sys.exit(struct.unpack_from('<H',b,pe+92)[0]!=2)"
+          python3 -c "import struct,glob,sys; b=open(glob.glob('dist/Blackbox-Setup-*.exe')[0],'rb').read(); pe=struct.unpack_from('<I',b,0x3c)[0]; sys.exit(struct.unpack_from('<H',b,pe+92)[0]!=2)" || { echo "::error title=build::Blackbox-Setup is not marked windowed"; exit 1; }
       - name: Report pages work in a browser (LAN and standalone demo reports)
         run: |
           npm i --no-save --prefix "$RUNNER_TEMP/pw" playwright-core@1.48.2
@@ -67,7 +76,14 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Test
-        run: go test ./...
+        shell: pwsh
+        run: |
+          go test ./... 2>&1 | Tee-Object -FilePath test.log
+          if ($LASTEXITCODE -ne 0) {
+            # Failures as annotations, readable without the log.
+            Select-String -Path test.log -Pattern '--- FAIL|^FAIL|_test\.go:\d+' | Select-Object -First 25 | ForEach-Object { Write-Output "::error title=go test::$($_.Line.Trim())" }
+            exit 1
+          }
       - name: Tray dialogs open on the first click, the menu at once (TRAY1, TRAY2)
         run: go test ./internal/gui -run "TestFirstDialogShows|TestMenuDoesNotWaitForStatus" -v -count=1
       - name: A run killed while holding the lock leaves nothing behind (LOCK1)
@@ -102,8 +118,9 @@ jobs:
           # The setup file is the same program marked windowed; run from a
           # script with a command it still answers on standard output.
           go run ./scripts/winres -windowed blackbox.exe -o Blackbox-Setup.exe
-          $v = & .\Blackbox-Setup.exe version | Out-String
-          if ($v.Trim() -ne "blackbox 0.0.0-ci") { throw "setup file answered '$v'" }
+          # The first line is the version; the second the FIPS 140-3 state (COMP3).
+          $v = & .\Blackbox-Setup.exe version | Select-Object -First 1
+          if ("$v".Trim() -ne "blackbox 0.0.0-ci") { throw "setup file answered '$v'" }
           function Test-Windowed($f) {
             $b = [IO.File]::ReadAllBytes((Resolve-Path $f).Path); $pe = [BitConverter]::ToInt32($b, 0x3c)
             return [BitConverter]::ToUInt16($b, $pe + 24 + 68) -eq 2
@@ -224,7 +241,7 @@ jobs:
           go build -ldflags "-X main.version=0.0.1-ci" -o blackbox-new.exe ./cmd/blackbox
           ./blackbox-new.exe install --yes --tray=false --no-first-report
           if ($LASTEXITCODE -ne 0) { throw "upgrade failed" }
-          if ((& $exe version) -ne "blackbox 0.0.1-ci") { throw "upgrade did not replace the program" }
+          if ((& $exe version | Select-Object -First 1) -ne "blackbox 0.0.1-ci") { throw "upgrade did not replace the program" }
           if ((Get-ItemProperty $key).DisplayVersion -ne "0.0.1-ci") { throw "Programs and Features still shows the old version" }
           schtasks /Query /TN "Blackbox Status" 2>$null | Out-Null
           if ($LASTEXITCODE -eq 0) { throw "status icon task not removed when turned off" }
@@ -260,7 +277,7 @@ jobs:
           $p = Start-Process -Wait -PassThru -FilePath $setup -ArgumentList "install", "--yes", "--site", "CI2", "--no-first-report", "--tray=false"
           if ($p.ExitCode -ne 0) { throw "setup file install failed: $($p.ExitCode)" }
           $exe = "C:\Program Files\Blackbox\blackbox.exe"
-          if ((& $exe version) -ne "blackbox 0.0.2-ci") { throw "installed program answered the wrong version" }
+          if ((& $exe version | Select-Object -First 1) -ne "blackbox 0.0.2-ci") { throw "installed program answered the wrong version" }
           $b = [IO.File]::ReadAllBytes($exe); $pe = [BitConverter]::ToInt32($b, 0x3c)
           if ([BitConverter]::ToUInt16($b, $pe + 24 + 68) -ne 3) { throw "installed blackbox.exe is not a console program" }
           # The carried copy is the program alone: well under the setup file's size.
