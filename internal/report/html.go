@@ -170,8 +170,17 @@ func funcs(loc *time.Location) template.FuncMap {
 		"js":       func() template.JS { return template.JS(appJS) },
 		"icon":     icon,
 		"lower":    strings.ToLower,
-		"minus":    func(a, b int) int { return a - b },
-		"css2":     func(s string) template.CSS { return template.CSS(s) },
+		// acctBreak lets "HOST\account" wrap after the backslash in a
+		// narrow column, never inside a name.
+		"acctBreak": func(s string) template.HTML {
+			h, n, ok := strings.Cut(s, `\`)
+			if !ok {
+				return template.HTML(template.HTMLEscapeString(s))
+			}
+			return template.HTML(`<span class="an">` + template.HTMLEscapeString(h) + `\</span><wbr><span class="an">` + template.HTMLEscapeString(n) + `</span>`)
+		},
+		"minus": func(a, b int) int { return a - b },
+		"css2":  func(s string) template.CSS { return template.CSS(s) },
 		// avOK counts the antivirus rows that are current, folded under a
 		// button when others need attention.
 		"sub": func(a, b int) int { return a - b },
