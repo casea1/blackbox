@@ -1547,7 +1547,8 @@ func systemsFor(st *store.Store, start time.Time, collector bool) []report.Syste
 			continue
 		}
 		out = append(out, report.SystemInfo{Name: s.Name, OS: s.OS, Version: s.Version, Via: s.Via,
-			FirstSeen: s.FirstSeen, LastRun: s.LastRun, LastReceived: s.LastReceived, Former: s.Former, VM: s.VM})
+			FirstSeen: s.FirstSeen, LastRun: s.LastRun, LastReceived: s.LastReceived, Former: s.Former, VM: s.VM,
+			Removed: s.Removed, RemovedBy: s.RemovedBy})
 	}
 	return out
 }

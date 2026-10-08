@@ -332,7 +332,20 @@ func plural(n int, unit string) string {
 func (r *Report) Crumb() string {
 	parts := []string{r.Kind()}
 	if r.IsLAN() {
-		parts = append(parts, fmt.Sprintf("%d systems", len(r.Hosts)))
+		// A retired system is not one of the report's systems (ROLE1b).
+		n, retired := 0, 0
+		for _, h := range r.Hosts {
+			if r.retired(h) {
+				retired++
+			} else {
+				n++
+			}
+		}
+		desc := plural(n, "system")
+		if retired > 0 {
+			desc += fmt.Sprintf(" + %d retired", retired)
+		}
+		parts = append(parts, desc)
 	} else {
 		vms := 0
 		for _, s := range r.SystemRows {

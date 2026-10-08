@@ -303,7 +303,10 @@ type Report struct {
 	NoArchive  []string             // computers with no log archive for this period
 	BySev      map[string]int       // by severity
 	SystemRows []SystemRow          // Systems page
-	Silent     []SystemRow          // computers with no collection in this period
+	// Retired are the systems retired during this period (ROLE1b): on the
+	// Systems page, marked, and in no count or health check.
+	Retired []SystemRow
+	Silent  []SystemRow // computers with no collection in this period
 
 	rows []*Row // one per event, in the order of Events
 
@@ -482,7 +485,7 @@ func (r *Report) checkArchives() {
 		have[strings.ToLower(archiveName(h))] = true // said above
 	}
 	for _, h := range r.Hosts {
-		if !have[strings.ToLower(archiveName(h))] {
+		if !have[strings.ToLower(archiveName(h))] && !r.retired(h) {
 			r.NoArchive = append(r.NoArchive, h)
 		}
 	}

@@ -185,7 +185,7 @@ table.dir td b{font-weight:600}
 .slist{padding:10px 0}.slist .grp2{padding:12px 16px 6px;font-size:11px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:#5A6785}
 .slist a{display:grid;grid-template-columns:10px 1fr auto;gap:10px;align-items:center;padding:7px 16px;font-size:13px;color:#0B1630}
 .slist a small{font-size:11.5px;color:#8A96B3}.slist a.sel{background:rgba(11,95,255,.08);box-shadow:inset 3px 0 #0B5FFF}
-.slist a i{width:8px;height:8px;display:block}.slist a i.ok{background:#C4CCDC}.slist a i.bad{background:#D12C2C}.slist a i.warn{background:#E08A00}
+.slist a i{width:8px;height:8px;display:block}.slist a i.ok{background:#C4CCDC}.slist a i.retired{background:none;box-shadow:inset 0 0 0 1px #8A96B3}.sv.retired{color:#5A6785}.sv.retired:before{background:none;box-shadow:inset 0 0 0 1px #8A96B3}.slist a i.bad{background:#D12C2C}.slist a i.warn{background:#E08A00}
 .slist .search{margin:0 14px 6px;padding:8px 10px;border:1px solid rgba(0,30,98,.12);background:rgba(255,255,255,.7);font-size:12.5px;color:#8A96B3;display:flex;gap:8px;align-items:center}
 .dh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
 .dh h3{margin:0;font-size:22px;font-weight:700;letter-spacing:-.3px}.dh p{margin:3px 0 0;color:#5A6785;font-size:13px}

@@ -400,7 +400,12 @@ collector**. It appears on the Systems page after its first collection.
 **Retiring a computer.** On the collector, run
 `blackbox systems remove NAME`. It stops being listed and reported as
 silent. Its events stay in earlier reports, and it is listed again if it
-ever sends again.
+ever sends again. The report whose period it was retired in shows it
+under **Retired** on the Systems page, "retired 7 Oct by alice" (the
+account that ran the command), with its events up to then; it is not
+counted in **Systems reporting**, the Health checks or **Original logs
+missing**, and its card says "Collected until 7 Oct", not "nothing"
+(ROLE1b).
 
 **A collector made standalone.** Its reports leave out the computers that
 sent to it and sent nothing in the report's period: they are not its

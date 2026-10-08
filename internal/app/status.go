@@ -18,6 +18,7 @@ import (
 	"github.com/casea1/blackbox/internal/install"
 	"github.com/casea1/blackbox/internal/lan"
 	"github.com/casea1/blackbox/internal/rollover"
+	"github.com/casea1/blackbox/internal/selfaudit"
 	"github.com/casea1/blackbox/internal/share"
 	"github.com/casea1/blackbox/internal/store"
 )
@@ -446,8 +447,9 @@ const expectedSend = time.Hour
 const silentAfter = 36 * time.Hour
 
 // RemoveSystem retires a computer: it is no longer listed, or reported as
-// silent. Its past events stay in earlier reports. If it sends again, it
-// is listed again.
+// silent. Its past events stay in earlier reports; the next report shows
+// it as retired, by whom and when (ROLE1b). If it sends again, it is
+// listed again.
 func (a *App) RemoveSystem(name string) error {
 	st, unlock, err := a.open()
 	if err != nil {
@@ -463,7 +465,7 @@ func (a *App) RemoveSystem(name string) error {
 		sort.Strings(names)
 		return fmt.Errorf("no system named %q (known: %s)", name, strings.Join(names, ", "))
 	}
-	s.Removed = a.now()
+	s.Removed, s.RemovedBy = a.now(), selfaudit.Who()
 	return st.Save()
 }
 

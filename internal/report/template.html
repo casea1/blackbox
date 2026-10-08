@@ -76,7 +76,7 @@
 <label class="search">{{icon "search" 14}}<input type="search" placeholder="Find a system" data-find></label>
 {{range .Groups}}<div class="grp2">{{.Title}} · {{len .Systems}}</div>{{range .Systems}}<a data-pick="{{.Name}}" href="#systems/{{.Name}}"><i class="{{if .Level}}{{.Level}}{{else}}ok{{end}}"></i><span>{{.Name}}</span><small>{{.Tag}}</small></a>{{end}}{{end}}</div>
 <div style="min-width:0">{{$lan := .LAN}}{{range .Groups}}{{range .Systems}}<div data-pane="{{.Name}}" hidden>
-<div class="panel" style="margin-bottom:12px"><div class="dh"><div><h3>{{.Name}}</h3><p>{{.Line}}</p></div><span class="sv {{if eq .Level "bad"}}high{{else if eq .Level "warn"}}medium{{else}}ok{{end}}">{{.Status}}</span></div>
+<div class="panel" style="margin-bottom:12px"><div class="dh"><div><h3>{{.Name}}</h3><p>{{.Line}}</p></div><span class="sv {{if eq .Level "bad"}}high{{else if eq .Level "warn"}}medium{{else if eq .Level "retired"}}retired{{else}}ok{{end}}">{{.Status}}</span></div>
 {{if .Message}}<div class="alertbar{{if eq .Level "warn"}} interim{{end}}" style="margin-bottom:12px">{{icon "clock-alert" 18}}<span>{{.Message}}</span></div>{{end}}
 <div class="facts4">{{range .Facts}}{{template "fact" .}}{{end}}</div>
 <div class="sub2">Collection this period</div>{{.Bar}}</div>
@@ -266,7 +266,7 @@
 {{if .Cards}}<div class="ev6">{{range .Cards}}<a class="panel ec {{.Level}}" href="{{.Href}}"><div class="l">{{icon .Icon 15}}{{.Label}}</div><div class="v">{{.Value}}</div><div class="d">{{.Note}}</div></a>{{end}}</div>{{end}}
 {{if .Quiet}}<p class="pm" style="margin:0 0 12px">{{.Quiet}}</p>{{end}}
 <div class="row" style="grid-template-columns:1.35fr 1fr">
-<div class="panel"><div class="ph"><h2>{{icon "server" 17}}Health</h2>{{if not .Standalone}}<a class="pm link" href="#systems">{{add (add .OK .Warn) .Bad}} systems →</a>{{end}}</div>
+<div class="panel"><div class="ph"><h2>{{icon "server" 17}}Health</h2>{{if not .Standalone}}<a class="pm link" href="#systems">{{$n := add (add .OK .Warn) .Bad}}{{$n}} {{if eq $n 1}}system{{else}}systems{{end}} →</a>{{end}}</div>
 {{if not .Standalone}}<div class="hbar">{{if .OK}}<s style="flex:{{.OK}};background:#1A9A50"></s>{{end}}{{if .Warn}}<s style="flex:{{.Warn}};background:#E08A00"></s>{{end}}{{if .Bad}}<s style="flex:{{.Bad}};background:#D12C2C"></s>{{end}}</div>
 <div class="hleg"><span><i style="background:#1A9A50"></i><b>{{.OK}}</b>reporting normally</span>{{if .Warn}}<span><i style="background:#E08A00"></i><b>{{.Warn}}</b>{{if eq .Warn 1}}warning{{else}}warnings{{end}}</span>{{end}}{{if .Bad}}<span><i style="background:#D12C2C"></i><b>{{.Bad}}</b>{{if eq .Bad 1}}problem{{else}}problems{{end}}</span>{{end}}</div>{{end}}
 {{range .Problems}}{{template "ck" .}}{{end}}
