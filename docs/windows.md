@@ -306,7 +306,9 @@ What is checked:
 - **The other logs Blackbox reads** (not STIG rules; a shortfall is a
   warning, LOG1):
   - the **PowerShell log** (Microsoft-Windows-PowerShell/Operational):
-    at least 1 GB, or enough for a week at its rate (up to 2 GB). Windows
+    at least 1 GB, or enough for a week at its rate (up to 2 GB). Once
+    a collection has seen a log turn over, `check` gives the size
+    `blackbox status` gives, from that rate. Windows
     gives it 15 MB. With script block logging (WN11-CC-000326), and
     Windows' own logging of "suspicious" script blocks, each event is
     often 30 KB or more, so 15 MB holds a few hundred: any administrator

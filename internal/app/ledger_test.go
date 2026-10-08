@@ -171,3 +171,48 @@ func TestReportLedgerFiles(t *testing.T) {
 		t.Fatalf("resized: %+v", p)
 	}
 }
+
+// LEDGER1b: a report recorded by 0.19 has no file list. A file moved out
+// of it is noticed at once (from its manifest), not at the next daily
+// hash; the list is filled in from the manifest; and blackbox reports
+// exits 4 like status.
+func TestLedgerOldRecord(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	reports := t.TempDir()
+	now := time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC)
+	d := filepath.Join(reports, "2026-10-06_0000_4-systems")
+	os.MkdirAll(d, 0o755)
+	os.WriteFile(filepath.Join(d, "report.html"), []byte("<html>"), 0o644)
+	os.WriteFile(filepath.Join(d, "logs-WIN11-TEST.zip"), []byte("zipdata"), 0o644)
+	os.WriteFile(filepath.Join(d, "manifest.sha256"), []byte("aa  report.html\nbb  logs-WIN11-TEST.zip\n"), 0o644)
+	sum, _ := manifestHash(d)
+	to := time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
+	st.State.Reports = []store.ReportRecord{{Dir: d, From: to.AddDate(0, 0, -1), To: to, Made: to, Manifest: sum, Verified: now}} // as 0.19 kept it
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportDir: reports, ReportEvery: "daily", ReportAt: config.DefaultReportAt}, Version: "test", Loc: time.UTC,
+		Now: func() time.Time { return now }, Logf: func(string, ...any) {}}
+
+	var b bytes.Buffer
+	if err := a.Reports(&b); err != nil {
+		t.Fatalf("in place: %v\n%s", err, b.String())
+	}
+	a.verifyReports(st) // the first run after the upgrade: hashed less than a day ago
+	if f := st.State.Reports[0].Files; len(f) != 2 || f["logs-WIN11-TEST.zip"] != 7 {
+		t.Fatalf("file list not filled in from the manifest: %+v", f)
+	}
+	st.Save()
+	os.Rename(filepath.Join(d, "logs-WIN11-TEST.zip"), filepath.Join(reports, "moved.zip"))
+	if p := reportProblems(st); len(p) != 1 || p[0].What != "logs-WIN11-TEST.zip is missing" {
+		t.Fatalf("moved file: %+v", p)
+	}
+	// Not yet filled in (no run since the upgrade): still noticed.
+	st.State.Reports[0].Files = nil
+	if p := reportProblems(st); len(p) != 1 || p[0].What != "logs-WIN11-TEST.zip is missing" {
+		t.Fatalf("moved file, no list: %+v", p)
+	}
+	st.Save()
+	b.Reset()
+	var na *NeedsAttention
+	if err := a.Reports(&b); !errors.As(err, &na) || !strings.Contains(b.String(), "CHANGED: logs-WIN11-TEST.zip is missing") {
+		t.Errorf("blackbox reports (%v):\n%s", err, b.String())
+	}
+}

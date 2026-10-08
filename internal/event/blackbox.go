@@ -234,3 +234,45 @@ func shown(v string) string {
 // 2014). It is never a row: the report uses it to tell a code integrity
 // failure on a Defender platform file during the update (T2b).
 const DefenderUpdate = "av_updated"
+
+// ReportFilesFlag lists, in Fields, the files of a report a row of
+// changes to Blackbox's reports folder covers, one per line; "" is the
+// report's folder itself (LEDGER3).
+const ReportFilesFlag = "report_files"
+
+// ReportFilesSummary says what someone did to a scheduled report's
+// folder: the report itself when its folder went, otherwise the files by
+// name (LEDGER3), e.g. "claude deleted logs-WIN11.zip from the report
+// 2026-10-06_0000_4-systems (using explorer.exe).".
+func ReportFilesSummary(who, verb, report, prog string, files []string) string {
+	var named []string
+	whole := false
+	for _, f := range files {
+		if f == "" {
+			whole = true
+		} else {
+			named = append(named, f)
+		}
+	}
+	using := ""
+	if prog != "" {
+		using = " (using " + prog + ")"
+	}
+	from := " in the report "
+	if verb == "deleted" {
+		from = " from the report "
+	}
+	switch {
+	case whole && len(named) > 1:
+		return fmt.Sprintf("%s %s the report %s, %d files%s.", who, verb, report, len(named), using)
+	case whole || len(named) == 0:
+		return fmt.Sprintf("%s %s the report %s%s.", who, verb, report, using)
+	case len(named) == 1:
+		return fmt.Sprintf("%s %s %s%s%s%s.", who, verb, named[0], from, report, using)
+	}
+	list := strings.Join(named, ", ")
+	if len(named) > 3 {
+		list = strings.Join(named[:3], ", ") + fmt.Sprintf(" and %d more", len(named)-3)
+	}
+	return fmt.Sprintf("%s %s %d files%s%s: %s%s.", who, verb, len(named), from, report, list, using)
+}
