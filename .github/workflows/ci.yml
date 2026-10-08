@@ -76,7 +76,14 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Test
-        run: go test ./...
+        shell: pwsh
+        run: |
+          go test ./... 2>&1 | Tee-Object -FilePath test.log
+          if ($LASTEXITCODE -ne 0) {
+            # Failures as annotations, readable without the log.
+            Select-String -Path test.log -Pattern '--- FAIL|^FAIL|_test\.go:\d+' | Select-Object -First 25 | ForEach-Object { Write-Output "::error title=go test::$($_.Line.Trim())" }
+            exit 1
+          }
       - name: Tray dialogs open on the first click, the menu at once (TRAY1, TRAY2)
         run: go test ./internal/gui -run "TestFirstDialogShows|TestMenuDoesNotWaitForStatus" -v -count=1
       - name: A run killed while holding the lock leaves nothing behind (LOCK1)
