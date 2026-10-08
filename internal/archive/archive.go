@@ -52,6 +52,9 @@ type Info struct {
 	// Logs is, for each log, the part of the period it actually covers
 	// and the events it overwrote before they could be saved (AR2).
 	Logs []LogCover `json:"logs,omitempty"`
+	// Dir is the folder holding it in a bundle ("" in a single archive),
+	// with its slash: set by Contents, not stored.
+	Dir string `json:"-"`
 }
 
 // FileInfo is one log file in an archive.
@@ -681,6 +684,7 @@ func Contents(path string) ([]Info, error) {
 		if err := readJSON(f, &info); err != nil {
 			return nil, fmt.Errorf("%s: %w", f.Name, err)
 		}
+		info.Dir = strings.TrimSuffix(f.Name, InfoName)
 		out = append(out, info)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].From.Before(out[j].From) })

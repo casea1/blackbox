@@ -147,7 +147,8 @@ func TestPeopleAliasesDemo30(t *testing.T) {
 	at := net.Start.Add(10 * time.Hour)
 	net.Events = append(net.Events,
 		&event.Event{Time: at, Host: "SRV-APP01", OS: "windows", Source: "Security", Category: event.CatLogon, Action: "logon", User: "j.lee", Summary: "j.lee logged on (Remote Desktop).", EventID: 4624},
-		&event.Event{Time: at.Add(time.Minute), Host: "ubu-db01", OS: "linux", Source: "audit", Category: event.CatPrivileged, Severity: event.SevLow, Action: "sudo", User: "JLEE2", Summary: "JLEE2 ran as root with sudo: ls"})
+		&event.Event{Time: at.Add(time.Minute), Host: "ubu-db01", OS: "linux", Source: "audit", Category: event.CatPrivileged, Severity: event.SevLow, Action: "sudo", User: "JLEE2", Summary: "JLEE2 ran as root with sudo: ls"},
+		&event.Event{Time: at.Add(2 * time.Minute), Host: "SRV-APP01", OS: "windows", Source: "Security", Category: event.CatIntegrity, Severity: event.SevHigh, Action: "log_cleared", User: `CORP\j.lee`, Summary: "j.lee cleared the Security log.", EventID: 1102})
 	// Without aliases: three people.
 	r := Build(append([]*event.Event(nil), net.Events...), net.Runs, net.Options)
 	pp := r.peoplePage()
@@ -181,6 +182,21 @@ func TestPeopleAliasesDemo30(t *testing.T) {
 	if found != 2 {
 		t.Errorf("merged spellings not in Accounts named jlee: %d", found)
 	}
+	// Detections: a detection by j.lee is about jlee (its Person filter,
+	// "Everything jlee did" and the events around it).
+	det := 0
+	for _, v := range r.detectionsPage().Views {
+		if v.Host != "SRV-APP01" || v.Person == "" || !strings.Contains(strings.ToLower(v.Person), "j.lee") {
+			continue
+		}
+		det++
+		if v.PersonKey != "jlee" || v.PersonHref != "#search?user=jlee" {
+			t.Errorf("detection by j.lee: key %q, href %q", v.PersonKey, v.PersonHref)
+		}
+	}
+	if det == 0 {
+		t.Error("no detection for j.lee's log_cleared")
+	}
 	// The page says so, Search and links resolve the spellings.
 	dir := filepath.Join(t.TempDir(), "rep")
 	if err := r.Write(dir); err != nil {
@@ -192,6 +208,13 @@ func TestPeopleAliasesDemo30(t *testing.T) {
 		"Who acted as root", "Accounts named jlee", `class="lm bad"`, "Find a person or account", `data-ptab="adm"`, "see Inventory →", `data-folded="pf-admin"`} {
 		if !strings.Contains(html, want) {
 			t.Errorf("report lacks %q", want)
+		}
+	}
+	// Search (and the event pages, which are Search with a kind) key
+	// every account and a link's user= through people_aliases.
+	for _, want := range []string{"function key(u) { return BB.personKey(u); }", "if (p.user) p.user = key(p.user);", "meta.palias[u]"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("app.js lacks %q", want)
 		}
 	}
 }

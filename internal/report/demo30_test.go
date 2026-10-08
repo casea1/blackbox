@@ -194,6 +194,9 @@ func demo30Network(t testing.TB) *demo30Net {
 		if s.Server {
 			inv.Drives = append(inv.Drives, inventory.Drive{Model: "SEAGATE ST4000NM0035", Serial: fmt.Sprintf("ZC1%05dK", 20000+i*97), Size: 4000787030016, Interface: "SATA", Media: "HDD"})
 		}
+		if s.Name == "WS-ADM-01" { // a USB stick in at the settings check
+			inv.Drives = append(inv.Drives, inventory.Drive{Model: "Kingston DataTraveler 3.0", Serial: "E0D55EA573F2F3B1A9", Size: 64023257088, Interface: "USB", Media: "Removable"})
+		}
 		for k, n := range names {
 			a := inventory.Account{Name: n, Enabled: n != "Guest" && n != "DefaultAccount" && n != "WDAGUtilityAccount", Admin: admins[n], Kind: "Local"}
 			if s.OS == "windows" {
@@ -451,9 +454,20 @@ func demo30Network(t testing.TB) *demo30Net {
 	}
 	e := add(at(11, 5), sys["SRV-DC01"], event.CatAccount, event.SevHigh, "group_member_added", "adm-jlee", "adm-jlee added svc-backup to the privileged group Administrators.")
 	e.Target, e.EventID = "svc-backup", 4732
-	e = add(at(14, 21), sys["SRV-DC02"], event.CatPrivileged, event.SevLow, "elevated_process", "adm-jlee", `adm-jlee ran with administrator rights: C:\Windows\System32\wevtutil.exe`)
+	// adm-jlee's Remote Desktop session on SRV-DC02 that cleared the log:
+	// the event panel ties the commands to it by its logon ID.
+	e = add(at(14, 18).Add(40*time.Second), sys["SRV-DC02"], event.CatLogon, event.SevInfo, "logon", "adm-jlee", "adm-jlee logged on (Remote Desktop) from WS-ADM-01.")
+	e.EventID, e.SourceIP, e.Interactive = 4624, "10.20.2.31", true
+	e.AddDetail("Logon type", "10 (Remote Desktop)")
+	e.AddDetail("Source workstation", "WS-ADM-01")
+	e.AddDetail("Logon ID", "0x8a21f3")
+	e = add(at(14, 21).Add(50*time.Second), sys["SRV-DC02"], event.CatPrivileged, event.SevLow, "elevated_process", "adm-jlee", `adm-jlee ran with administrator rights: C:\Windows\System32\cmd.exe`)
+	e.EventID, e.Process, e.Command = 4688, `C:\Windows\System32\cmd.exe`, "cmd.exe"
+	e.Fields = map[string]string{"NewProcessName": `C:\Windows\System32\cmd.exe`, "ParentProcessName": `C:\Windows\explorer.exe`, "SubjectUserName": "adm-jlee", "SubjectLogonId": "0x8a21f3", "TokenElevationType": "%%1937"}
+	e = add(at(14, 22).Add(5118*time.Millisecond), sys["SRV-DC02"], event.CatPrivileged, event.SevLow, "elevated_process", "adm-jlee", `adm-jlee ran with administrator rights: C:\Windows\System32\wevtutil.exe`)
 	e.EventID, e.Process, e.Command = 4688, `C:\Windows\System32\wevtutil.exe`, "wevtutil cl Security"
-	e = add(at(14, 22), sys["SRV-DC02"], event.CatIntegrity, event.SevHigh, "log_cleared", "adm-jlee", "The Security log was cleared by adm-jlee.")
+	e.Fields = map[string]string{"NewProcessName": `C:\Windows\System32\wevtutil.exe`, "CommandLine": "wevtutil cl Security", "ParentProcessName": `C:\Windows\System32\cmd.exe`, "SubjectUserName": "adm-jlee", "SubjectLogonId": "0x8a21f3", "TokenElevationType": "%%1937"}
+	e = add(at(14, 22).Add(5400*time.Millisecond), sys["SRV-DC02"], event.CatIntegrity, event.SevHigh, "log_cleared", "adm-jlee", "The Security log was cleared by adm-jlee.")
 	e.EventID = 1102
 	e = add(at(14, 31), sys["WS-ENG-04"], event.CatIntegrity, event.SevHigh, "audit_policy_changed", "jdoe", "jdoe changed the audit policy: Logon → No auditing.")
 	e.EventID = 4719
@@ -463,6 +477,7 @@ func demo30Network(t testing.TB) *demo30Net {
 	e.Target, e.EventID = "labadmin", 4732
 	e = add(at(10, 18), sys["SRV-APP01"], event.CatRemovable, event.SevMedium, "usb_connected", "kpatel", "USB storage connected: SanDisk Cruzer Blade (serial 4C530001230615117).")
 	e.Target, e.EventID = "SanDisk Cruzer Blade", 6416
+	e.AddDetail("Serial number", "4C530001230615117")
 	e = add(at(9, 47), sys["WS-ADM-02"], event.CatOther, event.SevHigh, "powershell_suspicious", "jlee",
 		"jlee ran a PowerShell script that downloads: Invoke-WebRequest https://github.com/tools/x.ps1 -OutFile x.ps1")
 	e.Source, e.EventID, e.Command = powerShellLog, 4104, "Invoke-WebRequest https://github.com/tools/x.ps1 -OutFile x.ps1"

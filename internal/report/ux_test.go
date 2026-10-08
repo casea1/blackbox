@@ -58,48 +58,36 @@ func TestOverviewOnce(t *testing.T) {
 	r, h := uxReport(t)
 	o := r.overview(nil)
 	var labels []string
-	for _, k := range o.KPIs {
+	for _, k := range o.Strip {
 		labels = append(labels, k.Label)
 	}
-	if strings.Join(labels, ",") != "Systems reporting,Detections,Events collected,Audit health" {
-		t.Errorf("tiles: %v", labels)
+	if strings.Join(labels, ",") != "Detections,Systems reporting,Events,Audit settings" {
+		t.Errorf("number strip: %v", labels)
 	}
-	for _, c := range o.Cards {
-		if c.Value == "0" || c.Label == "Logs cleared" {
-			t.Errorf("counter shown: %+v", c)
-		}
-	}
-	if !strings.HasPrefix(o.Quiet, "No new admins, policy changes, lockouts") {
-		t.Errorf("quiet: %q", o.Quiet)
-	}
-	for _, p := range o.Problems {
+	for _, p := range o.Attention {
 		if p.Level == "ok" {
 			t.Errorf("a fine check listed as a problem: %+v", p)
 		}
 	}
+	if strings.Contains(h, "No new admins") || strings.Contains(h, `class="kpis"`) || strings.Contains(h, `class="hbar"`) {
+		t.Error("the Overview still has the tiles, the counters or the health bar (UI-R1)")
+	}
 	if strings.Contains(h, `class="alertbar">`) || strings.Contains(h, `class="sys2"`) {
 		t.Error("the Overview still has the alert bar or system tiles")
-	}
-	if !strings.Contains(h, ">This report</div>") {
-		t.Error("headline tiles have no scope")
 	}
 	if n := r.metrics()[MPrivileged]; n != 1 {
 		t.Errorf("privileged actions %d, want 1 (people only)", n)
 	}
 }
 
-// UX4: a page with no events is one line; a period of a day is charted by
-// hour, with no "Above normal" (nothing to compare with).
+// UX4: a page with no events is one line.
 func TestEmptyAndShortPages(t *testing.T) {
 	_, h := uxReport(t)
 	if !strings.Contains(h, "Nothing on USB &amp; removable this period.") {
 		t.Error("an empty page is not one line")
 	}
-	if strings.Contains(h, `data-events="usb"`) {
+	if strings.Contains(h, `data-sq="usb"`) {
 		t.Error("an empty page still has its table")
-	}
-	if !strings.Contains(h, "per hour</h2>") || strings.Contains(h, "Above normal") {
-		t.Error("one-day chart")
 	}
 }
 
@@ -110,8 +98,8 @@ func TestNavigation(t *testing.T) {
 	if strings.Contains(h, `href="#usb" data-nav="usb"`) {
 		t.Error("an empty kind of event is in the sidebar")
 	}
-	if !strings.Contains(h, `data-cat="privileged"`) || strings.Contains(h, `data-cat="usb"`) {
-		t.Error("Search category chips")
+	if !strings.Contains(h, `<option value="privileged">`) || strings.Contains(h, `<option value="usb">`) {
+		t.Error("Search's Kind filter")
 	}
 	if strings.Count(h, "<b>Manual report.</b>") != 1 || !strings.Contains(h, `class="chip-manual"`) {
 		t.Error("manual banner once, chip after it")
