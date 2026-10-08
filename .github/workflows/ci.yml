@@ -47,9 +47,15 @@ jobs:
         run: GOFIPS140=v1.0.0 go test ./...
       - name: Build release binaries
         run: |
-          scripts/build.sh
+          # A failure's last lines become annotations, readable without the log.
+          if ! scripts/build.sh > build.log 2>&1; then
+            cat build.log
+            tail -15 build.log | while IFS= read -r l; do echo "::error title=build.sh::$l"; done
+            exit 1
+          fi
+          cat build.log
           # The Windows setup file opens no console: it is marked windowed.
-          python3 -c "import struct,glob,sys; b=open(glob.glob('dist/Blackbox-Setup-*.exe')[0],'rb').read(); pe=struct.unpack_from('<I',b,0x3c)[0]; sys.exit(struct.unpack_from('<H',b,pe+92)[0]!=2)"
+          python3 -c "import struct,glob,sys; b=open(glob.glob('dist/Blackbox-Setup-*.exe')[0],'rb').read(); pe=struct.unpack_from('<I',b,0x3c)[0]; sys.exit(struct.unpack_from('<H',b,pe+92)[0]!=2)" || { echo "::error title=build::Blackbox-Setup is not marked windowed"; exit 1; }
       - name: Report pages work in a browser (LAN and standalone demo reports)
         run: |
           npm i --no-save --prefix "$RUNNER_TEMP/pw" playwright-core@1.48.2
