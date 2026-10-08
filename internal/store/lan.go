@@ -89,6 +89,11 @@ type SenderState struct {
 	// file, kept as information only (SEC1).
 	Folder string `json:"folder,omitempty"`
 	Writer string `json:"writer,omitempty"`
+	// KeyFP is the fingerprint of the key this sender ID signs with
+	// (DESIGN1): one sender ID, one key. "" until it delivers signed.
+	KeyFP string `json:"key_fp,omitempty"`
+	// Unsigned is when it last delivered unsigned (a sender before 0.24).
+	Unsigned time.Time `json:"unsigned,omitzero"`
 	// Raised is when each inbox conflict about this sender was last
 	// raised, by kind and host, so one is raised once a day (SEC1).
 	Raised map[string]time.Time `json:"raised,omitempty"`
@@ -103,14 +108,50 @@ type InboxFolder struct {
 	Added   time.Time `json:"added,omitzero"`
 }
 
+// SenderKey is the signing key pinned to one computer on its first
+// signed delivery (trust on first use, DESIGN1).
+type SenderKey struct {
+	Host      string    `json:"host"`
+	Key       string    `json:"key"` // public key, PKIX DER, base64
+	FP        string    `json:"fp"`
+	FirstSeen time.Time `json:"first_seen"`
+	Since     time.Time `json:"since"` // pinned (first seen, approved or rekeyed)
+	// LastDelivery is its latest delivery accepted under the key.
+	LastDelivery time.Time `json:"last_delivery,omitzero"`
+	// Held: a new computer whose deliveries wait for "blackbox senders
+	// approve" (new_senders = hold).
+	Held bool `json:"held,omitempty"`
+	// NewKey is a different key it now signs with (a reinstall, a
+	// re-imaged computer, a restored data folder): its deliveries wait
+	// for "blackbox senders rekey".
+	NewKey     string    `json:"new_key,omitempty"`
+	NewFP      string    `json:"new_fp,omitempty"`
+	NewSeen    time.Time `json:"new_seen,omitzero"`
+	HeldFiles  []string  `json:"held_files,omitempty"` // in inbox/rejected/held
+	Changes    []KeyNote `json:"changes,omitempty"`    // approve, rekey, by whom and why
+	Announced  time.Time `json:"announced,omitzero"`   // first noted in a report
+	SharedWith string    `json:"shared_with,omitempty"`
+}
+
+// KeyNote is an administrator's decision about a sender's key.
+type KeyNote struct {
+	What   string    `json:"what"` // approved | rekeyed
+	FP     string    `json:"fp"`
+	Who    string    `json:"who,omitempty"`
+	When   time.Time `json:"when"`
+	Reason string    `json:"reason,omitempty"`
+}
+
 // InboxConflict is data in the inbox that claims to be from a computer
 // but may not be (SEC1): kept for the next report, which shows it as a
 // High row. Details are label, value pairs.
 type InboxConflict struct {
-	Time    time.Time `json:"time"`
-	Host    string    `json:"host"`
-	Summary string    `json:"summary"`
-	Details []string  `json:"details,omitempty"`
+	Time time.Time `json:"time"`
+	// Severity is "info" for a note (a new sender), "" for High.
+	Severity string   `json:"severity,omitempty"`
+	Host     string   `json:"host"`
+	Summary  string   `json:"summary"`
+	Details  []string `json:"details,omitempty"`
 }
 
 // Rename is a former name an administrator accepted for a computer with

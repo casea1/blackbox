@@ -199,6 +199,8 @@ func TestEverySettingRoundTrips(t *testing.T) {
 		{"scap_results", abs("SCC #1"), func(c *Config) string { return c.ScapResults }},
 		{"scap_max_age_days", "45", func(c *Config) string { return strconv.Itoa(c.ScapMaxAgeDays) }},
 		{"keep_sent_days", "30", func(c *Config) string { return strconv.Itoa(c.KeepSentDays) }},
+		{"new_senders", "hold", func(c *Config) string { return map[bool]string{true: "hold", false: "accept"}[c.HoldNewSenders] }},
+		{"require_signed", "yes", func(c *Config) string { return map[bool]string{true: "yes", false: "no"}[c.RequireSigned] }},
 	}
 	seen := map[string]bool{}
 	for _, tc := range cases {

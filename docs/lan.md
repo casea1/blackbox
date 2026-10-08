@@ -296,7 +296,11 @@ inbox, as before 0.23, and it is **drop-only**: senders can add files to
 it, but can't list, read, change, rename or delete anything in it, their
 own files included. Setup applies this on the collector, and so does the
 upgrade; there is nothing to set up per computer, and senders may share
-one delivery account.
+one delivery account. On top of that, **every delivery is signed** by the
+computer that made it, so what one computer puts in the inbox can't pass
+for another's.
+
+### The drop-only folder
 
 - **Windows (NTFS, under the share):**
   - **Blackbox Senders** has *Create files / write data* and
@@ -323,6 +327,80 @@ one delivery account.
   senders give the collector an inbox outside it, such as
   `/srv/blackbox-inbox`.
 
+### Signed deliveries
+
+- **Each sender has its own signing key**, made at install or upgrade
+  (or at its first delivery after an upgrade without setup). It is
+  **Ed25519**, which is inside Go's FIPS 140-3 module (v1.0.0, and works
+  with `GODEBUG=fips140=only`), so FIPS builds use it unchanged. The
+  private key is `sender-key.pem` in the data folder: Administrators and
+  SYSTEM only on Windows, root `0600` on Linux. It never leaves the
+  computer. `blackbox status` on the sender shows `Signing key:
+  SHA256:…`, and so does setup's last screen; `blackbox status` says so
+  if the key file can be read by any other account.
+- **What is signed:** every batch, original-log archive and SCAP result.
+  The signature covers the file's SHA-256, the computer's name, its
+  sender ID and what the file is (a batch: its number; an archive: its
+  period; a SCAP result: the hash of the result), and the time it was
+  signed. A batch carries it in its end marker; an archive or SCAP result
+  in `NAME.sig`, written just before it under the same unique name. A
+  `NAME.sig` whose file is not in the inbox (a sender stopped between the
+  two, or a 0.23 collector imported the file and left the signature) is
+  removed after 10 minutes and logged; it holds nothing to import.
+  `blackbox send --new-id` (a computer cloned with its data folder) makes
+  a new key as well as a new sender ID.
+- **Trust on first use.** The first signed delivery from a computer the
+  collector has not seen pins that computer to its key. `blackbox status`
+  on the collector shows "New sender: ubu-ws-01 (key SHA256:ab12…, first
+  seen 2026-10-08 14:02)" for a week, and the next report has an Info row
+  and a **New senders** line under Needs attention. Compare the key with
+  `blackbox status` on that computer. With `new_senders = hold` (setup:
+  untick **Accept new computers automatically**), its deliveries wait in
+  `inbox/rejected/held` until `blackbox senders approve NAME`.
+- **A key change** (a reinstall, a re-imaged computer, a restored data
+  folder): a known computer delivering under a different key is **not
+  imported**. Its files wait in `inbox/rejected/held`, the next report has
+  a High row, and `blackbox status` says "ubu-ws-01 is now signing with a
+  different key (SHA256:cd34…, was SHA256:ab12…). If that computer was
+  reinstalled: blackbox senders rekey ubu-ws-01" (and exits 4). After
+  `rekey`, the held files are imported at the next run.
+- **One key on two computers** (a computer copied with its data folder)
+  is a High row; neither is merged into the other. Run `blackbox send
+  --new-id` on the copy.
+- **A signature that doesn't verify**, or a file signed for another
+  computer, number or period than it says, is refused into
+  `inbox/rejected` with the reason.
+
+On the collector, `blackbox senders` lists each computer with its key's
+fingerprint, when it was first seen, its last delivery, and whether it
+signs. Decisions are recorded with who made them and why, in the next
+report and in the Application log (event 102) or the journal:
+
+```
+blackbox senders                                  # list
+blackbox senders approve ubu-ws-01 "new workstation, ticket 4410"
+blackbox senders rekey ubu-ws-01 "reinstalled 8 Oct, ticket 4411"
+blackbox senders forget ubu-ws-01 "retired"       # its next key is taken as new
+```
+
+The checks from 0.23 (sender ID, numbering, former names, content hashes,
+below) still apply, as a second line. The account that wrote each file is
+recorded as information only: signatures decide what is accepted.
+
+**Unsigned senders during the upgrade.** For this release, the collector
+still takes unsigned deliveries (from senders not yet on 0.24) from a
+computer that has **never** delivered signed, marked "unsigned" in
+`blackbox status` ("upgrade these to 0.24"), in `blackbox senders` and on
+the system's page in the report. Once a computer has delivered signed, an
+unsigned file claiming to be from it is refused: there is no going back.
+`require_signed = yes` refuses all unsigned deliveries; it becomes the
+default in the next release. A sender upgraded with batches still
+waiting signs them as it delivers them, and its import record (last
+number, missing batches, the hashes behind "already imported") is kept by
+sender ID, so nothing is missed or imported twice.
+
+### Delivering and importing
+
 **How a sender delivers.** A sender can't look in the inbox, so:
 
 - it writes each file straight under its final name,
@@ -340,7 +418,9 @@ be being written. The collector leaves it for 10 minutes after it was
 last written, then moves it to `inbox\rejected` as incomplete (the sender
 sends a batch it could not finish again by itself).
 
-**Upgrading from 0.23.** The per-sender folders 0.23 made with
+### Upgrading from 0.23
+
+The per-sender folders 0.23 made with
 `blackbox inbox add` are no longer used. At the collector's upgrade (and
 its next run), what waits in them is moved into the inbox and imported
 like any other delivery, and the folders are removed. Each sender's
@@ -357,17 +437,24 @@ Upgrade the senders first, then the collector:
   the folder is gone, it delivers into the inbox. A 0.23 collector reads
   a file in the inbox itself (not a folder) as soon as it sees it, so a
   batch it catches half written is set aside as incomplete; `blackbox
-  gaps` lists it and `blackbox send --resend` on the sender sends it again;
+  gaps` lists it and `blackbox send --resend` on the sender sends it again.
+  A 0.23 collector imports signed files as unsigned ones and leaves each
+  archive's and SCAP result's `NAME.sig` behind; the upgraded collector
+  removes those;
 - senders from before 0.24 rename their files into place, which the
   drop-only inbox does not allow on a Windows collector. If the collector
   is upgraded first, their batches wait on the sender, safely, until the
   sender is upgraded too.
 
-**What the collector checks** (each file it can't accept is moved to
+### What the collector checks
+
+Each file it can't accept is moved to
 `inbox\rejected` with a `NAME.why.txt` note saying why and which account
 wrote it; `blackbox status` lists them and exits 4, the next report says
-so, and the rest are still imported):
+so, and the rest are still imported:
 
+- a signature that does not verify, or an unsigned file from a computer
+  that signs (see above);
 - a batch whose records can't be read (not an event, a bad time, a record
   of no known type) is set aside, and its number stays missing until it
   is sent again with `blackbox send --resend`;
@@ -381,6 +468,7 @@ with one shared delivery account it says little.
 
 **What it raises as High** (one row in the next report):
 
+- **A key change** or **one key on two computers** (see above).
 - **Two different batches with one number** from a computer: both are
   kept. A batch is "already imported" only when it is the same batch.
 - **Two computers using one sender ID** (a computer cloned from another,
@@ -542,8 +630,11 @@ and in `summary.json`:
 | A delivery never arrived (for example, deleted from the inbox) | Which batches from which computer are missing, and the `blackbox send --resend` command to run on that computer |
 | A computer's clock is ahead of the collector's | The computer and by how much. Event times from it may be wrong |
 | Events arrived after the report they belong to | Included in the next report, marked **Late** |
-| A delivery is damaged, altered, or not from the folder's computer | It is set aside in `inbox\rejected` with a `.why.txt` note, `blackbox status` lists it and exits 4, and the report says so. The gap it leaves is reported |
+| A delivery is damaged, altered, or its signature does not verify | It is set aside in `inbox\rejected` with a `.why.txt` note, `blackbox status` lists it and exits 4, and the report says so. The gap it leaves is reported |
 | Two different files claim to be the same batch or archive, or two computers share a sender ID | A High row: both are kept (see [How the inbox is protected](#how-the-inbox-is-protected)) |
+| A computer delivers for the first time | An Info row with its key, and **New senders** under Needs attention. Each system's page says "Delivery: signed · key SHA256:ab12… since 8 Oct" |
+| A known computer signs with a different key, or two computers sign with one | A High row, and **Senders waiting for a decision** or **Two computers, one key** under Needs attention; the held files are not in the report until `blackbox senders rekey` |
+| A computer delivers unsigned (Blackbox before 0.24) | **Unsigned senders** under Needs attention ("upgrade these to 0.24"), and "unsigned" on its system page. When every delivery was signed, the Verified pop-up says "All deliveries were signed by their computer's key" |
 
 ## Troubleshooting
 
@@ -592,7 +683,7 @@ This section is for reviewers.
   A computer that is reinstalled starts a new sequence instead of looking
   like a gap. A computer cloned with its data folder keeps the ID: the
   collector notices two computers using it, and `blackbox send --new-id`
-  gives one a new ID.
+  gives one a new ID, and a new signing key.
 
 **The "Blackbox Senders" group is kept when Blackbox is uninstalled.** A
 sender's open connection to the share carries the group's identity, so

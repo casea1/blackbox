@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -71,8 +72,9 @@ func QueuedScap(st *store.Store) int {
 	return len(list)
 }
 
-// DeliverScap copies waiting scan results into the collector's inbox.
-func DeliverScap(st *store.Store, inbox string) (int, error) {
+// DeliverScap copies waiting scan results into the collector's inbox,
+// each signed as from host (DESIGN1).
+func DeliverScap(st *store.Store, inbox, host string) (int, error) {
 	if !IsInbox(inbox) {
 		return 0, fmt.Errorf("%w: %s", ErrNoInbox, inbox)
 	}
@@ -80,11 +82,23 @@ func DeliverScap(st *store.Store, inbox string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	key, err := signingKey(st)
+	if err != nil {
+		return 0, err
+	}
 	sent := 0
 	for _, name := range list {
 		src := filepath.Join(OutboxDir(st), name)
+		plain, err := gzipSHA256(src)
+		if err != nil {
+			return sent, fmt.Errorf("SCAP result %s: %w", name, err)
+		}
+		sig, err := makeSig(key, src, "scap", host, st.State.Send.ID, scapWhat(plain), time.Now())
+		if err != nil {
+			return sent, err
+		}
 		base := scapPrefix + st.State.Send.ID + "_" + strings.TrimSuffix(strings.TrimPrefix(name, scapPrefix), scapExt)
-		if _, err := drop(src, deliveryDir(st, inbox), base, scapExt); err != nil {
+		if _, err := drop(src, deliveryDir(st, inbox), base, scapExt, sig); err != nil {
 			return sent, fmt.Errorf("copy SCAP result %s to %s: %w", name, inbox, err)
 		}
 		if err := os.Remove(src); err != nil {
@@ -98,7 +112,7 @@ func DeliverScap(st *store.Store, inbox string) (int, error) {
 // importScap checks a delivered scan result and files it under the
 // computer it is for. Its contents must match the hash in its name
 // (scap_ID_HASH-RANDOM.xml.gz; earlier senders gave no random part).
-func importScap(st *store.Store, dir, name, scapDir string, now time.Time) error {
+func importScap(st *store.Store, dir, name string, dirs Dirs, now time.Time) error {
 	rest := strings.TrimSuffix(strings.TrimPrefix(name, scapPrefix), scapExt)
 	id, sum, _ := strings.Cut(rest, "_")
 	sum, _, _ = strings.Cut(sum, "-")
@@ -146,12 +160,51 @@ func importScap(st *store.Store, dir, name, scapDir string, now time.Time) error
 	if !archive.UsableHost(host) {
 		return fmt.Errorf("it gives the computer as %q, which is not a usable name", res[0].Host)
 	}
-	dest := filepath.Join(scapDir, safeName(host))
+	// Its signature, in NAME.sig, written before it (DESIGN1): the
+	// computer that sent it, and the hash of the result.
+	sig, pub, err := readSig(path, "scap")
+	switch {
+	case errors.Is(err, errSigIncomplete) && writing(fi, now):
+		return errWriting
+	case err != nil:
+		return err
+	case sig != nil && (sig.SenderID != id || sig.What != scapWhat(hex.EncodeToString(h[:]))):
+		return fmt.Errorf("its signature is for sender %s %s, not this result", sig.SenderID, sig.What)
+	case sig != nil && !hostIn([]string{sig.Host}, host):
+		return fmt.Errorf("it is a scan of %s, but it was signed by %s", host, sig.Host)
+	}
+	signer := host
+	if sig != nil {
+		signer = sig.Host
+	}
+	if v, err := judge(st, delivery{host: signer, id: id, pub: pub}, dirs, now); v != accept {
+		return err
+	}
+	dest := filepath.Join(dirs.Scap, safeName(host))
 	if err := os.MkdirAll(dest, 0o750); err != nil {
 		return err
 	}
 	if err := store.WriteFileAtomic(filepath.Join(dest, name), b, 0o640); err != nil {
 		return err
 	}
+	os.Remove(path + sigExt)
 	return os.Remove(path)
+}
+
+// gzipSHA256 is the SHA-256 of a gzip file's contents.
+func gzipSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	z, err := gzip.NewReader(f)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	if _, err := io.Copy(h, io.LimitReader(z, maxBatchBytes)); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

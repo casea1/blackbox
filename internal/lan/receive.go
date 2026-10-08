@@ -63,6 +63,7 @@ type ImportResult struct {
 	Archives int      // log archives filed
 	Scap     int      // SCAP scan results filed
 	Rejected []string // files that could not be used, and why
+	Held     []string // files waiting for blackbox senders approve or rekey (DESIGN1)
 }
 
 // maxClockLead is how far a sender's clock may be ahead before it is noted.
@@ -72,6 +73,10 @@ const maxClockLead = 10 * time.Minute
 // log archives, and SCAP scan results ("" leaves them in the inbox).
 type Dirs struct {
 	Archives, Scap string
+	// HoldNew (new_senders = hold) holds a new computer's deliveries
+	// until "blackbox senders approve"; RequireSigned (require_signed =
+	// yes) refuses unsigned ones (DESIGN1).
+	HoldNew, RequireSigned bool
 }
 
 // Import reads every complete batch in the inbox into the store, in order
@@ -115,8 +120,11 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 		}
 		switch {
 		case dirs.Archives != "" && strings.HasPrefix(n, archivePrefix) && strings.HasSuffix(n, archiveExt):
-			switch err := importArchive(st, inbox, n, dirs.Archives, now); {
+			var h *heldError
+			switch err := importArchive(st, inbox, n, dirs, now); {
 			case errors.Is(err, errWriting):
+			case errors.As(err, &h):
+				res.Held = append(res.Held, holdFile(inbox, n, h, now))
 			case err != nil:
 				rej(n, err.Error())
 			default:
@@ -124,8 +132,11 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 			}
 			continue
 		case dirs.Scap != "" && strings.HasPrefix(n, scapPrefix) && strings.HasSuffix(n, scapExt):
-			switch err := importScap(st, inbox, n, dirs.Scap, now); {
+			var h *heldError
+			switch err := importScap(st, inbox, n, dirs, now); {
 			case errors.Is(err, errWriting):
+			case errors.As(err, &h):
+				res.Held = append(res.Held, holdFile(inbox, n, h, now))
 			case err != nil:
 				rej(n, err.Error())
 			default:
@@ -182,6 +193,25 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 		if trusted && st.State.Send != nil && b.SenderID == st.State.Send.ID {
 			err, trusted = fmt.Errorf("it was sent by this computer (a system cannot send to itself)"), false
 		}
+		// Its signature (DESIGN1); the checks below are the second line.
+		var pub []byte
+		if err == nil {
+			if pub, err = verifyBatch(b); err != nil {
+				trusted = false // not shown to be its sender's: no gap is noted
+			}
+		}
+		if err == nil {
+			v, jerr := judge(st, delivery{host: b.Sender, id: b.SenderID, pub: pub, former: b.Former}, dirs, now)
+			var h *heldError
+			switch {
+			case v == hold && errors.As(jerr, &h):
+				res.Held = append(res.Held, holdFile(inbox, it.name, h, now))
+				st.Save()
+				continue
+			case v == refuse:
+				err, trusted = jerr, false
+			}
+		}
 		writer := fileOwner(path)
 		var n int
 		var dup bool
@@ -202,6 +232,7 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 			}
 			continue
 		}
+		noteSigned(st, b.SenderID, pub, now)
 		if writer != "" {
 			logf("inbox: imported %s, written by %s", it.name, writer)
 		}
@@ -215,10 +246,61 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 		res.Batches++
 		res.Records += n
 	}
+	removeOrphanSigs(inbox, now, logf)
 	for _, r := range res.Rejected {
 		logf("inbox: %s", r)
 	}
+	for _, r := range res.Held {
+		logf("inbox: %s", r)
+	}
+	if len(res.Held) > 0 {
+		st.Save()
+	}
 	return res, nil
+}
+
+// noteSigned records whether a sender ID's latest batch was signed, and
+// with which key: from then on it signs with that one (DESIGN1).
+func noteSigned(st *store.Store, id string, pub []byte, now time.Time) {
+	snd := st.State.Senders[id]
+	if snd == nil {
+		return
+	}
+	if pub == nil {
+		snd.Unsigned = now
+	} else {
+		snd.KeyFP = Fingerprint(pub)
+	}
+	st.Save()
+}
+
+// removeOrphanSigs removes a signature file whose archive or SCAP result
+// is not in the inbox, once it has waited settle, and logs it. Such a file
+// is left when a sender stopped between the two (it delivers the file
+// again under a new name, with a new signature), and by a 0.23 collector,
+// which imports the file and leaves its signature: senders are upgraded
+// before the collector (DESIGN1). A signature alone holds nothing to
+// import, so it is not set aside as a refused delivery.
+func removeOrphanSigs(inbox string, now time.Time, logf func(string, ...any)) {
+	entries, err := os.ReadDir(inbox)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		n := e.Name()
+		if e.IsDir() || !strings.HasSuffix(n, sigExt) {
+			continue
+		}
+		if _, err := os.Lstat(filepath.Join(inbox, strings.TrimSuffix(n, sigExt))); err == nil {
+			continue
+		}
+		if fi, err := e.Info(); err != nil || writing(fi, now) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(inbox, n)); err == nil {
+			logf("inbox: removed %s, a signature whose archive or SCAP result is not in the inbox (already imported, or delivered again under another name)", n)
+		}
+	}
 }
 
 // writing reports whether a file that can't be read whole may still be
@@ -241,7 +323,7 @@ func incomplete(err error) error {
 
 // importArchive verifies a log archive and files it. A different archive
 // for a period already filed is kept next to it and raised (SEC1).
-func importArchive(st *store.Store, dir, name, archivesDir string, now time.Time) error {
+func importArchive(st *store.Store, dir, name string, dirs Dirs, now time.Time) error {
 	id, _, _ := strings.Cut(strings.TrimPrefix(name, archivePrefix), "_")
 	if st.State.Send != nil && id == st.State.Send.ID {
 		return fmt.Errorf("it was sent by this computer (a system cannot send to itself)")
@@ -262,8 +344,21 @@ func importArchive(st *store.Store, dir, name, archivesDir string, now time.Time
 	if !archive.UsableHost(info.Host) {
 		return fmt.Errorf("its archive.json gives the computer as %q, which is not a usable name", info.Host)
 	}
+	// Its signature, in NAME.sig, written before it (DESIGN1).
+	sig, pub, err := readSig(path, "archive")
+	switch {
+	case errors.Is(err, errSigIncomplete) && writing(fi, now):
+		return errWriting
+	case err != nil:
+		return err
+	case sig != nil && (!strings.EqualFold(sig.Host, info.Host) || sig.SenderID != id || sig.What != archiveWhat(info.From, info.To)):
+		return fmt.Errorf("its signature is for %s (sender %s) %s, but its archive.json says %s %s", sig.Host, sig.SenderID, sig.What, info.Host, archiveWhat(info.From, info.To))
+	}
+	if v, err := judge(st, delivery{host: info.Host, id: id, pub: pub}, dirs, now); v != accept {
+		return err
+	}
 	writer := fileOwner(path)
-	dest, clash, err := archive.File(path, archivesDir, info)
+	dest, clash, err := archive.File(path, dirs.Archives, info)
 	if err != nil {
 		return err
 	}
@@ -272,6 +367,7 @@ func importArchive(st *store.Store, dir, name, archivesDir string, now time.Time
 			info.Host, info.From.UTC().Format("2006-01-02 15:04Z"), info.To.UTC().Format("2006-01-02 15:04Z")),
 			Details: []string{"First", filepath.Base(clash), "Second", filepath.Base(dest), "Written by", orUnknown(writer)}})
 	}
+	os.Remove(path + sigExt)
 	return st.Save()
 }
 
@@ -324,6 +420,11 @@ func MigrateSenderFolders(st *store.Store, inbox string, logf func(string, ...an
 			if f.IsDir() || fn == legacyMarker {
 				continue
 			}
+			if strings.HasSuffix(fn, sigExt) {
+				if _, err := os.Lstat(filepath.Join(dir, strings.TrimSuffix(fn, sigExt))); err == nil {
+					continue // moved with its file, below
+				}
+			}
 			to := migratedName(fn)
 			for i := 0; i < dropTries; i++ {
 				if _, err := os.Lstat(filepath.Join(inbox, to)); err != nil {
@@ -334,6 +435,13 @@ func MigrateSenderFolders(st *store.Store, inbox string, logf func(string, ...an
 			if err := os.Rename(filepath.Join(dir, fn), filepath.Join(inbox, to)); err != nil {
 				logf("inbox: cannot move %s out of the 0.23 sender folder %s yet: %v", fn, n, err)
 				continue
+			}
+			// A 0.24 sender delivering into its 0.23 folder (it was upgraded
+			// first) put the file's signature next to it: it goes along.
+			if _, err := os.Lstat(filepath.Join(dir, fn+sigExt)); err == nil {
+				if err := os.Rename(filepath.Join(dir, fn+sigExt), filepath.Join(inbox, to+sigExt)); err != nil {
+					logf("inbox: cannot move %s out of the 0.23 sender folder %s yet: %v", fn+sigExt, n, err)
+				}
 			}
 			moved++
 			logf("inbox: moved %s out of the 0.23 sender folder %s, as %s", fn, n, to)
@@ -357,6 +465,9 @@ func MigrateSenderFolders(st *store.Store, inbox string, logf func(string, ...an
 // random part is added (after a dash, as a 0.24 sender names its files),
 // so it can't clash with a file in the inbox.
 func migratedName(n string) string {
+	if f, ok := strings.CutSuffix(n, sigExt); ok {
+		return migratedName(f) + sigExt
+	}
 	for _, ext := range []string{scapExt, batchExt, archiveExt} {
 		if strings.HasSuffix(n, ext) {
 			return strings.TrimSuffix(n, ext) + "-" + randomPart() + ext
@@ -386,6 +497,9 @@ func reject(inbox, dir, folder, name, why string, now time.Time) string {
 			dest = AgainName(name, i)
 		}
 		err = os.Rename(filepath.Join(dir, name), filepath.Join(rdir, dest))
+		if _, serr := os.Stat(filepath.Join(dir, name+sigExt)); err == nil && serr == nil {
+			os.Rename(filepath.Join(dir, name+sigExt), filepath.Join(rdir, dest+sigExt))
+		}
 	}
 	shown := name
 	if folder != "" {
@@ -416,7 +530,7 @@ func Rejected(inbox string) []string {
 	var out []string
 	for _, e := range entries {
 		n := e.Name()
-		if e.IsDir() || strings.HasSuffix(n, whyExt) || strings.HasPrefix(n, ".") {
+		if e.IsDir() || strings.HasSuffix(n, whyExt) || strings.HasSuffix(n, sigExt) || strings.HasPrefix(n, ".") {
 			continue
 		}
 		why := ""

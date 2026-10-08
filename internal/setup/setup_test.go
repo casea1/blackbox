@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/casea1/blackbox/internal/app"
+	"github.com/casea1/blackbox/internal/config"
+	"github.com/casea1/blackbox/internal/lan"
 	"github.com/casea1/blackbox/internal/store"
 )
 
@@ -58,5 +60,27 @@ func TestSentLinesForwarded(t *testing.T) {
 	}
 	if got := strings.Join(sentLines(app.SendResult{Delivered: 3}, nil, "x", false), "\n"); strings.Contains(got, "final report") {
 		t.Errorf("a computer that was a sender already: %s", got)
+	}
+}
+
+// DESIGN1, SEC1d: setup's last screen on a collector says where other
+// computers send and that each signs, with no per-folder wording; on a
+// sender it shows the key to compare.
+func TestLANLines(t *testing.T) {
+	col := strings.Join(LANLines(&config.Config{Inbox: `C:\BlackboxInbox`}), "\n")
+	if !strings.Contains(col, `Other computers send to C:\BlackboxInbox. Each one signs what it sends; new ones appear in blackbox status.`) ||
+		strings.Contains(col, "folder of its own") || strings.Contains(col, "inbox add") {
+		t.Errorf("collector:\n%s", col)
+	}
+	if held := strings.Join(LANLines(&config.Config{Inbox: "/srv/inbox", HoldNewSenders: true}), "\n"); !strings.Contains(held, "blackbox senders approve NAME") {
+		t.Errorf("hold:\n%s", held)
+	}
+	dir := t.TempDir()
+	k, _, err := lan.EnsureKey(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := strings.Join(LANLines(&config.Config{SendTo: "/mnt/inbox", DataDir: dir}), "\n"); !strings.Contains(s, k.Fingerprint()) {
+		t.Errorf("sender:\n%s", s)
 	}
 }

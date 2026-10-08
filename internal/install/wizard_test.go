@@ -229,6 +229,7 @@ func TestWizardWindowsCollector(t *testing.T) {
 		"",       // original logs in the data folder
 		"",       // default inbox…
 		"y",      // …create it
+		"",       // accept new computers automatically (DESIGN1)
 		"y",      // VMs on this PC send to it
 		"vmuser", // account that runs VirtualBox
 		"y",      // share it on the network too
@@ -257,6 +258,7 @@ func TestWizardWindowsCollector(t *testing.T) {
 // suggested (Enter means no), and no account is filled in for it.
 func TestWizardNoVirtualBox(t *testing.T) {
 	input := lines("3", "", "", "", "", "", "", "y",
+		"",       // accept new computers automatically
 		"",       // VMs on this PC send to it? Enter: no
 		"y",      // share it
 		"bbsend", // who delivers

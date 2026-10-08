@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/casea1/blackbox/internal/archive"
 	"github.com/casea1/blackbox/internal/store"
 )
 
@@ -78,14 +79,14 @@ func TestNewNamesReadBy023Collector(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "x")
 	os.WriteFile(src, []byte("x"), 0o640)
 	sum := "0123456789abcdef"
-	scapName, err := drop(src, in, scapPrefix+id+"_"+sum, scapExt)
+	scapName, err := drop(src, in, scapPrefix+id+"_"+sum, scapExt, []byte("sig"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if gid, gsum := v023ScapName(scapName); gid != id || gsum != sum {
 		t.Errorf("0.23 reads %s as %q %q", scapName, gid, gsum)
 	}
-	archName, err := drop(src, in, archivePrefix+id+"_logs-WS-05_20261008T0000Z", archiveExt)
+	archName, err := drop(src, in, archivePrefix+id+"_logs-WS-05_20261008T0000Z", archiveExt, []byte("sig"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,5 +180,93 @@ func TestSenderUpgradedFirstUses023Folder(t *testing.T) {
 		if d := deliveryDir(ws, in); d != in {
 			t.Errorf("folder %q: delivers into %s", f, d)
 		}
+	}
+}
+
+// DESIGN1: a sender upgraded before the collector signs what it drops into
+// its 0.23 folder; at the collector's upgrade each archive and SCAP result
+// is moved out with its NAME.sig and imported as signed, and a signature
+// a 0.23 collector left behind (it imported the file and ignored the
+// .sig) is removed, not refused.
+func TestSignedDeliveriesThrough023Folder(t *testing.T) {
+	in := inbox(t)
+	col, _ := store.Open(t.TempDir())
+	folder := legacyFolder(t, col, in, "WS-07", "WS-07")
+	ws := system(t, "WS-07", "windows", 1, t0)
+	Export(ws, "WS-07", "test", t0)
+	ws.State.Send.Folder = "WS-07"
+
+	logFile := filepath.Join(t.TempDir(), "Security.evtx")
+	os.WriteFile(logFile, []byte("pretend evtx"), 0o644)
+	from, to := t0.Add(-24*time.Hour), t0
+	if _, err := archive.Write(filepath.Join(OutboxDir(ws), archive.FileName("WS-07", from, to)),
+		archive.Info{Host: "WS-07", OS: "windows", From: from, To: to, Created: to},
+		[]archive.Source{{Name: "Security.evtx", Source: "Security", Path: logFile}}); err != nil {
+		t.Fatal(err)
+	}
+	files := []string{"../../testdata/scap/scc/Sessions/2026-09-29_100000/Results/SCAP/XML/WS-07_SCC-5.10_2026-09-29_100000_XCCDF-Results_MS_Windows_11_STIG.xml"}
+	if n, err := QueueScap(ws, files, t0); err != nil || n != 1 {
+		t.Fatalf("queued %d %v", n, err)
+	}
+	if n, err := Deliver(ws, in, "WS-07", true); err != nil || n != 1 {
+		t.Fatalf("deliver: %d %v", n, err)
+	}
+	if n, err := DeliverArchives(ws, in); err != nil || n != 1 {
+		t.Fatalf("archives: %d %v", n, err)
+	}
+	if n, err := DeliverScap(ws, in, "WS-07"); err != nil || n != 1 {
+		t.Fatalf("scap: %d %v", n, err)
+	}
+	id := ws.State.Send.ID
+	for _, pat := range []string{"*.bbx", "*.zip", "*.zip.sig", "*.xml.gz", "*.xml.gz.sig"} {
+		got, _ := filepath.Glob(filepath.Join(folder, pat))
+		if len(got) != 1 {
+			t.Fatalf("%s in the 0.23 folder: %v", pat, got)
+		}
+		n := filepath.Base(got[0])
+		switch pat {
+		case "*.bbx":
+			if gid, seq, ok := v023ParseInboxName(n); !ok || gid != id || seq != 1 {
+				t.Errorf("0.23 reads %s as %q %d %v", n, gid, seq, ok)
+			}
+		case "*.zip":
+			if gid := v023ArchiveID(n); gid != id {
+				t.Errorf("0.23 reads %s as %q", n, gid)
+			}
+		case "*.xml.gz":
+			if gid, sum := v023ScapName(n); gid != id || len(sum) != 16 {
+				t.Errorf("0.23 reads %s as %q %q", n, gid, sum)
+			}
+		}
+	}
+	if got, _ := filepath.Glob(filepath.Join(in, "*.*")); len(got) != 1 { // the marker
+		t.Errorf("in the inbox itself: %v", got)
+	}
+	// What a 0.23 collector leaves: the signature of an archive it imported.
+	for _, p := range []string{filepath.Join(folder, "archive_"+id+"_old-0123456789ab.zip.sig"), filepath.Join(in, "archive_"+id+"_older-0123456789ab.zip.sig")} {
+		os.WriteFile(p, []byte("sig"), 0o640)
+		os.Chtimes(p, t0, t0)
+	}
+
+	dirs := Dirs{Archives: t.TempDir(), Scap: t.TempDir()}
+	res, err := Import(col, in, dirs, t0.Add(time.Minute), t.Logf)
+	if err != nil || res.Batches != 1 || res.Archives != 1 || res.Scap != 1 || len(res.Rejected) != 0 || len(res.Held) != 0 {
+		t.Fatalf("import at the upgrade: %+v %v", res, err)
+	}
+	if _, err := os.Stat(folder); err == nil {
+		t.Error("the 0.23 folder is still there")
+	}
+	if k := col.State.SenderKeys["WS-07"]; k == nil || k.FP == "" {
+		t.Errorf("not pinned: %+v", k)
+	}
+	res, _ = Import(col, in, dirs, t0.Add(20*time.Minute), t.Logf)
+	if len(res.Rejected) != 0 {
+		t.Errorf("left-over signatures refused: %+v", res.Rejected)
+	}
+	if got, _ := filepath.Glob(filepath.Join(in, "*.sig")); len(got) != 0 {
+		t.Errorf("signatures left: %v", got)
+	}
+	if got, _ := filepath.Glob(filepath.Join(in, rejectedDir, "*")); len(got) != 0 {
+		t.Errorf("rejected: %v", got)
 	}
 }

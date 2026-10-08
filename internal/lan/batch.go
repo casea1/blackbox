@@ -83,6 +83,9 @@ type record struct {
 type trailer struct {
 	Records int    `json:"records"`
 	SHA256  string `json:"sha256"` // of every line before the trailer
+	// Sig is the sender's signature (DESIGN1): over SHA256, the sender,
+	// its sender ID and the batch number. Collectors before 0.24 ignore it.
+	Sig *Signature `json:"sig,omitempty"`
 }
 
 // Batch is a decoded batch file.
@@ -94,6 +97,9 @@ type Batch struct {
 	// Sum is the SHA-256 of its contents, from its end marker: the same
 	// batch delivered twice has the same Sum (SEC1).
 	Sum string
+	// Sig is its sender's signature, nil for an unsigned batch (from a
+	// sender before 0.24, DESIGN1).
+	Sig *Signature
 }
 
 // Records is the number of events, runs and checks in the batch.
@@ -206,7 +212,7 @@ func Decode(r io.Reader) (*Batch, error) {
 			if sc.Scan() {
 				return head(b), errors.New("batch has data after its end marker")
 			}
-			b.Sum = rec.End.SHA256
+			b.Sum, b.Sig = rec.End.SHA256, rec.End.Sig
 			return b, nil
 		}
 		h.Write(raw)

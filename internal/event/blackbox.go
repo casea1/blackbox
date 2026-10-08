@@ -66,13 +66,17 @@ type SelfChange struct {
 	Old     string
 	New     string
 	Version string // the version installed (install and upgrade)
-	Kind    string // "setting", "installed", "upgraded", "removed", "resent", "gap_accepted", "report_accepted"
+	Kind    string // "setting", "installed", "upgraded", "removed", "resent", "gap_accepted", "report_accepted", "sender_key"
+	// For "sender_key" (DESIGN1): the computer (Setting), what was done
+	// (New: approved, rekeyed or forgotten), why (Old) and the key now
+	// pinned (Version is not used).
 	// For "resent": the batches (New, "214-219") and where to (Old).
 }
 
 // selfHigh are the settings whose change can hide events or evidence.
 var selfHigh = map[string]bool{"exclude_users": true, "exclude_processes": true, "retention_days": true,
-	"send_to": true, "scap_results": true, "report_dir": true, "archive_dir": true, "inbox": true}
+	"send_to": true, "scap_results": true, "report_dir": true, "archive_dir": true, "inbox": true,
+	"new_senders": true, "require_signed": true}
 
 // Message is the sentence written to the operating system's log; ParseSelfChange reads it back.
 func (c SelfChange) Message() string {
@@ -93,6 +97,8 @@ func (c SelfChange) Message() string {
 		return fmt.Sprintf("Blackbox batches %s from %s were accepted as not arriving by %s (%s): %s", c.New, c.Setting, who, c.Program, c.Old)
 	case "report_accepted":
 		return fmt.Sprintf("Blackbox report %s was accepted as %s by %s (%s): %s", c.Setting, c.New, who, c.Program, c.Old)
+	case "sender_key":
+		return fmt.Sprintf("Blackbox sender %s was %s by %s (%s): %s", c.Setting, c.New, who, c.Program, c.Old)
 	}
 	return fmt.Sprintf("Blackbox setting %s changed from %q to %q by %s (%s).", c.Setting, c.Old, c.New, who, c.Program)
 }
@@ -112,6 +118,7 @@ var (
 	selfResendRE  = regexp.MustCompile(`^Blackbox batches (\S+) were sent again to (.+) by (.+) \(([^()]+)\)\.$`)
 	selfGapRE     = regexp.MustCompile(`^Blackbox batches (\S+) from (\S+) were accepted as not arriving by (.+?) \(([^()]+)\): (.*)$`)
 	selfReportRE  = regexp.MustCompile(`^Blackbox report (\S+) was accepted as (missing|changed) by (.+?) \(([^()]+)\): (.*)$`)
+	selfSenderRE  = regexp.MustCompile(`^Blackbox sender (\S+) was (approved|rekeyed|forgotten) by (.+?) \(([^()]+)\): (.*)$`)
 )
 
 // ParseSelfChange reads a Message back, as found in the operating system's log.
@@ -143,6 +150,9 @@ func ParseSelfChange(msg string) (SelfChange, bool) {
 	}
 	if m := selfReportRE.FindStringSubmatch(msg); m != nil {
 		return SelfChange{Kind: "report_accepted", Setting: m[1], New: m[2], Who: m[3], Program: m[4], Old: m[5]}, true
+	}
+	if m := selfSenderRE.FindStringSubmatch(msg); m != nil {
+		return SelfChange{Kind: "sender_key", Setting: m[1], New: m[2], Who: m[3], Program: m[4], Old: m[5]}, true
 	}
 	if m := selfResendRE.FindStringSubmatch(msg); m != nil {
 		return SelfChange{Kind: "resent", New: m[1], Old: m[2], Who: m[3], Program: m[4]}, true
@@ -195,6 +205,15 @@ func (c SelfChange) Event() *Event {
 		e.Target = c.Setting
 		e.AddDetail("Report", c.Setting)
 		e.AddDetail("State", c.New)
+		e.AddDetail("Why", c.Old)
+	case "sender_key":
+		// DESIGN1: an administrator approved a new sender, took a new key
+		// for a known one, or dropped its pinned key.
+		e.Action, e.Severity = "blackbox_sender_"+c.New, SevMedium
+		e.Summary = fmt.Sprintf("%s %s the Blackbox sender %s's signing key: %s", who, map[string]string{"approved": "approved", "rekeyed": "accepted a new key as", "forgotten": "dropped"}[c.New], c.Setting, c.Old)
+		e.Target = c.Setting
+		e.AddDetail("Sender", c.Setting)
+		e.AddDetail("Done", c.New)
 		e.AddDetail("Why", c.Old)
 	case "resent":
 		// L11: recorded like a setting change. Resending only fills a gap

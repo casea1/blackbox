@@ -103,6 +103,7 @@ type SystemView struct {
 	// under Line ("Delivery: signed · key SHA256:… since 3 Oct"); empty
 	// until the report knows it.
 	Delivery    string
+	DelivLevel  string // bad | warn | "": the Delivery line's colour
 	Kind, Group string // server | workstation | vm | retired; the group's title
 	OS, OSKey   string // "Server 2025"; the OS filter's value
 	Chip        string // the problem in one chip: "Problem: Security log cleared"
@@ -313,6 +314,9 @@ func (r *Report) systemsPage() *SystemsPage {
 			}
 		}
 
+		if d := s.Delivery.Text(r.Location); d != "" {
+			v.Delivery, v.DelivLevel = "Delivery: "+d, s.Delivery.Level()
+		}
 		if !s.LastRun.IsZero() {
 			v.LastSeen = r.shortStamp(s.LastRun)
 			if s.LastRunAhead {

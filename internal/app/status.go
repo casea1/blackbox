@@ -225,6 +225,8 @@ func (a *App) Status(w io.Writer) error {
 		if a.Cfg.ShareUser != "" {
 			p("Share account:", "%s", a.Cfg.ShareUser)
 		}
+		// What it signs its deliveries with (DESIGN1).
+		attention = append(attention, a.signingStatus(p)...)
 		waiting := lan.Queued(st)
 		oldest := ""
 		since := a.waitingSince(st)
@@ -328,6 +330,8 @@ func (a *App) Status(w io.Writer) error {
 				p("", "  %s", r)
 			}
 		}
+		// Senders' keys: new, held, changed, shared, unsigned (DESIGN1).
+		attention = append(attention, a.senderStatus(st, now, p)...)
 	}
 	if a.Cfg.Inbox != "" {
 		fmt.Fprintln(w)

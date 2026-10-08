@@ -12,10 +12,8 @@ import (
 // only, so another sender in the same group can't read it on a Linux
 // collector, even knowing its name.
 func TestDeliveredFileOwnerOnly(t *testing.T) {
-	src := filepath.Join(t.TempDir(), "batch")
-	os.WriteFile(src, []byte("x"), 0o644)
 	dst := filepath.Join(t.TempDir(), "HOST_id_0000000001-0123456789ab.bbx")
-	if err := writeNew(src, dst); err != nil {
+	if err := writeNew(dst, func(f *os.File) error { _, err := f.Write([]byte("x")); return err }); err != nil {
 		t.Fatal(err)
 	}
 	fi, err := os.Stat(dst)

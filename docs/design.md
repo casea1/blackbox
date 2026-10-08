@@ -365,6 +365,7 @@ blackbox send                 # collect and send to the collector now (e.g. befo
 blackbox send --resend 214-219  # send kept batches again to fill a gap the collector reports
 blackbox send --new-id        # a computer cloned from another: give it a sender ID of its own
 blackbox systems              # the computers a collector reports on (remove NAME to retire one; rename OLD NEW)
+blackbox senders              # the computers delivering to a collector and their signing keys (approve|rekey|forget NAME "why")
 blackbox verify <report-dir>  # check the SHA-256 manifest
 blackbox reports              # scheduled reports made here, and any missing or changed (accept NAME "why")
 blackbox uninstall            # remove the task/timer; reports are kept

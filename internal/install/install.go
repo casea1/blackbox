@@ -12,6 +12,7 @@ import (
 	"github.com/casea1/blackbox/internal/collect"
 	"github.com/casea1/blackbox/internal/config"
 	"github.com/casea1/blackbox/internal/event"
+	"github.com/casea1/blackbox/internal/lan"
 	"github.com/casea1/blackbox/internal/selfaudit"
 	"github.com/casea1/blackbox/internal/store"
 )
@@ -59,8 +60,18 @@ func writeConfig(path string, opt Options, crlf bool) error {
 		{"send_to", opt.SendTo},
 		{"share_user", opt.ShareUser},
 		{"inbox", opt.Inbox},
+		{"new_senders", newSenders(opt)},
 		{"scap_results", opt.ScapResults},
 	})
+}
+
+// newSenders is the new_senders setting: setup's "Accept new computers
+// automatically" (DESIGN1).
+func newSenders(opt Options) string {
+	if opt.HoldNewSenders {
+		return "hold"
+	}
+	return "accept"
 }
 
 // scheduleWhat is what each scheduled run does besides collecting: a
@@ -84,6 +95,16 @@ func setupLAN(opt Options, dataDir string, logf func(string, ...any)) error {
 		removeInbox(logf)
 	}
 	if opt.SendTo != "" {
+		// Its signing key (DESIGN1): made once, kept across upgrades.
+		k, made, err := lan.EnsureKey(dataDir)
+		if err != nil {
+			return fmt.Errorf("signing key: %w", err)
+		}
+		what := "kept"
+		if made {
+			what = "made now"
+		}
+		logf("Signing key:         %s (%s; the collector shows it in blackbox senders)", k.Fingerprint(), what)
 		return prepareSendTo(opt, dataDir, logf)
 	}
 	removeSendTo(logf)
