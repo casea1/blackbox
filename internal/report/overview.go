@@ -465,15 +465,41 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []Che
 		lines = append(lines, CheckLine{Level: "warn", Icon: "user-x", Title: "Left out by your settings", What: t, Href: "#health", Count: ""})
 	}
 
-	if len(r.NoArchive) > 0 {
+	// "Original logs archived" only when they were (AR7).
+	bad := false
+	if f := r.PackFailing; f != nil {
+		bad = true
+		lines = append(lines, CheckLine{Level: "bad", Icon: "hard-drive", Title: "Original logs not archived", Who: f.Host,
+			What: "not archived since " + r.stamp(f.Since) + ": " + strings.TrimRight(f.Reason, ". "), Count: ""})
+	}
+	if hosts := r.leftOutHosts(); len(hosts) > 0 {
+		bad = true
+		var why []string
+		for _, l := range r.LeftOut {
+			w := strings.TrimRight(l.Reason, ". ")
+			if l.Report != "" {
+				w = l.Report + ": " + w
+			}
+			why = append(why, w)
+		}
+		title := "Original logs not in this report"
+		if r.Interim {
+			title = "Original logs left out of a report"
+		}
+		lines = append(lines, CheckLine{Level: "bad", Icon: "hard-drive", Title: title, Who: strings.Join(hosts, ", "),
+			What: "archive failed its check and was set aside: " + strings.Join(why, "; "), Count: frac(len(hosts))})
+	}
+	switch {
+	case len(r.NoArchive) > 0:
 		lines = append(lines, CheckLine{Level: "warn", Icon: "hard-drive", Title: "Original logs missing", Who: strings.Join(r.NoArchive, ", "), What: "no original logs for this period", Count: frac(len(r.NoArchive))})
-	} else if len(r.Archives) > 0 {
+	case bad:
+	case len(r.Archives) > 0:
 		var size uint64
 		for _, a := range r.Archives {
 			size += a.Bytes
 		}
 		lines = append(lines, CheckLine{Level: "ok", Icon: "hard-drive", Title: "Original logs archived", What: fmt.Sprintf("%s · %s · SHA-256 in manifest", plural(len(r.Archives), "zip"), humanBytes(size)), Count: frac(0)})
-	} else {
+	default:
 		what := "Kept with the scheduled report"
 		if w := r.Waiting; w != nil && w.Dir != "" {
 			what = "Waiting in " + w.Dir + " for the next scheduled report"
@@ -673,7 +699,7 @@ func checklistLink(l CheckLine) string {
 			return "#health/" + first
 		}
 		return "#health"
-	case "Original logs archived", "Original logs missing":
+	case "Original logs archived", "Original logs missing", "Original logs not archived", "Original logs not in this report", "Original logs left out of a report":
 		if first != "" {
 			return "#logs/" + first
 		}

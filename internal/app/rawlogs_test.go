@@ -167,7 +167,7 @@ func TestOriginalLogsExportedEachCollection(t *testing.T) {
 		t.Errorf("status (%v):\n%s", err, b.String())
 	}
 
-	refs, _ := a.bundleLogs(now)
+	refs, _, _ := a.bundleLogs(now)
 	if len(refs) != 1 || len(refs[0].Gaps) != 1 || len(refs[0].Logs) != 1 {
 		t.Fatalf("bundle: %+v", refs)
 	}
@@ -253,7 +253,7 @@ func TestOriginalLogsAfterClockMovedBack(t *testing.T) {
 		t.Errorf("notes: %q", info.Notes)
 	}
 
-	refs, _ := a.bundleLogs(now)
+	refs, _, _ := a.bundleLogs(now)
 	r := report.Build(nil, nil, report.Options{WindowEnd: now, Location: time.UTC, Archives: refs, ArchivesKept: true})
 	dir := filepath.Join(base, "report")
 	if err := r.Write(dir); err != nil {
@@ -289,7 +289,7 @@ func TestArchiveDirElsewhere(t *testing.T) {
 	if len(list) != 1 || list[0].Host != archive.SafeName(collect.LocalHost()) {
 		t.Fatalf("archives in archive_dir: %+v", list)
 	}
-	refs, used := a.bundleLogs(now)
+	refs, used, _ := a.bundleLogs(now)
 	if len(refs) != 2 || len(used) != 2 {
 		t.Errorf("bundled %d archives (%d used), want this computer's and the one left in the data folder", len(refs), len(used))
 	}
@@ -530,9 +530,82 @@ func TestPackFailingAndLostExport(t *testing.T) {
 	if err := a.Status(&b); !errors.As(err, &na) || strings.Contains(b.String(), "NOT ARCHIVED") || !strings.Contains(b.String(), "LOGS INCOMPLETE:  Security.evtx, exported for 2026-10-07T11:00:00Z") {
 		t.Errorf("status (%v):\n%s", err, b.String())
 	}
-	refs, _ := a.bundleLogs(now)
+	refs, _, _ := a.bundleLogs(now)
 	r = report.Build(nil, nil, report.Options{WindowEnd: now, Location: time.UTC, Archives: refs, ArchivesKept: true})
 	if w := strings.Join(r.Health.Warnings, "\n"); !strings.Contains(w, "the original logs are incomplete: Security.evtx") {
 		t.Errorf("report warnings: %s", w)
+	}
+}
+
+// AR7: at a scheduled report, a daily archive that fails its check (here
+// a sender's, damaged) is left out and set aside; the others, its own
+// computer's other day included, go into the report. Status says so and
+// exits 4, the report says why on Overview, Original logs and Audit
+// health, and the next report does not try it again.
+func TestArchiveLeftOutOfReport(t *testing.T) {
+	base := t.TempDir()
+	st, _ := store.Open(filepath.Join(base, "data"))
+	end := time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)
+	now := end.Add(time.Minute)
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportDir: filepath.Join(base, "reports"), ReportEvery: "daily", ReportAt: config.DefaultReportAt, Inbox: filepath.Join(base, "inbox")},
+		Version: "test", Loc: time.UTC, Now: func() time.Time { return now }, LogStates: func() []archive.LogState { return nil }}
+	for _, h := range []string{"WIN11", "WS-07"} {
+		st.AppendEvents(end.Add(-time.Hour), []*event.Event{{Time: end.Add(-time.Hour), Collected: end.Add(-time.Hour), Host: h, OS: "windows",
+			Category: event.CatLogon, Severity: event.SevInfo, Action: "logon", User: "claude", Summary: "claude logged on."}})
+	}
+	pendingLogs(t, a, "WIN11", end)
+	pendingLogs(t, a, "WS-07", end.Add(-24*time.Hour))
+	bad := pendingLogs(t, a, "WS-07", end)
+	os.WriteFile(bad, []byte("damaged"), 0o644)
+
+	dir, err := a.report(st, end, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"logs-WIN11.zip", "logs-WS-07.zip"} {
+		if _, err := os.Stat(filepath.Join(dir, n)); err != nil {
+			t.Errorf("%s not in the report: %v", n, err)
+		}
+	}
+	aside := filepath.Join(filepath.Dir(bad), "set-aside", filepath.Base(bad))
+	if _, err := os.Stat(aside); err != nil {
+		t.Errorf("the bad archive was not set aside: %v", err)
+	}
+	if l, _ := archive.List(a.pendingLogsDir()); len(l) != 0 {
+		t.Errorf("archives still pending: %+v", l)
+	}
+	if len(st.State.LeftOut) != 1 || st.State.LeftOut[0].Report != filepath.Base(dir) || st.State.LeftOut[0].Host != "WS-07" || st.State.LeftOut[0].SetAside != aside {
+		t.Fatalf("left out: %+v", st.State.LeftOut)
+	}
+	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
+	for _, want := range []string{"Original logs not in this report", "Original logs not in the report", "not a readable zip file", "It was set aside in "} {
+		if !strings.Contains(string(html), want) {
+			t.Errorf("the report does not say %q", want)
+		}
+	}
+	if strings.Contains(string(html), "Original logs archived") {
+		t.Error(`the report says "Original logs archived"`)
+	}
+	var b bytes.Buffer
+	var na *NeedsAttention
+	if err := a.Status(&b); !errors.As(err, &na) || !strings.Contains(b.String(), "ORIGINAL LOGS NOT IN REPORT "+filepath.Base(dir)+": WS-07's logs for 2026-10-07 00:00 to 2026-10-08 00:00: not a readable zip file") {
+		t.Errorf("status (%v):\n%s", err, b.String())
+	}
+	// A manual report afterwards says so too.
+	now = now.Add(time.Hour)
+	man, err := a.report(st, now, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if html, _ := os.ReadFile(filepath.Join(man, "report.html")); !strings.Contains(string(html), "Original logs left out of a report") || strings.Contains(string(html), "Original logs archived") {
+		t.Error("the manual report does not say original logs were left out")
+	}
+	// The next scheduled report does not try it again.
+	now = end.Add(24*time.Hour + time.Minute)
+	if _, err := a.report(st, end.Add(24*time.Hour), true); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.State.LeftOut) != 1 {
+		t.Errorf("left out again: %+v", st.State.LeftOut)
 	}
 }

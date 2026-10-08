@@ -438,9 +438,10 @@ func (a *App) waitingLogs(st *store.Store) *report.WaitingLogs {
 }
 
 // bundleLogs combines, for each computer, the pending daily archives that
-// end by end into one zip for the report folder. It returns them and the
-// daily archives used, to remove once the report is written.
-func (a *App) bundleLogs(end time.Time) (refs []report.ArchiveRef, used []string) {
+// end by end into one zip for the report folder. It returns them, the
+// daily archives used, to remove once the report is written, and those
+// left out because they failed their check, to set aside then (AR7).
+func (a *App) bundleLogs(end time.Time) (refs []report.ArchiveRef, used []string, left []report.LeftOutLogs) {
 	var list []archive.Stored
 	for _, dir := range a.waitingLogsDirs() {
 		l, err := archive.List(dir)
@@ -472,6 +473,15 @@ func (a *App) bundleLogs(end time.Time) (refs []report.ArchiveRef, used []string
 			os.Remove(tmp)
 			continue
 		}
+		// One that fails its check does not hold back the others (AR7).
+		for _, l := range b.LeftOut {
+			a.logf("ORIGINAL LOGS NOT IN REPORT: %s (%s): %s; it is set aside", filepath.Base(l.Path), days[0].Host, l.Reason)
+			left = append(left, report.LeftOutLogs{Host: days[0].Host, From: l.From, To: l.To, Reason: l.Reason,
+				SetAside: setAsidePath(l.Path)})
+		}
+		if b.SHA256 == "" {
+			continue // none of them passed
+		}
 		fi, _ := os.Stat(tmp)
 		var size uint64
 		if fi != nil {
@@ -479,10 +489,53 @@ func (a *App) bundleLogs(end time.Time) (refs []report.ArchiveRef, used []string
 		}
 		refs = append(refs, report.ArchiveRef{Host: days[0].Host, From: b.From, To: b.To, Name: name, Path: tmp, Bytes: size, SHA256: b.SHA256, Gaps: b.Gaps, Logs: b.Logs, Notes: b.Notes, Changed: b.Changed})
 		for _, d := range days {
-			used = append(used, d.Path)
+			if !leftOut(b.LeftOut, d.Path) {
+				used = append(used, d.Path)
+			}
 		}
 	}
-	return refs, used
+	return refs, used, left
+}
+
+func leftOut(l []archive.LeftOut, path string) bool {
+	for _, x := range l {
+		if x.Path == path {
+			return true
+		}
+	}
+	return false
+}
+
+// setAsidePath is where a daily archive that failed its check is moved:
+// a set-aside folder next to it, which is not read as pending (AR7).
+func setAsidePath(path string) string {
+	return filepath.Join(filepath.Dir(path), "set-aside", filepath.Base(path))
+}
+
+// setAside moves a daily archive left out of a report aside; it says
+// where it is.
+func setAside(path string) string {
+	dst := setAsidePath(path)
+	err := os.MkdirAll(filepath.Dir(dst), 0o750)
+	if err == nil {
+		err = os.Rename(path, dst)
+	}
+	if err != nil {
+		return path + " (it could not be moved: " + err.Error() + ")"
+	}
+	return dst
+}
+
+// recentLeftOut are the archives left out of scheduled reports in the
+// last logGapsKept, for a manual report (AR7).
+func (a *App) recentLeftOut(st *store.Store) []report.LeftOutLogs {
+	var out []report.LeftOutLogs
+	for _, l := range st.State.LeftOut {
+		if a.now().Sub(l.Noted) < logGapsKept {
+			out = append(out, report.LeftOutLogs{Report: l.Report, Host: l.Host, From: l.From, To: l.To, Reason: l.Reason, SetAside: l.SetAside})
+		}
+	}
+	return out
 }
 
 // open opens the data folder and takes the lock.
@@ -1070,9 +1123,10 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 	// computer's are saved up to the end of the period first.
 	var logs []report.ArchiveRef
 	var usedLogs []string
+	var leftLogs []report.LeftOutLogs
 	if advance {
 		a.packLogs(st, true)
-		logs, usedLogs = a.bundleLogs(generated)
+		logs, usedLogs, leftLogs = a.bundleLogs(generated)
 		defer func() {
 			for _, l := range logs {
 				os.Remove(l.Path) // left only if the report was not written
@@ -1082,6 +1136,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 	var waiting *report.WaitingLogs
 	if !advance {
 		waiting = a.waitingLogs(st)
+		leftLogs = a.recentLeftOut(st)
 	}
 	context := contextEvents(all, events, windowStart)
 	runsSince := prevGen
@@ -1125,7 +1180,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		KnownDevices: st.State.KnownDevices, CheckSets: sets,
 		Context: context, Baseline: st.State.Baseline, BaselineHosts: st.State.BaselineHosts,
 		WorkingHours: a.Cfg.WorkingHours,
-		Archives:     logs, ArchivesKept: advance, Waiting: waiting, OwnRuns: ownRuns, PackFailing: packFailing(st),
+		Archives:     logs, ArchivesKept: advance, Waiting: waiting, OwnRuns: ownRuns, PackFailing: packFailing(st), LeftOut: leftLogs,
 		Systems: systemsFor(st, prevEnd, a.Cfg.Inbox != ""), Collector: a.Cfg.Inbox != "",
 		LANWarnings:   append(lanWarnings(st, prevGen, generated, a.loc()), a.inboxWarnings()...),
 		RetentionDays: a.Cfg.RetentionDays,
@@ -1147,6 +1202,20 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		return "", err
 	}
 	if advance {
+		var keptLeft []store.LeftOutLogs
+		for _, l := range st.State.LeftOut {
+			if generated.Sub(l.Noted) < logGapsKept {
+				keptLeft = append(keptLeft, l)
+			}
+		}
+		for _, l := range leftLogs {
+			// Out of the pending folder, so the next report does not try
+			// it again, and kept for the administrator (AR7).
+			src := filepath.Join(filepath.Dir(filepath.Dir(l.SetAside)), filepath.Base(l.SetAside))
+			keptLeft = append(keptLeft, store.LeftOutLogs{Report: filepath.Base(dir), Host: l.Host, From: l.From, To: l.To,
+				Reason: l.Reason, SetAside: setAside(src), Noted: generated})
+		}
+		st.State.LeftOut = keptLeft
 		for _, p := range usedLogs {
 			if err := os.Remove(p); err != nil {
 				a.logf("removing a daily log archive now in the report: %v", err)

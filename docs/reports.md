@@ -302,8 +302,9 @@ written since the last export, while the logs still hold them: with
 `wevtutil epl` on Windows, and by copying the new lines on Linux. A log
 the collection read nothing new from is left out of that export. Once a
 day the exports are packed into one archive: the `.evtx` files of each
-export are kept as they are (named after the export's start time, e.g.
-`Security_20261005-0415Z.evtx`, when there is more than one), and the
+export are kept as they are (named after the export's start time, to
+the second, e.g. `Security_20261005-041503Z.evtx`, when there is more
+than one; two exports started in the same second get `-2`, `-3` …), and the
 text logs are joined in order into one file. The first export reaches
 back a week. So a log that rolls over within the day (one Windows Update
 run can fill a 20 MB Security log in an hour) loses only what it
@@ -346,6 +347,24 @@ example), the exports are kept and packing is tried again at every run.
 Until it works, `blackbox status` says **ORIGINAL LOGS NOT ARCHIVED
 since <time>: <reason>** and exits with code 4, the status icon notifies
 once, and reports say so on Original logs and in Audit health.
+
+**An archive that fails its check.** Every daily archive is checked
+against the hashes in its `archive.json` before it goes into a
+scheduled report. One that fails (damaged, or changed after it was
+written) is left out of that report and the others still go in: it is
+moved to a `set-aside` folder next to it (e.g.
+`archives\WIN11\set-aside\WIN11_…zip`) and not tried again. For 14 days
+`blackbox status` says **ORIGINAL LOGS NOT IN REPORT <report>: <the
+computer>'s logs for <from> to <to>: <reason>** with where the file is,
+and exits with code 4; the status icon notifies once. The report says so
+on the Overview ("Original logs not in this report", never "Original
+logs archived"), on Original logs and in Audit health, and a manual
+report made afterwards says so too. The events are in the report; the
+original copy of that period is only in the file set aside. Archives
+written before 0.21 could hold two `.evtx` files under one name (two
+exports started in the same minute); they are still read, in order, and
+rewritten with the second one renamed (`…-2.evtx`, contents and hashes
+unchanged, noted in `archive.json`) when they are bundled.
 
 **After the clock is moved back.** Exports follow on from the end of the
 last one. If the clock was ahead and is then corrected, what is written

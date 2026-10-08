@@ -76,12 +76,12 @@ func TestPiecesPacked(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := readZip(t, path)
-	for _, name := range []string{"Security_20261005-1200Z.evtx", "Security_20261005-1230Z.evtx"} {
+	for _, name := range []string{"Security_20261005-120000Z.evtx", "Security_20261005-123000Z.evtx"} {
 		if _, ok := got[name]; !ok {
 			t.Errorf("missing %s (has %v)", name, got)
 		}
 	}
-	if _, ok := got["Security_20261005-1215Z.evtx"]; ok {
+	if _, ok := got["Security_20261005-121500Z.evtx"]; ok {
 		t.Error("a log with nothing new was exported")
 	}
 	if got["audit.log"] != "line 12:00\nline 12:15\nline 12:30\n" {
@@ -113,6 +113,38 @@ func TestCoverageAndFailedPiece(t *testing.T) {
 	}
 	if p, _ := Pieces(dir); len(p) != 0 {
 		t.Error("a failed export was kept as a piece")
+	}
+}
+
+// AR7: two pieces started in the same minute (a run at 13:17 and the
+// next at 13:17) are packed under different names, and the archive
+// verifies.
+func TestPiecesSameMinute(t *testing.T) {
+	dir := t.TempDir()
+	pdir := filepath.Join(dir, "pieces")
+	t0 := time.Date(2026, 10, 7, 13, 17, 5, 0, time.UTC)
+	for _, d := range []time.Duration{0, 20 * time.Second, 20 * time.Second} {
+		from := t0.Add(d)
+		if _, err := SavePiece(pdir, Info{Host: "WIN11", From: from, To: from.Add(30 * time.Second), Created: from}, fakeExport(false), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pieces, _ := Pieces(pdir)
+	path := filepath.Join(dir, FileName("WIN11", t0, t0.Add(time.Minute)))
+	info, err := Pack(path, "WIN11", "windows", pieces, t0.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(path); err != nil {
+		t.Fatalf("archive of pieces started in the same minute: %v", err)
+	}
+	var names []string
+	for _, f := range info.Files {
+		names = append(names, f.Name)
+	}
+	want := "Security_20261007-131705Z.evtx,audit.log,Security_20261007-131725Z.evtx,Security_20261007-131725Z-2.evtx"
+	if strings.Join(names, ",") != want {
+		t.Errorf("names: %v", names)
 	}
 }
 
@@ -174,10 +206,10 @@ func TestPackLostAndChangedPieces(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := readZip(t, path)
-	if got["Security_20261005-1200Z.evtx"] != "edited" {
+	if got["Security_20261005-120000Z.evtx"] != "edited" {
 		t.Errorf("changed export not packed as found: %v", got)
 	}
-	if _, ok := got["Security_20261005-1215Z.evtx"]; ok {
+	if _, ok := got["Security_20261005-121500Z.evtx"]; ok {
 		t.Error("deleted export in the archive")
 	}
 	if got["audit.log"] != "line 12:00\nline 12:15\n" {
@@ -199,7 +231,7 @@ func TestPackLostAndChangedPieces(t *testing.T) {
 			marked = append(marked, f.Name)
 		}
 	}
-	if strings.Join(marked, ",") != "Security_20261005-1200Z.evtx" {
+	if strings.Join(marked, ",") != "Security_20261005-120000Z.evtx" {
 		t.Errorf("marked changed: %v", marked)
 	}
 	notes := strings.Join(info.Notes, "\n")

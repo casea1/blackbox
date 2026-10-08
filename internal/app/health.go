@@ -62,6 +62,9 @@ type Health struct {
 	// PackFailing is set while the exported original logs cannot be
 	// packed into an archive (AR5).
 	PackFailing *store.PackFailure
+	// LeftOut are archives of original logs left out of a scheduled
+	// report in the last two weeks because they failed their check (AR7).
+	LeftOut []store.LeftOutLogs
 }
 
 // LostLog is one log losing events to rollover.
@@ -191,6 +194,11 @@ func (a *App) Health() (Health, error) {
 	h.LowSpace = lowSpace(a.Cfg.DataDir)
 	h.Blocked = blockedNow(a.Cfg.DataDir, st)
 	h.PackFailing = s.PackFailing
+	for _, l := range s.LeftOut {
+		if now.Sub(l.Noted) < logGapsKept {
+			h.LeftOut = append(h.LeftOut, l)
+		}
+	}
 	if !a.Cfg.MakesReports() {
 		return h, nil
 	}
