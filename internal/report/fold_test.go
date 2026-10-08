@@ -9,7 +9,8 @@ import (
 )
 
 // UX1: the console host Windows starts for each elevated console program
-// is folded into that program's row; identical records within a minute
+// is folded into that program's row; one started by a program that is not
+// a row (other than sshd) stays a row (DUP3); identical records within a minute
 // are one row "×N" with every time kept; failed logons stay one row each.
 func TestFoldedRows(t *testing.T) {
 	at := time.Date(2026, 10, 7, 13, 0, 0, 0, time.UTC)
@@ -17,6 +18,9 @@ func TestFoldedRows(t *testing.T) {
 		e := &event.Event{Time: at.Add(time.Duration(sec) * time.Second), Host: "W11", OS: "windows", Category: event.CatPrivileged, Severity: event.SevLow,
 			Action: "elevated_process", User: `W11\claude`, Process: proc, Summary: `W11\claude ran with administrator rights: ` + proc}
 		e.AddDetail("Started by", parent)
+		if strings.HasSuffix(proc, "conhost.exe") {
+			e.Command = `\??\C:\WINDOWS\system32\conhost.exe 0xffffffff -ForceV1`
+		}
 		return e
 	}
 	refused := func(sec int) *event.Event {
@@ -32,7 +36,7 @@ func TestFoldedRows(t *testing.T) {
 	events := []*event.Event{
 		elevated(0, cmd, `C:\Windows\explorer.exe`), elevated(0, con, cmd),
 		elevated(5, cmd, `C:\Windows\explorer.exe`), elevated(5, con, cmd),
-		elevated(9, con, `C:\Tools\other.exe`), // its parent has no row, nor its user a logon: left out (UX1b)
+		elevated(9, con, `C:\Tools\other.exe`), // its parent has no row and is not sshd: a row (DUP3)
 	}
 	for i := 0; i < 7; i++ {
 		events = append(events, refused(i))
@@ -51,8 +55,8 @@ func TestFoldedRows(t *testing.T) {
 		}
 		return
 	}
-	if n := count(func(e *event.Event) bool { return strings.HasSuffix(e.Process, "conhost.exe") }); n != 0 {
-		t.Errorf("%d console host rows, want none", n)
+	if n := count(func(e *event.Event) bool { return strings.HasSuffix(e.Process, "conhost.exe") }); n != 1 {
+		t.Errorf("%d console host rows, want the one started by other.exe", n)
 	}
 	// The two cmd.exe runs are identical too: one row ×2, with both
 	// console windows in its details.
@@ -80,7 +84,7 @@ func TestFoldedRows(t *testing.T) {
 	if n := count(func(e *event.Event) bool { return e.Action == "logon_failed" }); n != 3 {
 		t.Errorf("failed logons folded: %d rows", n)
 	}
-	if r.Folded != 2+1+6+1 {
+	if r.Folded != 2+1+6 {
 		t.Errorf("folded %d", r.Folded)
 	}
 	// The row shows ×7.

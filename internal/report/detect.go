@@ -307,21 +307,39 @@ func highLabel(action string, n int) string {
 		return l[1]
 	}
 	if l, ok := highNames[action]; ok {
-		return l
+		if n == 1 || l[1] == "" {
+			return l[0]
+		}
+		return l[1]
 	}
 	return strings.ReplaceAll(action, "_", " ")
 }
 
-// highNames name High events with no entry in actionLabels.
-var highNames = map[string]string{
-	"log_cleared": "log cleared", "log_tampered": "log altered or deleted", "audit_disabled": "auditing switched off",
-	"audit_stopped": "auditing stopped", "audit_tamper_command": "command that can clear logs or weaken auditing",
-	"blackbox_files_changed": "Blackbox's files changed", "blackbox_config_changed": "Blackbox's settings changed",
-	"blackbox_stopped": "Blackbox stopped", "blackbox_uninstalled": "Blackbox removed", "blackbox_files_removed": "Blackbox's files removed",
-	"av_disabled": "anti-malware switched off", "av_exclusion_added": "anti-malware exclusion added", "firewall_stopped": "firewall stopped",
-	"setuid_set": "program made to run as its owner (setuid)", "sudoers_changed": "sudo rules changed", "admin_group_added": "added to a privileged group",
-	"usb_new": "USB device never seen before", "logon_config_changed": "logon settings changed", "log_full": "Security log full",
-	"time_changed": "clock moved back", "usb_network_adapter": "USB network adapter connected", "malware_detected": "malware detected",
+// highNames name High events with no entry in actionLabels, singular and
+// plural ("3 logs cleared"); no plural when the name has no count noun.
+var highNames = map[string][2]string{
+	"log_cleared":             {"log cleared", "logs cleared"},
+	"log_tampered":            {"log altered or deleted", "logs altered or deleted"},
+	"audit_disabled":          {"auditing switched off"},
+	"audit_stopped":           {"auditing stopped"},
+	"audit_tamper_command":    {"command that can clear logs or weaken auditing", "commands that can clear logs or weaken auditing"},
+	"blackbox_files_changed":  {"Blackbox's files changed"},
+	"blackbox_config_changed": {"Blackbox's settings changed"},
+	"blackbox_stopped":        {"Blackbox stopped"},
+	"blackbox_uninstalled":    {"Blackbox removed"},
+	"blackbox_files_removed":  {"Blackbox's files removed"},
+	"av_disabled":             {"anti-malware switched off"},
+	"av_exclusion_added":      {"anti-malware exclusion added", "anti-malware exclusions added"},
+	"firewall_stopped":        {"firewall stopped"},
+	"setuid_set":              {"program made to run as its owner (setuid)", "programs made to run as their owner (setuid)"},
+	"sudoers_changed":         {"sudo rules changed"},
+	"admin_group_added":       {"added to a privileged group"},
+	"usb_new":                 {"USB device never seen before", "USB devices never seen before"},
+	"logon_config_changed":    {"logon settings changed"},
+	"log_full":                {"Security log full"},
+	"time_changed":            {"clock moved back"},
+	"usb_network_adapter":     {"USB network adapter connected", "USB network adapters connected"},
+	"malware_detected":        {"malware detected"},
 }
 
 // clockMovedLimit is how far a person must move the clock to be a
