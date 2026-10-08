@@ -239,7 +239,7 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []Che
 			parts = append(parts, fmt.Sprintf("%s: %s overwritten", name, plural(int(otherBy[k]), "event")))
 		}
 		lines = append(lines, CheckLine{Level: "warn", Icon: "circle-check", Title: "Other logs overwrote events", Who: strings.Join(otherOn, ", "),
-			What: strings.Join(parts, "; ") + " · see Audit health", Href: "#health", Count: frac(len(otherOn))})
+			What: strings.Join(parts, "; ") + " · see Audit health", Href: "#health/@logs", Count: frac(len(otherOn))})
 	}
 
 	if n := len(r.MissingReports); n > 0 {
@@ -248,7 +248,7 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []Che
 			names = append(names, m.Name)
 		}
 		lines = append(lines, CheckLine{Level: "bad", Icon: "history", Title: "Earlier reports missing or changed",
-			What: plural(n, "scheduled report") + " deleted, moved or changed, with the only copy of their original logs: " + strings.Join(names, ", "), Href: "#health", Count: ""})
+			What: plural(n, "scheduled report") + " deleted, moved or changed, with the only copy of their original logs: " + strings.Join(names, ", "), Href: "#logs", Count: ""})
 	}
 	if l, ok := r.avCheckLine(r.avRows()); ok {
 		lines = append(lines, l)
