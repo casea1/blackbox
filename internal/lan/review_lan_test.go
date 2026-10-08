@@ -77,6 +77,9 @@ func fakeArchive(t *testing.T, dir, name, host string, from, to time.Time, conte
 	t.Helper()
 	src := filepath.Join(t.TempDir(), "Security.evtx")
 	os.WriteFile(src, []byte(content), 0o644)
+	// A fixed time: the zip records it, so two archives of the same content
+	// are the same bytes even when made either side of a second.
+	os.Chtimes(src, from, from)
 	p := filepath.Join(dir, name)
 	if _, err := archive.Write(p, archive.Info{Host: host, OS: "windows", From: from, To: to, Created: to},
 		[]archive.Source{{Name: "Security.evtx", Source: "Security", Path: src}}); err != nil {
