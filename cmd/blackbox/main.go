@@ -51,6 +51,8 @@ Usage:
   blackbox senders approve|rekey|forget NAME ["why"]
                                  Take a new computer held for approval, take a computer's new key,
                                  or drop its key (the next one it signs with is taken)
+  blackbox senders add-ssh-key ACCOUNT "KEY LINE"
+                                 Let a Linux sender deliver over SFTP as ACCOUNT (Windows collector)
   blackbox gaps                  List batches that never arrived (collector)
   blackbox gaps accept NAME FROM-TO "why"
                                  Accept that those batches will not arrive
@@ -326,6 +328,16 @@ environment variable (so it is not shown in the process list).
 	}
 	ans.Role = install.RoleOf(ans.SendTo, ans.Inbox)
 	ans = install.ForRole(ans)
+	if runtime.GOOS == "linux" && install.IsSFTP(ans.SendTo) {
+		// From the command line (the wizard asks for itself): the host key
+		// is shown and accepted, and the collector's administrator adds
+		// this computer's key with the command printed.
+		mp, err := install.SetupSFTP(ans.SendTo, nil, printf)
+		if err != nil {
+			return err
+		}
+		ans.SendTo = mp
+	}
 	if err := validateInstall(ans); err != nil {
 		return err
 	}
@@ -740,6 +752,21 @@ func cmdSenders(args []string) error {
 	a := newApp(cfg, nil)
 	if len(rest) == 0 {
 		return a.Senders(os.Stdout)
+	}
+	if rest[0] == "add-ssh-key" {
+		// A Linux sender's SFTP key, printed by its setup.
+		if len(rest) != 3 {
+			return errors.New("usage: blackbox senders add-ssh-key ACCOUNT \"KEY LINE\"   (the line a Linux sender's setup printed)")
+		}
+		if err := install.RequireAdmin(); err != nil {
+			return err
+		}
+		f, err := install.AddSSHKey(rest[1], rest[2])
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Added the key for %s to %s. That computer can now deliver over SFTP.\n", rest[1], f)
+		return nil
 	}
 	act := lan.KeyAction(rest[0])
 	if len(rest) < 2 || (act != lan.Approve && act != lan.Rekey && act != lan.Forget) {

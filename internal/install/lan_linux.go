@@ -199,8 +199,9 @@ func removeInbox(logf func(string, ...any)) {}
 // credentials file and the mount unit; for a folder (such as a VirtualBox
 // shared folder), nothing beyond a reachability check.
 func prepareSendTo(opt Options, dataDir string, logf func(string, ...any)) error {
+	removeSFTPMountUnless(opt.SendTo, logf)
 	if !config.IsShare(opt.SendTo) {
-		removeSendTo(func(string, ...any) {})
+		removeSMB(func(string, ...any) {})
 		if err := TryInbox(opt.SendTo, "", ""); err != nil {
 			logf("Sends to:            %s (NOT reachable now: %v; data waits here until it is)", opt.SendTo, err)
 		} else {
@@ -243,8 +244,15 @@ func prepareSendTo(opt Options, dataDir string, logf func(string, ...any)) error
 	return nil
 }
 
-// removeSendTo removes the share mount and its credentials.
+// removeSendTo removes the share mount and its credentials, and the SFTP
+// mount unit setup wrote.
 func removeSendTo(logf func(string, ...any)) {
+	removeSFTPMountUnless("", logf)
+	removeSMB(logf)
+}
+
+// removeSMB removes the share mount and its credentials.
+func removeSMB(logf func(string, ...any)) {
 	if _, err := os.Stat(mountUnitFile()); err == nil {
 		exec.Command("systemctl", "stop", mountUnitName()).Run()
 		os.Remove(mountUnitFile())
