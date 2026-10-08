@@ -350,7 +350,7 @@ func (a *App) Status(w io.Writer) error {
 		a.writeSystems(w, st, now)
 		// Batches that never arrived, unless accepted (L13b).
 		for _, snd := range st.State.Senders {
-			if len(snd.Missing) > 0 {
+			if len(snd.Missing) > 0 && !retiredSender(st, snd) {
 				attention = append(attention, "batches from "+snd.Host+" never arrived (see blackbox gaps)")
 			}
 		}
@@ -424,6 +424,9 @@ func (a *App) writeSystems(w io.Writer, st *store.Store, now time.Time) {
 		fmt.Fprintf(w, "  %-20s %-8s %-18s %-18s %s\n", s.Name, s.OS, stampLocal(s.LastRun, a.loc()), recv, note)
 	}
 	for _, snd := range st.State.Senders {
+		if retiredSender(st, snd) {
+			continue
+		}
 		for _, g := range snd.Missing {
 			fmt.Fprintf(w, "  Missing: batches %d-%d from %s never arrived (noticed %s). %s\n",
 				g.From, g.To, snd.Host, stampLocal(g.Noted, a.loc()), ResendAdvice(snd, g))
@@ -602,12 +605,21 @@ func unreadableText(bad []string) string {
 	return fmt.Sprintf("%d files in the inbox can't be read: %s", len(bad), strings.Join(bad, ", "))
 }
 
+// retiredSender says whether a sender's computer was removed with
+// "blackbox systems remove" and has delivered nothing since: it is then
+// left out of every sender warning (SEC1d). A delivery after the removal
+// brings it back (store.NoteSystem).
+func retiredSender(st *store.Store, snd *store.SenderState) bool {
+	sys := st.State.Systems[store.SystemKey(snd.Host)]
+	return sys != nil && !sys.Removed.IsZero() && !snd.LastReceived.After(sys.Removed)
+}
+
 // sharedSenders are the senders that delivered into the inbox itself (not
 // their own folder) in the last 30 days (SEC1).
 func sharedSenders(st *store.Store, now time.Time) []string {
 	var out []string
 	for _, snd := range st.State.Senders {
-		if snd.Folder == "" && snd.LastReceived.After(now.AddDate(0, 0, -30)) {
+		if snd.Folder == "" && snd.LastReceived.After(now.AddDate(0, 0, -30)) && !retiredSender(st, snd) {
 			out = append(out, snd.Host)
 		}
 	}

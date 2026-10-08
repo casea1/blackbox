@@ -327,8 +327,12 @@ func ReportProblemText(m report.MissingReport, loc *time.Location) string {
 			what += ": " + m.What
 		}
 	}
-	return fmt.Sprintf("The scheduled report for %s to %s (%s) %s. It held the only copy of that period's original logs. If this was on purpose: blackbox reports accept %s \"why\"",
-		stampLocal(m.From, loc), stampLocal(m.To, loc), m.Name, what, m.Name)
+	held := ""
+	if m.LostLogs() {
+		held = " It held the only copy of that period's original logs." // LEDGER4b
+	}
+	return fmt.Sprintf("The scheduled report for %s to %s (%s) %s.%s If this was on purpose: blackbox reports accept %s \"why\"",
+		stampLocal(m.From, loc), stampLocal(m.To, loc), m.Name, what, held, m.Name)
 }
 
 // Reports lists the scheduled reports in the ledger and their state.

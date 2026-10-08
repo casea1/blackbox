@@ -1582,6 +1582,9 @@ func lanWarnings(st *store.Store, since, until time.Time, loc *time.Location) []
 	sort.Strings(ids)
 	for _, id := range ids {
 		s := st.State.Senders[id]
+		if retiredSender(st, s) {
+			continue // SEC1d
+		}
 		for _, g := range s.Missing {
 			if g.Noted.After(since) && !g.Noted.After(until) {
 				what := fmt.Sprintf("batch %d", g.From)
