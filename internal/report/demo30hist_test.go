@@ -72,7 +72,7 @@ func demo30History(start time.Time, systems []demo30System, evs []*event.Event, 
 		}
 	}
 	for _, e := range evs {
-		for kind, key := range seenKeys(e) {
+		for kind, key := range (&Report{}).seenKeys(e) {
 			if strings.HasPrefix(key, "jlee|SRV-DC02") {
 				continue
 			}

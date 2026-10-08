@@ -192,6 +192,7 @@ func TestEverySettingRoundTrips(t *testing.T) {
 		{"exclude_users", "svc_backup, CORP\\svc_scan", func(c *Config) string { return strings.Join(c.ExcludeUsers, ", ") }},
 		{"exclude_processes", "scan.exe", func(c *Config) string { return strings.Join(c.ExcludeProcesses, ", ") }},
 		{"working_hours", "Mon-Fri 06:00-18:00", func(c *Config) string { return c.WorkingHours.Text }},
+		{"people_aliases", "jlee=j.lee,jlee2; mchen=m.chen", func(c *Config) string { return FormatPeopleAliases(c.PeopleAliases) }},
 		{"send_to", abs("inbox #2"), func(c *Config) string { return c.SendTo }},
 		{"inbox", abs("inbox"), func(c *Config) string { return c.Inbox }},
 		{"share_user", "bbsend", func(c *Config) string { return c.ShareUser }},

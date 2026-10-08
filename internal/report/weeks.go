@@ -100,9 +100,15 @@ func weekShort(w trendWeek, loc *time.Location) string {
 // first) and of cur, the report being made (it may be manual), by
 // calendar week up to the week cur ends in, at most shownWeeks. Weeks
 // before the first one with data are left out.
-func buildWeeks(hist []Summary, cur Summary, loc *time.Location) []trendWeek {
+//
+// pk keys people (r.pkey: people_aliases applied, so an earlier report's
+// "j.lee" counts as jlee); nil keeps the keys the summaries have.
+func buildWeeks(hist []Summary, cur Summary, loc *time.Location, pk func(string) string) []trendWeek {
 	if loc == nil {
 		loc = time.Local
+	}
+	if pk == nil {
+		pk = func(k string) string { return k }
 	}
 	end := cur.WindowEnd
 	last := weekStart(end.Add(-time.Second), loc)
@@ -161,8 +167,9 @@ func buildWeeks(hist []Summary, cur Summary, loc *time.Location) []trendWeek {
 				w.HasPeople = true
 			}
 			for _, p := range d.People {
-				q := w.People[p.Key]
-				q.Key = p.Key
+				k := pk(p.Key)
+				q := w.People[k]
+				q.Key = k
 				if q.Name == "" {
 					q.Name = p.Name
 				}
@@ -171,7 +178,7 @@ func buildWeeks(hist []Summary, cur Summary, loc *time.Location) []trendWeek {
 				q.Failed += p.Failed
 				q.AfterHours += p.AfterHours
 				q.Detections += p.Detections
-				w.People[p.Key] = q
+				w.People[k] = q
 			}
 		}
 		for _, d := range s.Detections {
@@ -190,7 +197,7 @@ func buildWeeks(hist []Summary, cur Summary, loc *time.Location) []trendWeek {
 		if w := at(s.WindowEnd.Add(-time.Second)); w != nil {
 			w.Lost += int(s.Lost)
 			if s.Seen != nil {
-				w.Seen.addAll(s.Seen.set())
+				w.Seen.addAll(s.Seen.setKeyed(pk))
 				w.SeenKept = true
 			}
 			if s.Metrics[MSTIGChecked] > 0 && !s.WindowEnd.Before(w.MatchingAt) {
@@ -329,7 +336,7 @@ func (r *Report) weeks() []trendWeek {
 		for _, f := range r.Findings {
 			cur.Detections = append(cur.Detections, Detection{Severity: string(f.Severity), Time: f.Time, Host: f.Host, Title: f.Title})
 		}
-		r.weeksCache = buildWeeks(r.History, cur, r.Location)
+		r.weeksCache = buildWeeks(r.History, cur, r.Location, r.pkey)
 	}
 	return r.weeksCache
 }
@@ -403,17 +410,7 @@ func (r *Report) metricTrend(metric string) trend {
 	return t
 }
 
-// nowLabel is how the current week is named: "so far this week (3 of 7
-// days)", or "last week" once it has ended.
-func (r *Report) nowLabel() string {
-	ws := r.weeks()
-	c := ws[len(ws)-1]
-	if !c.Current {
-		return "in the week to " + c.End.Add(-time.Second).In(r.Location).Format("2 Jan")
-	}
-	return fmt.Sprintf("so far this week (%s of 7 days)", trimFloat(c.Days))
-}
-
+// trimFloat is a number of days for "3 of 7 days": "2.5", "3", "under 1".
 func trimFloat(d float64) string {
 	switch {
 	case d < 1:

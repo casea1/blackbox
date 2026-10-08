@@ -762,7 +762,7 @@ func (r *Report) seenWhat() map[string]string {
 	by := map[string]*did{}
 	for _, row := range r.rows {
 		e := row.Event
-		for kind, key := range seenKeys(e) {
+		for kind, key := range r.seenKeys(e) {
 			switch kind {
 			case SeenUSB:
 				if e.Target != "" {

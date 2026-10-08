@@ -46,15 +46,16 @@ func TestAntivirusTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
-	for _, want := range []string{`id="h-av"`, "Definitions dated", "<b>2 Oct 2026 12:00</b>", "Antivirus definitions", "Defender definitions dated 2 Oct 2026 12:00 (3 days old)"} {
+	for _, want := range []string{`id="h-av"`, "Definitions dated", "<b>2 Oct 2026 12:00</b>", "Antivirus definitions", "Defender, definitions 2 Oct"} {
 		if !strings.Contains(string(html), want) {
 			t.Errorf("report lacks %q", want)
 		}
 	}
 }
 
-// Stat cards above an event table filter it; the People heatmap links its
-// hours; All reports is a link in the sidebar's report card.
+// An event page is Search with its kind preset (UI-R1, its stat cards
+// are gone); the People heatmap links its hours; All reports is a link in
+// the sidebar's report card.
 func TestClickableCardsAndHeatmap(t *testing.T) {
 	end := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	at := time.Date(2026, 10, 5, 9, 30, 0, 0, time.UTC) // a Monday
@@ -70,11 +71,10 @@ func TestClickableCardsAndHeatmap(t *testing.T) {
 	b, _ := os.ReadFile(filepath.Join(dir, "report.html"))
 	html := string(b)
 	for _, want := range []string{
-		`data-cardfilter="kind=Locked&#43;out"`, // Accounts locked out filters the Failed logons table
-		`data-cardfilter=""`,                    // the total card shows everything
-		`href="#search?page=failed&amp;sort=src"`,
+		`<div class="sq" data-sq="failed">`, // Failed logons is Search with its kind preset
+		`data-kindclear`,
 		`href="../index.html" title="Every report in this folder, newest first"`,
-		`href="#search?user=admin_jd&amp;when=%40slot%3A0-9"`, // a heatmap hour opens Search
+		`href="#search?host=WS-07&amp;user=admin_jd"`, // a person's lane on People opens Search
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("report lacks %s", want)

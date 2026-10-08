@@ -29,6 +29,7 @@ func TestTrendsNewThisWeek(t *testing.T) {
 	want := []string{
 		"Admin: svc-backup on SRV-DC01", "Admin: labadmin on WS-LAB-01",
 		"Account: labadmin on WS-LAB-01",
+		"Logon path: administrator → WS-LAB-01 (Console)",
 		"Logon path: jlee → SRV-DC02 (Remote Desktop)",
 		"Source address: 203.0.113.50 (412 SSH failures on ubu-web01)",
 		"Service: UpdaterSvc on SRV-APP01",
@@ -230,5 +231,44 @@ func TestIndexFromLedger(t *testing.T) {
 	// The newest month first, the manual report above the day it is in.
 	if strings.Index(h, "October 2026") > strings.Index(h, "September 2026") {
 		t.Error("order")
+	}
+}
+
+// Trends' links to Search use only the parameters Search reads (app.js,
+// docs/reports.md) and event pages that exist.
+func TestTrendsSearchLinks(t *testing.T) {
+	r, _ := demo30(t)
+	dir := t.TempDir()
+	if err := r.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "report.html"))
+	view := between2(string(b), `<section class="view" data-view="trends">`, `</section>`)
+	ok := map[string]bool{"page": true, "user": true, "host": true, "role": true, "sev": true, "when": true, "at": true, "span": true, "text": true,
+		"event": true, "sub": true, "flag": true, "not": true, "group": true, "sort": true, "preset": true}
+	pages := map[string]bool{}
+	for _, p := range eventPages() {
+		pages[p.ID] = true
+	}
+	n := 0
+	for _, part := range strings.Split(view, `href="#search?`)[1:] {
+		q, _, _ := strings.Cut(part, `"`)
+		q = strings.ReplaceAll(q, "&amp;", "&")
+		n++
+		for _, kv := range strings.Split(q, "&") {
+			k, v, _ := strings.Cut(kv, "=")
+			if !ok[k] {
+				t.Errorf("Search has no %q parameter: #search?%s", k, q)
+			}
+			if k == "page" && !pages[v] {
+				t.Errorf("no event page %q: #search?%s", v, q)
+			}
+			if k == "when" && v != "%40after" && v != "@after" {
+				t.Errorf("when=%s: #search?%s", v, q)
+			}
+		}
+	}
+	if n < 5 {
+		t.Errorf("only %d Search links on Trends", n)
 	}
 }

@@ -28,6 +28,7 @@ file:
 | `scap_max_age_days` | `30` | A scan older than this is marked stale |
 | `keep_sent_days` | `14` | On a sender: days to keep batches after delivering them, so `blackbox send --resend FROM-TO` can fill a gap the collector reports. `0` deletes them once delivered, which ends resends: `blackbox config set` says so Kept batches are a few MB and only in the data folder |
 | `working_hours` | *(blank)* | When administrator activity is expected, e.g. `Mon-Fri 06:00-18:00`, `Daily 07:00-19:00` or `Mon-Fri 22:00-06:00` (a night shift). Activity outside these hours is shown under [Detections](reports.md#detections). Blank turns the check off |
+| `people_aliases` | *(blank)* | Account names spelled differently on different systems that are one person, shown as one row on the report's [People](reports.md#people) page, e.g. `jlee=j.lee,jlee2; mchen=m.chen` (`name=other,other`, groups separated by `;`). Names are matched without case and without a system or domain prefix. Accounts with the same name on several systems are always one row; this is only for other spellings. The merged spellings are marked in the person's "Accounts named" table |
 | `data_dir` | platform default | Where reports and collected events are stored |
 | `send_to` | *(blank)* | The collector's inbox this computer sends to: `\\COLLECTOR\BlackboxInbox` (Windows), `//COLLECTOR/BlackboxInbox` or `/media/sf_BlackboxInbox` (Linux). When set, this computer makes no reports of its own. See [lan.md](lan.md) |
 | `share_user` | *(blank)* | Account on the collector for `send_to`. The password is never in this file: it is stored encrypted (Windows) or root-only (Linux) by the installer |
@@ -41,6 +42,7 @@ blackbox config set report_dir D:\AuditReports
 blackbox config set report_every daily
 blackbox config set report_at "Thursday 06:00"
 blackbox config set working_hours "Mon-Fri 06:00-18:00"
+blackbox config set people_aliases "jlee=j.lee,jlee2"
 ```
 
 `blackbox config set` checks the value before saving it:
@@ -49,8 +51,8 @@ blackbox config set working_hours "Mon-Fri 06:00-18:00"
   writable, and on Linux lets the service write there.
 - For `send_to` and `inbox`, it sets up the share, mount or inbox folder.
   A new share password is read from `BLACKBOX_SHARE_PASSWORD`.
-- `none` clears a LAN setting, `exclude_users`, `exclude_processes` or
-  `working_hours` ("Cleared exclude_users.").
+- `none` clears a LAN setting, `exclude_users`, `exclude_processes`,
+  `working_hours` or `people_aliases` ("Cleared exclude_users.").
 - `retention_days` (any value but 0) asks you to confirm by typing `yes`;
   in a script, add `--yes`. The prompt says what is deleted, that the
   period comes from the site's records schedule (ask your ISSM), not

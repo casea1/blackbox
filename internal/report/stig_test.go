@@ -54,8 +54,8 @@ func TestAdviceNotSTIG(t *testing.T) {
 	if got := strings.Join(facts, " "); !strings.Contains(got, "Gaps=0") || !strings.Contains(got, "Blackbox's advice=1") {
 		t.Errorf("facts: %s", got)
 	}
-	for _, k := range r.overview(nil).KPIs {
-		if k.Label == "Audit health" && k.Value != "1 / 1" {
+	for _, k := range r.overview(nil).Strip {
+		if k.Label == "Audit settings" && k.Value != "1 / 1" {
 			t.Errorf("overview Audit health %q: advice counted against the STIG", k.Value)
 		}
 	}

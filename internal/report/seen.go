@@ -98,6 +98,31 @@ func (s *Seen) set() seenSet {
 	return out
 }
 
+// setKeyed is set with each person (the first part of an active or logon
+// path key) keyed by pk: people_aliases applied to an earlier report's
+// keys, so they match the People page.
+func (s *Seen) setKeyed(pk func(string) string) seenSet {
+	out := s.set()
+	if pk == nil {
+		return out
+	}
+	for _, kind := range []string{SeenActive, SeenPath} {
+		keys := out[kind]
+		if keys == nil {
+			continue
+		}
+		out[kind] = map[string]bool{}
+		for k := range keys {
+			p, rest, ok := strings.Cut(k, "|")
+			if ok {
+				k = pk(p) + "|" + rest
+			}
+			out[kind][k] = true
+		}
+	}
+	return out
+}
+
 // seenOf makes a Seen of a set, sorted, each list at most maxSeen.
 func seenOf(set seenSet) *Seen {
 	list := func(kind string) []string {
@@ -148,7 +173,7 @@ func (r *Report) seenNow() seenSet {
 		}
 	}
 	for _, row := range r.rows {
-		for kind, key := range seenKeys(row.Event) {
+		for kind, key := range r.seenKeys(row.Event) {
 			s.add(kind, key)
 		}
 	}
@@ -156,13 +181,14 @@ func (r *Report) seenNow() seenSet {
 	return s
 }
 
-// seenKeys are the keys one event adds to what a report saw.
-func seenKeys(e *event.Event) map[string]string {
+// seenKeys are the keys one event adds to what a report saw. People are
+// keyed as on the People page (r.pkey, people_aliases applied).
+func (r *Report) seenKeys(e *event.Event) map[string]string {
 	out := map[string]string{}
-	if person(e.User) && !strings.HasPrefix(personKey(e.User), "(") {
-		out[SeenActive] = personKey(e.User) + "|" + e.Host
+	if pk := r.pkey(e.User); person(e.User) && !strings.HasPrefix(pk, "(") {
+		out[SeenActive] = pk + "|" + e.Host
 		if e.Category == event.CatLogon && (e.Action == "logon" || e.Action == "ssh_accepted" || e.Action == "admin_logon") {
-			out[SeenPath] = personKey(e.User) + "|" + e.Host + "|" + logonHow(e)
+			out[SeenPath] = pk + "|" + e.Host + "|" + logonHow(e)
 		}
 	}
 	if ip := sourceAddr(e.SourceIP); ip != "" {
@@ -236,7 +262,7 @@ func (r *Report) seenHistory() []seenSet {
 			out = append(out, nil)
 			continue
 		}
-		out = append(out, s.Seen.set())
+		out = append(out, s.Seen.setKeyed(r.pkey))
 	}
 	return out
 }
@@ -269,7 +295,7 @@ func (s SeenBefore) Text() string {
 
 // seenBefore is SeenBefore for one event.
 func (r *Report) seenBefore(e *event.Event) SeenBefore {
-	keys := seenKeys(e)
+	keys := r.seenKeys(e)
 	var sb SeenBefore
 	switch {
 	case keys[SeenActive] != "":

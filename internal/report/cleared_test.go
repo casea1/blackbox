@@ -26,8 +26,11 @@ func TestClearedLogNamed(t *testing.T) {
 	runs := []*store.Run{{Time: end.Add(-time.Hour), Host: "WIN-498EC8UMUEL"}, {Time: end.Add(-time.Hour), Host: "WS-07"}}
 	r := Build(events, runs, Options{Location: time.UTC, WindowStart: end.Add(-24 * time.Hour), WindowEnd: end, Generated: end})
 	o := r.overview(nil)
-	if !strings.Contains(o.AlertDetail, "WIN-498EC8UMUEL: PowerShell log cleared") || !strings.Contains(o.AlertDetail, "WS-07: Security log cleared") {
-		t.Errorf("alert: %s", o.AlertDetail)
+	if o.Review != "Needs review: 2 high detections" || !strings.Contains(o.ReviewDetail, "PowerShell") || !strings.Contains(o.ReviewDetail, "Security") {
+		t.Errorf("review: %s / %s", o.Review, o.ReviewDetail)
+	}
+	if len(o.Attention) == 0 || o.Attention[0].Title != "Logs cleared" || o.Attention[0].Reason != "Security and PowerShell logs" || o.Attention[0].Count != "WIN-498EC8UMUEL, WS-07" {
+		t.Errorf("needs attention: %+v", o.Attention)
 	}
 	for _, c := range o.Checks {
 		if c.Title == "Logs cleared" && c.What != "Security and PowerShell logs cleared" {
