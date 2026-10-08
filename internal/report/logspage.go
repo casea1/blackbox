@@ -151,6 +151,7 @@ func (r *Report) logsPage() *LogsPage {
 			notes     []string
 			gaps      []string
 			lostFiles []string // exports deleted or unreadable before packing (AR5)
+			clears    []string // the log cleared, by whom and when (LC2b)
 			changed   bool     // an export changed before packing (AR6)
 		}
 		logs := map[string]*agg{}
@@ -207,6 +208,10 @@ func (r *Report) logsPage() *LogsPage {
 						span := gp.From.In(r.Location).Format("2 Jan 15:04") + " – " + gp.To.In(r.Location).Format("2 Jan 15:04")
 						if gp.Reason != "" {
 							g.lostFiles = append(g.lostFiles, span)
+							continue
+						}
+						if gp.Cleared != "" {
+							g.clears = append(g.clears, gp.Cleared)
 							continue
 						}
 						g.gaps = append(g.gaps, span)
@@ -275,6 +280,11 @@ func (r *Report) logsPage() *LogsPage {
 			}
 			if len(g.gaps) > 0 {
 				parts = append(parts, "Missing "+strings.Join(g.gaps, ", ")+": overwritten before it was saved")
+				lf.NoteBad = true
+			}
+			if len(g.clears) > 0 {
+				// Cleared, not overwritten (LC2b): see Detections.
+				parts = append(parts, "Cleared "+strings.Join(g.clears, ", ")+": its events from before then are not in this archive (see Detections)")
 				lf.NoteBad = true
 			}
 			switch {

@@ -163,7 +163,7 @@ func TestOriginalLogsExportedEachCollection(t *testing.T) {
 	var b bytes.Buffer
 	var na *NeedsAttention
 	if err := a.Status(&b); !errors.As(err, &na) || !strings.Contains(b.String(), "LOGS INCOMPLETE:") ||
-		!strings.Contains(b.String(), audit+" had already overwritten its events from 2026-10-05 12:30 to 2026-10-05 12:40") {
+		!strings.Contains(b.String(), "the audit log had already overwritten its events from 2026-10-05 12:30 to 2026-10-05 12:40") {
 		t.Errorf("status (%v):\n%s", err, b.String())
 	}
 
@@ -381,9 +381,11 @@ func TestManualReportAfterRunDropsExportWrites(t *testing.T) {
 	}
 }
 
-// LC2: a log cleared since the last export reaches back only to the clear,
-// and its file keeps its size: that is not a gap in the saved original
-// logs, and status gives no "LOGS INCOMPLETE" or size advice for it.
+// LC2, LC2b: a log cleared since the last export reaches back only to the
+// clear, and its file keeps its size: that part is labelled as the clear
+// (who and when), not an overwrite, and status gives no "LOGS INCOMPLETE"
+// or size advice for it. Also when the log stayed empty at the run that
+// read the clear, and its first record came only by the next run.
 func TestClearedLogIsNotAGap(t *testing.T) {
 	base := t.TempDir()
 	day := time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC)
@@ -397,28 +399,64 @@ func TestClearedLogIsNotAGap(t *testing.T) {
 	states = []archive.LogState{{Source: audit, Oldest: at(5, 0), Wraps: true}}
 	a.saveLogPiece(st, auditRun(now, 1, 0, at(5, 0)), time.Time{})
 
-	// 06:17: cleared. The log now starts at 06:17 and is still "full".
+	// 06:17: cleared by claude. The log now starts at 06:17 and is still
+	// "full".
 	prev := now
 	now = at(6, 30)
 	states = []archive.LogState{{Source: audit, Oldest: at(6, 17), Wraps: true}}
 	run := auditRun(now, 1, 0, at(6, 17))
-	run.Channels[0].Cleared = true
+	run.Channels[0].Cleared, run.Channels[0].ClearedAt, run.Channels[0].ClearedBy = true, at(6, 16), "claude"
 	st.AppendRun(run)
 	a.saveLogPiece(st, run, prev)
-	if len(st.State.LogGaps) != 0 {
-		t.Errorf("a clear recorded as a gap: %+v", st.State.LogGaps)
+	if len(st.State.LogGaps) != 1 || st.State.LogGaps[0].Cleared == nil || st.State.LogGaps[0].Cleared.By != "claude" {
+		t.Errorf("the clear is not labelled: %+v", st.State.LogGaps)
 	}
 	pieces, _ := archive.Pieces(a.piecesDir())
-	for _, p := range pieces {
-		if len(p.Info.Gaps) != 0 {
-			t.Errorf("piece gaps: %+v", p.Info.Gaps)
-		}
+	if g := pieces[len(pieces)-1].Info.Gaps; len(g) != 1 || g[0].Cleared != "by claude at 2026-10-07 06:16Z" {
+		t.Errorf("piece gaps: %+v", g)
 	}
 	st.Save()
 	var b bytes.Buffer
-	a.Status(&b)
-	if strings.Contains(b.String(), "LOGS INCOMPLETE") || strings.Contains(b.String(), "Make it at least") || strings.Contains(b.String(), "EVENTS LOST") {
-		t.Errorf("status:\n%s", b.String())
+	if err := a.Status(&b); err != nil || strings.Contains(b.String(), "LOGS INCOMPLETE") || strings.Contains(b.String(), "larger") || strings.Contains(b.String(), "EVENTS LOST") ||
+		!strings.Contains(b.String(), "Log cleared:      "+audit+" was cleared by claude at 2026-10-07 06:16Z") {
+		t.Errorf("status (%v):\n%s", err, b.String())
+	}
+
+	// LC2b: cleared at 06:40; the run at 06:45 reads the clear while the
+	// log is empty; its first record comes at 06:50, so the gap shows at
+	// the 07:00 run, which has no clear in it.
+	st.State.LogGaps = nil
+	prev, now = now, at(6, 45)
+	states = []archive.LogState{{Source: audit, Wraps: true}}
+	run = auditRun(now, 0, 0, time.Time{})
+	run.Channels[0].Cleared, run.Channels[0].ClearedAt, run.Channels[0].ClearedBy = true, at(6, 40), "claude"
+	st.AppendRun(run)
+	a.saveLogPiece(st, run, prev)
+	if len(st.State.LogGaps) != 0 {
+		t.Fatalf("gap with the log empty: %+v", st.State.LogGaps)
+	}
+	prev, now = now, at(7, 0)
+	states = []archive.LogState{{Source: audit, Oldest: at(6, 50), Wraps: true}}
+	run = auditRun(now, 1, 0, at(6, 50))
+	st.AppendRun(run)
+	a.saveLogPiece(st, run, prev)
+	if len(st.State.LogGaps) != 1 || st.State.LogGaps[0].Cleared == nil || !st.State.LogGaps[0].Cleared.At.Equal(at(6, 40)) {
+		t.Fatalf("the clear read a run earlier is not labelled: %+v", st.State.LogGaps)
+	}
+	// Once a record since the clear has been exported, a gap is an
+	// overwrite again.
+	st.State.LogGaps = nil
+	prev, now = now, at(7, 15)
+	states = []archive.LogState{{Source: audit, Oldest: at(6, 50), Wraps: true}}
+	a.saveLogPiece(st, auditRun(now, 1, 0, at(7, 5)), prev)
+	if len(st.State.Clears) != 0 {
+		t.Errorf("clear kept after a record since it was exported: %+v", st.State.Clears)
+	}
+	prev, now = now, at(7, 30)
+	states = []archive.LogState{{Source: audit, Oldest: at(7, 20), Wraps: true}}
+	a.saveLogPiece(st, auditRun(now, 1, 0, at(7, 20)), prev)
+	if len(st.State.LogGaps) != 1 || st.State.LogGaps[0].Cleared != nil {
+		t.Errorf("an overwrite after the clear: %+v", st.State.LogGaps)
 	}
 }
 
@@ -447,7 +485,7 @@ func TestLogsIncompleteSplit(t *testing.T) {
 	st.Save()
 	b.Reset()
 	var na *NeedsAttention
-	if err := a.Status(&b); !errors.As(err, &na) || !strings.Contains(b.String(), "LOGS INCOMPLETE:  Security had already overwritten its events from 2026-10-07 05:17 to 2026-10-07 06:17") ||
+	if err := a.Status(&b); !errors.As(err, &na) || !strings.Contains(b.String(), "LOGS INCOMPLETE:  the Security log had already overwritten its events from 2026-10-07 05:17 to 2026-10-07 06:17") ||
 		!strings.Contains(b.String(), "or collect more often") {
 		t.Errorf("status (%v):\n%s", err, b.String())
 	}
@@ -534,5 +572,34 @@ func TestPackFailingAndLostExport(t *testing.T) {
 	r = report.Build(nil, nil, report.Options{WindowEnd: now, Location: time.UTC, Archives: refs, ArchivesKept: true})
 	if w := strings.Join(r.Health.Warnings, "\n"); !strings.Contains(w, "the original logs are incomplete: Security.evtx") {
 		t.Errorf("report warnings: %s", w)
+	}
+}
+
+// LOG1c: one "Logs incomplete" line per log, with the count, the latest
+// part and the same advice as its "Events lost" line: a log too small for
+// how fast it is written is not told to collect more often.
+func TestLogsIncompleteOneLinePerLog(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	at := time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC)
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportEvery: "weekly", CollectEvery: time.Hour}, Loc: time.UTC,
+		Now: func() time.Time { return at.Add(8 * time.Hour) }}
+	ps := "Microsoft-Windows-PowerShell/Operational"
+	for i := 0; i < 6; i++ {
+		from := at.Add(time.Duration(i) * time.Hour)
+		st.State.LogGaps = append(st.State.LogGaps, store.LogGap{Source: ps, From: from, To: from.Add(10 * time.Minute), Noted: from})
+		// The log turned over after holding 9 minutes of events.
+		st.AppendRun(&store.Run{Time: from.Add(10 * time.Minute), Host: collect.LocalHost(), Channels: []store.ChannelRun{{Channel: ps, MaxSizeBytes: 15 << 20,
+			OldestTime: from.Add(time.Minute), Gap: &store.Gap{Lost: 100}}}})
+	}
+	st.Save()
+	var b bytes.Buffer
+	a.Status(&b)
+	out := b.String()
+	if n := strings.Count(out, "Logs incomplete:"); n != 1 {
+		t.Errorf("%d lines for one log:\n%s", n, out)
+	}
+	if !strings.Contains(out, "the PowerShell log had already overwritten some of its events 6 times when the original logs were saved, since 2026-10-07 09:00; the latest from 2026-10-07 14:00 to 2026-10-07 14:10.") ||
+		!strings.Contains(out, "collecting more often would not help") || strings.Contains(out, "collect more often (blackbox config set") {
+		t.Errorf("status:\n%s", out)
 	}
 }
