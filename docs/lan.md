@@ -189,8 +189,12 @@ Senders sign in to the share with an account on the collector. Choose how:
 3. Enter the account and its password. On a domain, leave the account
    blank.
 
-The password is stored encrypted with Windows DPAPI, and only
-Administrators and SYSTEM can read it. Setup checks the share straight
+The password is stored encrypted with Windows DPAPI in machine scope (so
+the collection task, which runs as SYSTEM, can use it), in the data
+folder, which only Administrators and SYSTEM can read. Machine scope means
+any administrator on the sender can recover it, so use an account that is
+only a member of **Blackbox Senders** (see
+[security.md](security.md#lan-security)). Setup checks the share straight
 away.
 
 **On each Ubuntu or AlmaLinux sender:**
