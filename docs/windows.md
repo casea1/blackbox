@@ -34,6 +34,8 @@ Blackbox-Setup-<version>.exe install --yes --site "Lab 3" --report-dir D:\AuditR
 
 (From cmd.exe, put `start /wait` in front so the prompt waits for it.)
 
+A run with `--yes` keeps the earlier answers you don't repeat. Giving only `--inbox` (or only `--send-to`) replaces the computer's earlier role: a former sender given `--inbox` becomes a collector.
+
 For a PC with Linux VMs, or a LAN, see [Several computers](lan.md): the
 other choices ask where the inbox is, or where to send.
 
