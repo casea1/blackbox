@@ -23,3 +23,29 @@ func TestNarrowAndPeriodWording(t *testing.T) {
 		t.Error("no phone-width rules")
 	}
 }
+
+// UI20: at phone width the Overview tiles wrap their text instead of
+// cutting it, and the manual banner's label sits above its text.
+func TestPhoneTilesAndBanner(t *testing.T) {
+	at := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	r := Build(nil, nil, Options{Location: time.UTC, WindowStart: at.Add(-24 * time.Hour), WindowEnd: at, Generated: at, Interim: true})
+	var b strings.Builder
+	if err := r.WriteHTML(&b, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), `<div class="alertbar interim lab">`) {
+		t.Error("the manual banner is not laid out label above text")
+	}
+	i := strings.Index(styleCSS, "@media (max-width:640px)")
+	if i < 0 {
+		t.Fatal("no phone-width rules")
+	}
+	phone := styleCSS[i:]
+	phone = phone[:strings.Index(phone, "\n}")]
+	for _, want := range []string{".ks{white-space:normal}", ".ec .l{white-space:normal;overflow:visible}", ".ec .d{grid-column:1/3;grid-row:auto;white-space:normal",
+		".alertbar.lab{display:grid;grid-template-columns:18px minmax(0,1fr)", ".alertbar.lab>svg{grid-row:span 2"} {
+		if !strings.Contains(phone, want) {
+			t.Errorf("phone-width rules lack %s", want)
+		}
+	}
+}

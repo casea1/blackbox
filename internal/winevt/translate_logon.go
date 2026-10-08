@@ -158,16 +158,22 @@ func (t *Translator) explicitCreds(r *Raw) *event.Event {
 	if strings.EqualFold(r.Get("TargetUserName"), r.Get("SubjectUserName")) {
 		return nil // same account (e.g. mapping a drive with saved creds)
 	}
-	proc := r.Get("ProcessName")
+	proc := strings.TrimSpace(r.Get("ProcessName"))
+	if proc == "-" {
+		proc = "" // none recorded
+	}
 	e := &event.Event{Category: event.CatPrivileged, Severity: event.SevMedium, Action: "explicit_credentials",
 		User: subj, Target: target, Process: proc, SourceIP: cleanIP(r.Get("IpAddress"))}
 	e.Summary = fmt.Sprintf("%s used the credentials of %s", subj, target)
 	// svchost/lsass/consent are the Windows plumbing behind RunAs and UAC
-	// prompts, not the program the person meant to run.
-	switch base := strings.ToLower(filepath.Base(winPath(proc))); base {
-	case "", "svchost.exe", "lsass.exe", "consent.exe":
-	default:
-		e.Summary += " to run " + filepath.Base(winPath(proc))
+	// prompts, not the program the person meant to run. With no process
+	// name there is nothing to name ("to run ." before, UI21).
+	if proc != "" {
+		switch name := filepath.Base(winPath(proc)); strings.ToLower(name) {
+		case "", ".", "/", "svchost.exe", "lsass.exe", "consent.exe":
+		default:
+			e.Summary += " to run " + name
+		}
 	}
 	if srv := r.Get("TargetServerName"); srv != "" && !strings.EqualFold(srv, "localhost") {
 		e.Summary += " against " + srv

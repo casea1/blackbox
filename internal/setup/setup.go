@@ -54,17 +54,24 @@ func Run(o Options) (Result, error) {
 		return res, err
 	}
 
-	logf("")
-	logf("Checking audit settings against the DISA STIG (nothing will be changed)...")
-	for _, l := range CheckLines(check.Run(), false) {
-		logf("%s", l)
-	}
-
 	cfg, err := config.Load(config.DefaultPath())
 	if err != nil {
 		return res, err
 	}
 	a := &app.App{Cfg: cfg, Version: o.Version, Logf: logf, QuietSend: true}
+
+	logf("")
+	logf("Checking audit settings against the DISA STIG (nothing will be changed)...")
+	// Kept, with the inventory, as a collection keeps it (UX10b): an
+	// upgrade makes no report, and status and the next report would
+	// otherwise show the earlier version's check.
+	rs, err := a.RecordCheck()
+	if err != nil {
+		logf("Note: the check could not be kept for reports: %v", err)
+	}
+	for _, l := range CheckLines(rs, false) {
+		logf("%s", l)
+	}
 	if cfg.MakesReports() {
 		res.ReportsDir = cfg.ReportsDir()
 		// Made now, not with the first report: an upgrade makes no report,

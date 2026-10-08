@@ -108,6 +108,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          # A failure's message becomes an annotation, readable without the log.
+          trap { Write-Output "::error title=$($MyInvocation.MyCommand.Name)::$($_.Exception.Message) (line $($_.InvocationInfo.ScriptLineNumber))"; break }
           go run ./scripts/winres -version 0.0.0-ci
           go build -ldflags "-X main.version=0.0.0-ci" -o blackbox.exe ./cmd/blackbox
           # The setup window builds every page, and the status icon its menu.
@@ -267,6 +269,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          # A failure's message becomes an annotation, readable without the log.
+          trap { Write-Output "::error title=$($MyInvocation.MyCommand.Name)::$($_.Exception.Message) (line $($_.InvocationInfo.ScriptLineNumber))"; break }
           # As the release builds it (unsigned here): the console program
           # travels inside the setup file and is installed unchanged (A10).
           $env:VERSION = "0.0.2-ci"

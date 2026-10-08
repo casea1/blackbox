@@ -22,15 +22,23 @@ func Who() string {
 // under (source Blackbox).
 const EventID = 100
 
+// ReportEventID is the Application log event ID for a scheduled report
+// found missing or changed (LEDGER4), a warning.
+const ReportEventID = 101
+
 // systemLog writes msg to the Application log, source Blackbox, with
 // eventcreate (part of Windows), which registers the source the first time.
-func systemLog(msg string, warn bool) error {
+func systemLog(msg string, warn bool) error { return eventLog(msg, warn, EventID) }
+
+func reportLog(msg string) error { return eventLog(msg, true, ReportEventID) }
+
+func eventLog(msg string, warn bool, id int) error {
 	typ := "INFORMATION"
 	if warn {
 		typ = "WARNING"
 	}
 	out, err := hidden.Command("eventcreate.exe", "/L", "APPLICATION", "/SO", "Blackbox", "/T", typ,
-		"/ID", fmt.Sprint(EventID), "/D", msg).CombinedOutput()
+		"/ID", fmt.Sprint(id), "/D", msg).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("eventcreate: %v: %s", err, strings.TrimSpace(string(out)))
 	}

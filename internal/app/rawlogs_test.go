@@ -418,7 +418,7 @@ func TestClearedLogIsNotAGap(t *testing.T) {
 	st.Save()
 	var b bytes.Buffer
 	if err := a.Status(&b); err != nil || strings.Contains(b.String(), "LOGS INCOMPLETE") || strings.Contains(b.String(), "larger") || strings.Contains(b.String(), "EVENTS LOST") ||
-		!strings.Contains(b.String(), "Log cleared:      "+audit+" was cleared by claude at 2026-10-07 06:16Z") {
+		!strings.Contains(b.String(), "Log cleared:      "+audit+" was cleared by claude at 2026-10-07 06:16;") { // local (TZ1)
 		t.Errorf("status (%v):\n%s", err, b.String())
 	}
 
@@ -572,7 +572,7 @@ func TestPackFailingAndLostExport(t *testing.T) {
 		t.Fatalf("gaps: %+v", st.State.LogGaps)
 	}
 	b.Reset()
-	if err := a.Status(&b); !errors.As(err, &na) || strings.Contains(b.String(), "NOT ARCHIVED") || !strings.Contains(b.String(), "LOGS INCOMPLETE:  Security.evtx, exported for 2026-10-07T11:00:00Z") {
+	if err := a.Status(&b); !errors.As(err, &na) || strings.Contains(b.String(), "NOT ARCHIVED") || !strings.Contains(b.String(), "LOGS INCOMPLETE:  Security.evtx, exported for 2026-10-07 11:00 to 2026-10-07 12:00,") { // local (TZ1)
 		t.Errorf("status (%v):\n%s", err, b.String())
 	}
 	refs, _, _ := a.bundleLogs(now)
@@ -608,6 +608,12 @@ func TestLogsIncompleteOneLinePerLog(t *testing.T) {
 	if !strings.Contains(out, "the PowerShell log had already overwritten some of its events 6 times when the original logs were saved, since 2026-10-07 09:00; the latest from 2026-10-07 14:00 to 2026-10-07 14:10.") ||
 		!strings.Contains(out, "collecting more often would not help") || strings.Contains(out, "collect more often (blackbox config set") {
 		t.Errorf("status:\n%s", out)
+	}
+	// STAT2: the size advice is given once, on the Logs incomplete line;
+	// the Events lost line points to it. The size is a stable step.
+	if n := strings.Count(out, "Make it at least"); n != 1 || strings.Count(out, "wevtutil") != 1 ||
+		!strings.Contains(out, "Make it at least 1 GB") || !strings.Contains(out, "What to do: see Logs incomplete above.") {
+		t.Errorf("advice %d times:\n%s", n, out)
 	}
 }
 

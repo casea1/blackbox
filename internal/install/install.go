@@ -40,14 +40,14 @@ func writeConfig(path string, opt Options, crlf bool) error {
 		// The template's "archive_dir =" and "scap_results =" lines have
 		// no value, so the settings below are set in it like in an
 		// existing file (a first install lost a chosen archive_dir).
-	} else if changed, err := config.Refresh(path); err != nil {
+	} else if kept, err := config.Refresh(path, opt.Version); err != nil {
 		// An upgrade: this version's comments, the same settings
 		// (CONF1b). Not refreshed is not a failure.
 		if opt.Logf != nil {
 			opt.Logf("settings file comments not updated: %v", err)
 		}
-	} else if changed && opt.Logf != nil {
-		opt.Logf("settings file comments updated to this version (the earlier file is %s.old)", filepath.Base(path))
+	} else if kept != "" && opt.Logf != nil {
+		opt.Logf("settings file comments updated to this version (the earlier file is %s)", filepath.Base(kept))
 	}
 	return config.SetValues(path, [][2]string{
 		{"site_name", opt.Site},

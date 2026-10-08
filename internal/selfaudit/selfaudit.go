@@ -42,6 +42,14 @@ func Record(dataDir string, c event.SelfChange, now time.Time) error {
 	return errors.Join(errs...)
 }
 
+// ReportProblem writes msg, a scheduled report found missing or changed,
+// to the operating system's log as a warning (LEDGER4): the Application
+// log, source Blackbox, event 101, on Windows; syslog/the journal, ident
+// blackbox, on Linux. The report held the only copy of its period's
+// original logs, so a copy of the finding outside Blackbox's folder
+// survives someone removing that too.
+func ReportProblem(msg string) error { return reportLog(msg) }
+
 // Changes compares settings before and after a write and returns one
 // SelfChange per setting that changed.
 func Changes(before, after map[string]string, program string) []event.SelfChange {

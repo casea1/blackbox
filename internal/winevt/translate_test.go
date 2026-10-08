@@ -539,3 +539,38 @@ func TestOpenSSHAccepted(t *testing.T) {
 		t.Errorf("other sshd line kept: %s", e.Summary)
 	}
 }
+
+// UI21: PowerShell run with -File reads "ran the script <path>"; a
+// -File after -Command is part of the command.
+func TestPowerShellScriptSummary(t *testing.T) {
+	tr := NewTranslator()
+	for cmd, want := range map[string]string{
+		`powershell.exe -ep bypass -file C:\Scripts\backup.ps1`:            `mallory ran the script C:\Scripts\backup.ps1 with administrator rights (PowerShell).`,
+		`"powershell.exe" -NoProfile -File "C:\My Scripts\a b.ps1" -Force`: `mallory ran the script C:\My Scripts\a b.ps1 with administrator rights (PowerShell).`,
+		`powershell.exe -w hidden -ep bypass -noni -f C:\x.ps1`:            `mallory ran the script C:\x.ps1 hidden from view and around the script policy: powershell.exe -w hidden -ep bypass -noni -f C:\x.ps1`,
+		`powershell.exe -Command Get-Content -File C:\notes.txt`:           `mallory ran with administrator rights: powershell.exe -Command Get-Content -File C:\notes.txt`,
+		`powershell.exe -NoProfile -Command Get-Service`:                   `mallory ran with administrator rights: powershell.exe -NoProfile -Command Get-Service`,
+	} {
+		e := tr.Translate(elevatedRun(cmd))
+		if e == nil || e.Summary != want {
+			t.Errorf("%s:\n got %v\nwant %s", cmd, e, want)
+		}
+	}
+}
+
+// UI21: a 4648 with no process name leaves out "to run".
+func TestExplicitCredsNoProcess(t *testing.T) {
+	tr := NewTranslator()
+	for _, proc := range []string{"", "-"} {
+		e := tr.Translate(sec(4648, map[string]string{"SubjectUserSid": "S-1-5-21-1-2-3-1001", "SubjectUserName": "jsmith", "SubjectDomainName": "WS-07",
+			"TargetUserName": "admin_jd", "TargetDomainName": "WS-07", "ProcessName": proc}))
+		if e == nil || strings.Contains(e.Summary, "to run") || e.Summary != "jsmith used the credentials of admin_jd (RunAs / alternate credentials)." {
+			t.Errorf("%q: %v", proc, e)
+		}
+	}
+	e := tr.Translate(sec(4648, map[string]string{"SubjectUserSid": "S-1-5-21-1-2-3-1001", "SubjectUserName": "jsmith", "SubjectDomainName": "WS-07",
+		"TargetUserName": "admin_jd", "TargetDomainName": "WS-07", "ProcessName": `C:\Windows\System32\mmc.exe`}))
+	if e == nil || !strings.Contains(e.Summary, " to run mmc.exe ") {
+		t.Errorf("with a process: %v", e)
+	}
+}

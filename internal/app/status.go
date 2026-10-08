@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"sort"
@@ -17,6 +18,7 @@ import (
 	"github.com/casea1/blackbox/internal/install"
 	"github.com/casea1/blackbox/internal/lan"
 	"github.com/casea1/blackbox/internal/rollover"
+	"github.com/casea1/blackbox/internal/selfaudit"
 	"github.com/casea1/blackbox/internal/share"
 	"github.com/casea1/blackbox/internal/store"
 )
@@ -41,11 +43,14 @@ func (a *App) Status(w io.Writer) error {
 	s := st.State
 	host := collect.LocalHost()
 	p := func(label, format string, args ...any) {
-		fmt.Fprintf(w, "  %-17s %s\n", label, fmt.Sprintf(format, args...))
+		// Every time is local (TZ1), including one in a stored note
+		// written in UTC; the zone is given once, at the top.
+		fmt.Fprintf(w, "  %-17s %s\n", label, localStamps(fmt.Sprintf(format, args...), a.loc()))
 	}
 	var attention []string // problems that make "blackbox status" exit 4 (L10)
 
 	fmt.Fprintf(w, "%s %s on %s\n\n", brand.Name, a.Version, host)
+	p("Times:", "%s", zoneText(now, a.loc()))
 	switch a.Cfg.Role() {
 	case "standalone":
 		p("Role:", "standalone (reports on this computer only)")
@@ -115,6 +120,10 @@ func (a *App) Status(w io.Writer) error {
 	}
 	var byLog []*overwrites
 	logIdx := map[string]*overwrites{}
+	// The advice for a log (with a size, often a long command) is given
+	// once: on its "Logs incomplete" line, or else on its "Events lost"
+	// line (STAT2).
+	advised := map[string]bool{}
 	for _, g := range s.LogGaps {
 		// The audit record's gap makes status exit 4; another log's (the
 		// PowerShell log) is its own, lower line, as for lost events
@@ -164,6 +173,7 @@ func (a *App) Status(w io.Writer) error {
 		for _, l := range losses {
 			if store.SystemKey(l.Host) == store.SystemKey(host) && strings.EqualFold(l.Channel, o.source) {
 				fix = l.Advice(true)
+				advised[store.SystemKey(l.Host)+"|"+strings.ToLower(l.Channel)] = true
 				break
 			}
 		}
@@ -184,14 +194,18 @@ func (a *App) Status(w io.Writer) error {
 	}
 	for _, l := range losses {
 		local := store.SystemKey(l.Host) == store.SystemKey(host)
+		text := LostText(l, a.loc(), local)
+		if advised[store.SystemKey(l.Host)+"|"+strings.ToLower(l.Channel)] {
+			text = lostCount(l, a.loc()) + " What to do: see Logs incomplete above."
+		}
 		if rollover.Critical(l.Channel) {
-			p("EVENTS LOST:", "%s", LostText(l, a.loc(), local))
+			p("EVENTS LOST:", "%s", text)
 			attention = append(attention, "events were lost to log rollover") // C6
 			continue
 		}
 		// Another log's loss is its own, lower line (LOG1): it does not
 		// make status exit 4.
-		p("Events lost:", "%s", LostText(l, a.loc(), local))
+		p("Events lost:", "%s", text)
 	}
 	// The clock moved back (T3, T1): a stored time in the future, or a
 	// change noticed since the last report.
@@ -433,8 +447,9 @@ const expectedSend = time.Hour
 const silentAfter = 36 * time.Hour
 
 // RemoveSystem retires a computer: it is no longer listed, or reported as
-// silent. Its past events stay in earlier reports. If it sends again, it
-// is listed again.
+// silent. Its past events stay in earlier reports; the next report shows
+// it as retired, by whom and when (ROLE1b). If it sends again, it is
+// listed again.
 func (a *App) RemoveSystem(name string) error {
 	st, unlock, err := a.open()
 	if err != nil {
@@ -450,7 +465,7 @@ func (a *App) RemoveSystem(name string) error {
 		sort.Strings(names)
 		return fmt.Errorf("no system named %q (known: %s)", name, strings.Join(names, ", "))
 	}
-	s.Removed = a.now()
+	s.Removed, s.RemovedBy = a.now(), selfaudit.Who()
 	return st.Save()
 }
 
@@ -496,8 +511,13 @@ func BlockedText(b *store.Blocked, loc *time.Location) string {
 // than collection, a larger log, with the size. local says whether the
 // log is this computer's.
 func LostText(l LostLog, loc *time.Location, local bool) string {
-	return fmt.Sprintf("%s on %s: %s events overwritten before they could be collected, since %s. %s",
-		rollover.Name(l.Channel), l.Host, commaNum(l.Count), stampLocal(l.Since, loc), l.Advice(local))
+	return lostCount(l, loc) + " " + l.Advice(local)
+}
+
+// lostCount is LostText without the advice.
+func lostCount(l LostLog, loc *time.Location) string {
+	return fmt.Sprintf("%s on %s: %s events overwritten before they could be collected, since %s.",
+		rollover.Name(l.Channel), l.Host, commaNum(l.Count), stampLocal(l.Since, loc))
 }
 
 func commaNum(n uint64) string {
@@ -506,6 +526,38 @@ func commaNum(n uint64) string {
 		s = s[:i] + "," + s[i:]
 	}
 	return s
+}
+
+// utcStamp is a UTC time as Blackbox writes it in notes and gaps:
+// "2026-10-07 16:24Z" or RFC 3339 "2026-10-07T16:24:00Z".
+var utcStamp = regexp.MustCompile(`\b\d{4}-\d\d-\d\d[ T]\d\d:\d\d(:\d\d(\.\d+)?)?Z`)
+
+// localStamps gives the UTC times in text in local time, as status shows
+// every other time (TZ1).
+func localStamps(text string, loc *time.Location) string {
+	return utcStamp.ReplaceAllStringFunc(text, func(m string) string {
+		for _, f := range []string{"2006-01-02 15:04Z", time.RFC3339Nano} {
+			if t, err := time.Parse(f, m); err == nil {
+				return stampLocal(t, loc)
+			}
+		}
+		return m
+	})
+}
+
+// zoneText names the zone status times are in: "local time, EDT
+// (UTC-04:00)", or "local time, UTC".
+func zoneText(now time.Time, loc *time.Location) string {
+	t := now.In(loc)
+	name, off := t.Zone()
+	if off == 0 && (name == "UTC" || name == "GMT" || name == "") {
+		return "local time, UTC"
+	}
+	utc := "UTC" + t.Format("-07:00")
+	if name == "" || strings.HasPrefix(name, "+") || strings.HasPrefix(name, "-") || name == utc {
+		return "local time, " + utc
+	}
+	return "local time, " + name + " (" + utc + ")"
 }
 
 func stampLocal(t time.Time, loc *time.Location) string {

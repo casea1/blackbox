@@ -544,6 +544,10 @@ func (r *Report) checklist(systems []SystemRow, cleared map[string][]*Row) []Che
 }
 
 // detectionCards lists the detections newest first, labelled by day.
+// FoundAtReport labels a detection Blackbox's own check made when the
+// report was made, after its period (UI21).
+const FoundAtReport = "Found when this report was made"
+
 func (r *Report) detectionCards() []DetectionCard {
 	idx := make([]int, len(r.Findings))
 	for i := range idx {
@@ -554,8 +558,13 @@ func (r *Report) detectionCards() []DetectionCard {
 	for _, i := range idx {
 		f := r.Findings[i]
 		t := f.Time.In(r.Location)
-		out = append(out, DetectionCard{Day: t.Format("Mon 2 Jan"), Severity: string(f.Severity), Title: f.Title, Detail: f.Detail,
-			Host: f.Host, Time: t.Format("15:04"), Index: i})
+		c := DetectionCard{Day: t.Format("Mon 2 Jan"), Severity: string(f.Severity), Title: f.Title, Detail: f.Detail,
+			Host: f.Host, Time: t.Format("15:04"), Index: i}
+		if f.Check != "" && !f.Time.Before(r.WindowEnd) {
+			// Found by Blackbox's own check after the period (UI21).
+			c.Day, c.Time = FoundAtReport, ""
+		}
+		out = append(out, c)
 	}
 	return out
 }

@@ -78,9 +78,25 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
   creates the group and, when asked, adds named accounts to it. It never
   creates accounts itself.
 - **Stored credentials.**
-  - Windows: a sender's share password is encrypted with DPAPI, bound to
-    the machine. It is kept in the data folder, which only Administrators
-    and SYSTEM can read.
+  - Windows: a sender's share password is encrypted with DPAPI in
+    **machine scope** (`CRYPTPROTECT_LOCAL_MACHINE`, with a fixed
+    Blackbox-specific entropy value) and kept as `share-credential` in the
+    data folder. Machine scope is needed because the collection task runs
+    as SYSTEM while setup runs as the administrator who installs it; a
+    user-scoped key would tie the password to one of them. What this
+    means (SEC3d):
+    - The encrypted file cannot be decrypted on another computer, so a
+      copied file or backup of it is useless elsewhere.
+    - On this computer, *any* process that can read the file can decrypt
+      it; DPAPI machine scope does not check which account asks. The
+      protection is the file's permissions: the data folder grants access
+      to Administrators and SYSTEM only. Anyone who is already an
+      administrator here can recover the password.
+    - So use a dedicated account for the share, a member of **Blackbox
+      Senders** only, with no other rights on the collector or elsewhere,
+      and change its password if a sender is compromised or retired (run
+      the installer on each sender again to store the new one). In a
+      domain, leave the account blank and nothing is stored.
   - Linux: the password is in `/etc/blackbox/share.cred`, mode 0600, owned
     by root.
   - Neither is ever written to the settings file or shown on screen.

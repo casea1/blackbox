@@ -9,7 +9,9 @@ file:
 - changes take effect at the next collection or report, including one you run now with `blackbox report`
 - an upgrade rewrites the comments to the new version's, keeping every
   setting as it is (CONF1b); the file as it was, with any comments of
-  your own, is kept next to it as `blackbox.conf.old`
+  your own, is kept next to it as `blackbox.conf.old`. A later upgrade
+  never overwrites that file: it keeps its own copy as
+  `blackbox.conf.old.<version>`, named after the version upgraded to (SEC3c)
 
 | Setting | Default | Meaning |
 |---|---|---|

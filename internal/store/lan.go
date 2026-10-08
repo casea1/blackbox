@@ -154,6 +154,7 @@ type System struct {
 	LastRun      time.Time `json:"last_run,omitzero"`      // its latest collection (its own clock)
 	LastReceived time.Time `json:"last_received,omitzero"` // when its data last arrived here
 	Removed      time.Time `json:"removed,omitzero"`       // retired with "blackbox systems remove"
+	RemovedBy    string    `json:"removed_by,omitempty"`   // who ran it (ROLE1b)
 	// Direct is set once its data came from itself (collected here, or
 	// delivered by it): Via then stays empty, even if another computer
 	// also passed its data on (L14).
@@ -183,7 +184,7 @@ func (s *Store) NoteSystem(host, osName, version, via string, lastRun, received,
 		s.State.Systems[k] = sys
 	}
 	if !sys.Removed.IsZero() && (lastRun.After(sys.Removed) || received.After(sys.Removed)) {
-		sys.Removed = time.Time{} // it came back
+		sys.Removed, sys.RemovedBy = time.Time{}, "" // it came back
 	}
 	if osName != "" {
 		sys.OS = osName

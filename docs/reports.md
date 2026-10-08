@@ -281,7 +281,11 @@ High however it is written, including with the program's path in quotes.
 
 **Process starts.** Programs started with administrator rights are
 listed. Programs a standard user starts are not, to keep reports
-readable; their logons and anything they change still are.
+readable; their logons and anything they change still are. PowerShell
+run with `-File` reads "ran the script C:\Scripts\backup.ps1", with the
+full command line in the event's details. A logon with explicit
+credentials (4648) names the program only when Windows recorded one
+(UI21).
 
 **Nothing dropped silently.** A Windows Security-log event Blackbox has
 no translation for is listed on Other security as "Security event <ID>";
@@ -343,7 +347,10 @@ export starts where the last one ended **by position, not by time**
 the last byte of each log file (finishing a file rotated since) and the
 journal's cursor. So a record written in the same second as an export,
 and anything stamped while the clock was set back, are in the next one.
-The times in `piece.json` and `archive.json` are for reading only. A log
+The times in `piece.json` and `archive.json` are for reading only, and
+all in UTC (ending in `Z`), the gaps and each log's coverage included
+(TZ1); `blackbox status` shows times in local time only, and names the
+zone once, on its first line (`Times: local time, EDT (UTC-04:00)`). A log
 the collection read nothing new from is left out of that export. If the
 log no longer holds the records after the last export (it overwrote
 them), they are a gap named by number ("records 172279-172285"); on
@@ -404,7 +411,10 @@ the logs were packed"), and the Original logs page, Audit health and
 the reports; only the original copy of that part is gone. A file whose
 hash no longer matches is packed as it was found, marked `changed` in
 `archive.json`, and the report has a High detection, "Saved original
-log changed before it was archived". On Linux, `blackbox check
+log changed before it was archived". It says it was found by Blackbox's
+own check when it bundled the logs for the report, not by an event: it
+is listed under "Found when this report was made" (after the period),
+and its panels name the system, the log and the file (UI21). On Linux, `blackbox check
 --audit-rules` also watches `/var/lib/blackbox/archive-pieces/` for
 writes by anything but Blackbox, a root script included.
 
@@ -498,7 +508,11 @@ compressed. It depends on how busy the Security log is.
   folder, period and the hash of its manifest), so a scheduled report
   that is deleted, moved or changed afterwards is pointed out until
   someone says why: `blackbox status` says "REPORT MISSING" (or
-  "CHANGED") and exits 4, the status icon notifies once, the next report
+  "CHANGED") and exits 4, the status icon notifies once, the same line is
+  written once per report to the system log (LEDGER4: the Application log,
+  source **Blackbox**, event ID 101, a warning, on Windows; syslog/the
+  journal with the ident `blackbox` on Linux, `journalctl -t blackbox`), so
+  a copy exists outside Blackbox's folder, the next report
   has "Earlier reports missing or changed" on the Overview and in Audit
   health's gaps, and All reports lists it as "Missing: deleted or moved".
   Every run checks that each file the manifest lists is there, at the
@@ -601,7 +615,10 @@ operating-system scan.
 ## Inventory
 
 The **Inventory** page (under Audit) lists what each system is, read with
-its daily settings check by Blackbox 0.13 or later:
+its daily settings check by Blackbox 0.13 or later. Setup also keeps the
+check it shows, with the inventory, at every install and upgrade (UX10b),
+so an upgrade's settings and inventory are in `status` (**Settings
+checked**) and the next report at once, not after the next daily check:
 
 - **The system:** make and model, serial number (from the BIOS on Windows,
   DMI on Linux), BIOS version, operating system, processor and memory, and
@@ -658,7 +675,11 @@ The Overview flags a report as incomplete when:
   between collections is too small for its volume, and collecting more
   often would not help, so the size it needs is given; collecting every 15
   minutes is suggested only to a system that collects less often. The
-  size given is capped at 2 GB, the same as `blackbox check` gives. The
+  size given is rounded up to a power of two (256 MB, 512 MB, 1 GB, 2 GB),
+  so it stays the same from run to run, and capped at 2 GB, the same as
+  `blackbox check` gives. `blackbox status` gives this advice once per log,
+  on its **Logs incomplete** line; its **Events lost** line points there
+  (STAT2). The
   original logs exported at each collection hold what each log had at that
   moment: events written and overwritten between two collections are in no
   export
@@ -685,9 +706,20 @@ check (logon, account management, policy change, privilege use, process
 creation, removable storage, PowerShell logging, log size, reporting, logs
 intact), the gaps with how to fix them, and each system's own settings
 table. Blackbox only reports audit settings; it never changes them.
-The grid takes the page's full width, with short headings (hover one for
-its full name) and the System column always in view; on a narrow screen
-it scrolls sideways and says **more →** until its last column is in view.
+The grid takes the page's full width, with short headings and the System
+column always in view; a key under the grid gives each short heading's
+full name ("Accounts: Account management"), so nothing needs hovering
+(UI19). On a narrow screen the grid scrolls sideways and says **more →**
+until its last column is in view; at 768 pixels the page itself, the
+STIG compliance table included, needs no sideways scrolling.
+
+The report is checked with axe-core for the accessibility rules on
+names and structure (UI19): every filter list (Search, and the filters
+on each event page) has a name; each chart is an image named for what it
+shows, the activity heatmap a named group (its hours are links), and
+icons are hidden from screen readers; Inventory's rows open with a
+button; each menu has its own name; headings never skip a level; and on
+the narrow icon menu each page's name is still read out.
 Systems that match on every check are folded under **Show the N systems
 that match on every check**, so the sections below stay in reach; a bar
 at the top of the page links to each section (the grid, Gaps, Antivirus,
@@ -767,6 +799,9 @@ their counts, and a timeline with times of day for a short period.
   history.
 - **A manual report** says so in a banner on the Overview, and in a
   "Manual" chip by the title on every other page.
+- **On a phone** (390 pixels wide) the page never scrolls sideways: the
+  Overview's tiles wrap their text instead of cutting it, and the manual
+  banner puts its label above its text (UI20).
 - **SSH logons on Windows** show the address they came from: the 4624
   Windows writes for an OpenSSH sign-in has none, so Blackbox reads the
   OpenSSH server's log (`OpenSSH/Operational`) and joins sshd's

@@ -71,7 +71,7 @@ var activityKinds = []struct{ Label, Page string }{
 }
 
 func (r *Report) systemsPage() *SystemsPage {
-	if len(r.SystemRows) == 0 {
+	if len(r.SystemRows) == 0 && len(r.Retired) == 0 {
 		return nil
 	}
 	sp := &SystemsPage{Count: len(r.SystemRows), LAN: r.IsLAN()}
@@ -111,13 +111,22 @@ func (r *Report) systemsPage() *SystemsPage {
 	}
 	cards := r.detectionCards()
 
-	groups := []*SystemGroup{{Title: "Servers"}, {Title: "Workstations"}, {Title: "Virtual machines"}}
-	for _, s := range r.SystemRows {
+	groups := []*SystemGroup{{Title: "Servers"}, {Title: "Workstations"}, {Title: "Virtual machines"}, {Title: "Retired"}}
+	for _, s := range append(append([]SystemRow(nil), r.SystemRows...), r.Retired...) {
 		h := strings.ToLower(s.Name)
 		v := &SystemView{Name: s.Name, Tag: strings.ToUpper(shortOS(s)), Message: s.StatusMsg}
+		retired := s.Status == "retired"
 		role := "Workstation"
 		g := groups[1]
 		switch {
+		case retired:
+			g = groups[3]
+			if isServer(s) {
+				role = "Server"
+			}
+			if s.VM {
+				role = "Virtual machine"
+			}
 		case s.VM:
 			role, g = "Virtual machine", groups[2]
 			if host := r.vmHost(s); host != "" {
@@ -130,6 +139,12 @@ func (r *Report) systemsPage() *SystemsPage {
 			role = "Standalone"
 		}
 		v.Line = osLabel(s) + " · " + role
+		if retired {
+			v.Line += " · retired " + s.Removed.In(r.Location).Format("2 Jan")
+			if s.RemovedBy != "" {
+				v.Line += " by " + s.RemovedBy
+			}
+		}
 		if s.Via != "" && !s.VM {
 			v.Line += " · data via " + s.Via
 		}
@@ -165,6 +180,9 @@ func (r *Report) systemsPage() *SystemsPage {
 		} else if s.AuditOff != "" {
 			v.Status = "Auditing off"
 		}
+		if retired {
+			v.Level, v.Status, v.Tag = "retired", "Retired", "RETIRED"
+		}
 
 		// Five facts.
 		det := "None"
@@ -185,6 +203,9 @@ func (r *Report) systemsPage() *SystemsPage {
 			v.Tag = collected
 		}
 		switch {
+		case retired:
+			// Not "nothing" next to its events (ROLE1b): it stopped.
+			collected = "until " + s.Removed.In(r.Location).Format("2 Jan")
 		case s.Status == "silent", s.VM && len(s.runTimes) == 0:
 			collected = "nothing"
 		}
@@ -209,13 +230,24 @@ func (r *Report) systemsPage() *SystemsPage {
 		v.Facts = []Fact{
 			{Label: "Events", Value: commas(s.Events), Href: searchLink("host", s.Name)},
 			{Label: "Detections", Value: det, Bad: high+med > 0, Scroll: "sysdet-" + s.Name},
-			{Label: "Collected", Value: collected, Bad: s.Status == "silent" || (!s.VM && days < total) || (s.VM && len(s.runTimes) == 0), Href: "#logs/" + s.Name},
+			{Label: "Collected", Value: collected, Bad: !retired && (s.Status == "silent" || (!s.VM && days < total) || (s.VM && len(s.runTimes) == 0)), Href: "#logs/" + s.Name},
 			{Label: "Audit settings", Value: settings, Bad: settingsBad, Href: "#health/" + s.Name},
-			{Label: "Last report", Value: last, Bad: s.Status != "ok" && s.Status != "warn", Href: "#logs/" + s.Name},
+			{Label: "Last report", Value: last, Bad: s.Status != "ok" && s.Status != "warn" && !retired, Href: "#logs/" + s.Name},
+		}
+		if retired {
+			// Retired: what it was is shown, not what is wrong with it.
+			v.Facts[3] = Fact{Label: "Retired", Value: s.Removed.In(r.Location).Format("2 Jan 15:04")}
+			if s.RemovedBy != "" {
+				v.Facts[3].Value += " by " + s.RemovedBy
+			}
 		}
 
 		v.Bar = r.collectionBar(s, cleared[h])
 		v.Health = r.systemHealth(s, cleared[h], on)
+		if retired {
+			v.Health = []CheckLine{{Level: "ok", Icon: "server", Title: "Retired", What: s.StatusMsg}}
+			v.Message = ""
+		}
 		// The reason it is silent is said once: in Health › Reporting
 		// when that line says it, not also in a box above (UX3).
 		for _, l := range v.Health {
@@ -266,7 +298,7 @@ func (r *Report) systemsPage() *SystemsPage {
 		}
 		g.Systems = append(g.Systems, v)
 	}
-	rank := map[string]int{"bad": 0, "warn": 1, "": 2}
+	rank := map[string]int{"bad": 0, "warn": 1, "": 2, "retired": 3}
 	for _, g := range groups {
 		sort.SliceStable(g.Systems, func(i, j int) bool {
 			a, b := g.Systems[i], g.Systems[j]
@@ -395,8 +427,15 @@ func (r *Report) collectionBar(s SystemRow, cleared []*Row) template.HTML {
 		t, _ := time.ParseInLocation("20060102", d, r.Location)
 		fmt.Fprintf(&labels, `<span style="left:%.2f%%">%s</span>`, x(t)/w*100, t.Format(layout))
 	}
-	return template.HTML(fmt.Sprintf(`<div class="cbar"><div class="cbar-l">%s</div><svg viewBox="0 13 %.0f %.0f" width="100%%" height="16" preserveAspectRatio="none" role="img">%s</svg></div>`,
-		labels.String(), w, h-13, b.String()))
+	name := fmt.Sprintf("Collection this period: %d collections", len(s.runTimes))
+	if len(s.gaps) > 0 {
+		name += fmt.Sprintf(", events lost %s", plural(len(s.gaps), "time"))
+	}
+	if len(cleared) > 0 {
+		name += fmt.Sprintf(", a log cleared %s", plural(len(cleared), "time"))
+	}
+	return template.HTML(fmt.Sprintf(`<div class="cbar"><div class="cbar-l">%s</div><svg viewBox="0 13 %.0f %.0f" width="100%%" height="16" preserveAspectRatio="none" role="img" aria-label="%s">%s</svg></div>`,
+		labels.String(), w, h-13, template.HTMLEscapeString(name), b.String()))
 }
 
 // systemHealth is one computer's health checklist.

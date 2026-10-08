@@ -178,6 +178,12 @@ type Finding struct {
 	Detail   string
 	RowID    string   // first related row, for linking
 	RowIDs   []string // every related row
+	// Check is set for a finding Blackbox's own check made, not an event
+	// (UI21): what it checked, e.g. "Blackbox's own check of the saved
+	// original logs when it bundled them for this report". Facts are
+	// what it found, for the Involved panel.
+	Check string
+	Facts []KV
 }
 
 // AttentionGroup summarises medium-severity events by kind.
@@ -303,7 +309,10 @@ type Report struct {
 	NoArchive  []string             // computers with no log archive for this period
 	BySev      map[string]int       // by severity
 	SystemRows []SystemRow          // Systems page
-	Silent     []SystemRow          // computers with no collection in this period
+	// Retired are the systems retired during this period (ROLE1b): on the
+	// Systems page, marked, and in no count or health check.
+	Retired []SystemRow
+	Silent  []SystemRow // computers with no collection in this period
 
 	rows []*Row // one per event, in the order of Events
 
@@ -482,7 +491,7 @@ func (r *Report) checkArchives() {
 		have[strings.ToLower(archiveName(h))] = true // said above
 	}
 	for _, h := range r.Hosts {
-		if !have[strings.ToLower(archiveName(h))] {
+		if !have[strings.ToLower(archiveName(h))] && !r.retired(h) {
 			r.NoArchive = append(r.NoArchive, h)
 		}
 	}
@@ -491,11 +500,20 @@ func (r *Report) checkArchives() {
 	}
 	for _, a := range r.Archives {
 		for _, f := range a.Changed {
-			r.Findings = append(r.Findings, Finding{Severity: event.SevHigh, Category: event.CatIntegrity, Host: a.Host, Time: a.To,
+			// Found by Blackbox's own check when it bundled the logs for
+			// this report, not by an event (UI21): timed when it was
+			// found, which is after the period.
+			at := r.Generated
+			if at.IsZero() {
+				at = a.To
+			}
+			r.Findings = append(r.Findings, Finding{Severity: event.SevHigh, Category: event.CatIntegrity, Host: a.Host, Time: at,
 				Title: "Saved original log changed before it was archived",
-				Detail: fmt.Sprintf("On %s, the export of the %s log (%s) no longer matched the SHA-256 taken when it was exported: it was changed while it waited to be archived. "+
+				Detail: fmt.Sprintf("Blackbox's own check, when it bundled %s's original logs for this report, found that the export of the %s log (%s) no longer matched the SHA-256 taken when it was exported: it was changed while it waited to be archived. "+
 					"It is in %s as it was found; its archive.json says which file. Compare it with the events in this report, and find who could write to the Blackbox data folder.",
-					a.Host, f.Source, f.Name, a.Name)})
+					a.Host, f.Source, f.Name, a.Name),
+				Check: "Blackbox's own check of the saved original logs when it bundled them for this report",
+				Facts: []KV{{Label: "Log", Value: f.Source}, {Label: "File", Value: f.Name + " in " + a.Name}}})
 		}
 		for _, g := range a.Gaps {
 			if g.Reason != "" {

@@ -27,6 +27,10 @@ type SystemInfo struct {
 	// VirtualBox shared folder, so on only while its host PC runs it (UI2).
 	// Data relayed through another computer (Via) does not make a VM.
 	VM bool
+	// Removed is when it was retired with "blackbox systems remove", and
+	// RemovedBy who did it (ROLE1b): zero while it is not.
+	Removed   time.Time
+	RemovedBy string
 }
 
 // CheckSet is the latest audit settings check of one computer.
@@ -188,6 +192,15 @@ func (r *Report) buildSystems(runs []*store.Run, events []*event.Event) {
 	for _, s := range idx {
 		s.Status = "ok"
 		vm := s.VM
+		if !s.Removed.IsZero() {
+			// Retired during this period (ROLE1b): listed as such, apart
+			// from the systems expected to report, so it is not silent,
+			// counted in Systems reporting or Health, or expected to
+			// have original logs.
+			s.Status, s.StatusMsg = "retired", r.retiredText(s.SystemInfo)
+			r.Retired = append(r.Retired, *s)
+			continue
+		}
 		switch {
 		case !live:
 		case vm && s.Runs == 0:
@@ -233,6 +246,7 @@ func (r *Report) buildSystems(runs []*store.Run, events []*event.Event) {
 		}
 		r.SystemRows = append(r.SystemRows, *s)
 	}
+	sort.Slice(r.Retired, func(i, j int) bool { return naturalLess(r.Retired[i].Name, r.Retired[j].Name) })
 	rank := map[string]int{"silent": 0, "warn": 1, "ok": 2}
 	sort.Slice(r.SystemRows, func(i, j int) bool {
 		a, b := r.SystemRows[i], r.SystemRows[j]
@@ -262,6 +276,27 @@ func (r *Report) buildSystems(runs []*store.Run, events []*event.Event) {
 		}
 	}
 	sort.Slice(r.Hosts, func(i, j int) bool { return strings.ToLower(r.Hosts[i]) < strings.ToLower(r.Hosts[j]) })
+}
+
+// retiredText says when a system was retired and by whom: "Retired 7 Oct
+// by alice with blackbox systems remove. ..." (ROLE1b).
+func (r *Report) retiredText(s SystemInfo) string {
+	by := ""
+	if s.RemovedBy != "" {
+		by = " by " + s.RemovedBy
+	}
+	return fmt.Sprintf("Retired %s%s with blackbox systems remove: it is no longer expected to report, and is not counted in this report's systems or health. Its events up to then are shown.",
+		s.Removed.In(r.Location).Format("2 Jan"), by)
+}
+
+// retired says whether host was retired during this period (ROLE1b).
+func (r *Report) retired(host string) bool {
+	for _, s := range r.Retired {
+		if strings.EqualFold(s.Name, host) {
+			return true
+		}
+	}
+	return false
 }
 
 // ShowSystems reports whether the Systems page is useful: more than one

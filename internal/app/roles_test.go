@@ -182,3 +182,36 @@ func TestStandaloneLeavesOutFormerSenders(t *testing.T) {
 		t.Errorf("collector: %s", got)
 	}
 }
+
+// ROLE1b: blackbox systems remove records who retired the system, and a
+// report whose period it was retired in gets when and by whom.
+func TestRemoveSystemRecordsWho(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	start := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	st.NoteSystem("WS-07", "windows", "0.22.0", "", start.Add(-time.Hour), start.Add(-time.Hour), start.Add(-time.Hour))
+	st.Save()
+	at := time.Date(2026, 10, 7, 9, 30, 0, 0, time.UTC)
+	a := &App{Cfg: &config.Config{DataDir: st.Dir}, Now: func() time.Time { return at }}
+	if err := a.RemoveSystem("ws-07"); err != nil {
+		t.Fatal(err)
+	}
+	st, _ = store.Open(st.Dir)
+	var got *report.SystemInfo
+	for _, s := range systemsFor(st, start, true) {
+		if s.Name == "WS-07" {
+			got = &s
+		}
+	}
+	if got == nil || !got.Removed.Equal(at) || got.RemovedBy == "" || got.RemovedBy != st.State.Systems["WS-07"].RemovedBy {
+		t.Fatalf("system: %+v", got)
+	}
+	// Retired before the next period: left out of it.
+	if len(systemsFor(st, at.Add(time.Hour), true)) != 0 {
+		t.Error("listed after it was retired")
+	}
+	// It sends again: no longer retired.
+	st.NoteSystem("WS-07", "windows", "0.22.0", "", at.Add(time.Hour), at.Add(time.Hour), at.Add(time.Hour))
+	if s := st.State.Systems["WS-07"]; !s.Removed.IsZero() || s.RemovedBy != "" {
+		t.Errorf("came back: %+v", s)
+	}
+}

@@ -76,14 +76,17 @@ const MinPowerShell = 1 << 30
 const MaxRecommend = 2 << 30
 
 // Needed is the size that holds four collection intervals at the rate
-// the log was written when it turned over, rounded up to a whole MB (at
-// least 1 GB for the PowerShell log, at most MaxRecommend); 0 when it
+// the log was written when it turned over, rounded up to a power of two
+// MB (64 MB, ..., 512 MB, 1 GB, 2 GB) so the advice does not change from
+// one run to the next as the measured rate moves a little (STAT2); at
+// least 1 GB for the PowerShell log, at most MaxRecommend; 0 when it
 // can't be worked out.
 func (l Loss) Needed() uint64 {
 	var n uint64
 	if l.Held > 0 && l.Every > 0 && l.MaxSize > 0 {
-		n = uint64(float64(l.MaxSize) * float64(4*l.Every) / float64(l.Held))
-		n = (n + 1<<20 - 1) / (1 << 20) * (1 << 20)
+		need := uint64(float64(l.MaxSize) * float64(4*l.Every) / float64(l.Held))
+		for n = 1 << 20; n < need && n < MaxRecommend; n <<= 1 {
+		}
 	}
 	if l.Channel == "Microsoft-Windows-PowerShell/Operational" && n < MinPowerShell {
 		n = MinPowerShell

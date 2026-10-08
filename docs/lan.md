@@ -189,8 +189,12 @@ Senders sign in to the share with an account on the collector. Choose how:
 3. Enter the account and its password. On a domain, leave the account
    blank.
 
-The password is stored encrypted with Windows DPAPI, and only
-Administrators and SYSTEM can read it. Setup checks the share straight
+The password is stored encrypted with Windows DPAPI in machine scope (so
+the collection task, which runs as SYSTEM, can use it), in the data
+folder, which only Administrators and SYSTEM can read. Machine scope means
+any administrator on the sender can recover it, so use an account that is
+only a member of **Blackbox Senders** (see
+[security.md](security.md#lan-security)). Setup checks the share straight
 away.
 
 **On each Ubuntu or AlmaLinux sender:**
@@ -396,7 +400,12 @@ collector**. It appears on the Systems page after its first collection.
 **Retiring a computer.** On the collector, run
 `blackbox systems remove NAME`. It stops being listed and reported as
 silent. Its events stay in earlier reports, and it is listed again if it
-ever sends again.
+ever sends again. The report whose period it was retired in shows it
+under **Retired** on the Systems page, "retired 7 Oct by alice" (the
+account that ran the command), with its events up to then; it is not
+counted in **Systems reporting**, the Health checks or **Original logs
+missing**, and its card says "Collected until 7 Oct", not "nothing"
+(ROLE1b).
 
 **A collector made standalone.** Its reports leave out the computers that
 sent to it and sent nothing in the report's period: they are not its

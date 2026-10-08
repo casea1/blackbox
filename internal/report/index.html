@@ -25,7 +25,7 @@ table.rx tbody tr{cursor:pointer}table.rx tbody tr:hover td{background:rgba(11,9
 <aside>
   <div class="brand"><img src="{{logo}}" alt=""><div><b>Blackbox</b></div></div>
   {{if .Site}}<div class="site"><span>Network</span><b>{{.Site}}</b></div>{{end}}
-  <nav><a class="on" href="#">{{icon "history" 17}}<span>All reports</span><small>{{len .Entries}}</small></a>{{with .Latest}}<a href="{{.}}/report.html">{{icon "layout-dashboard" 17}}<span>Latest report</span></a>{{end}}</nav>
+  <nav aria-label="Reports"><a class="on" href="#">{{icon "history" 17}}<span>All reports</span><small>{{len .Entries}}</small></a>{{with .Latest}}<a href="{{.}}/report.html">{{icon "layout-dashboard" 17}}<span>Latest report</span></a>{{end}}</nav>
 </aside>
 <main>
 <div class="head"><div><div class="crumb"><span data-folder>Reports folder</span>{{if .Schedule}} · {{.Schedule}}{{end}}</div><h1>All reports</h1></div>

@@ -149,11 +149,46 @@ func (a *App) verifyReports(st *store.Store) {
 		}
 		r.Verified, r.Bad, changed = now, bad, true
 	}
+	if a.alertReports(st) {
+		changed = true
+	}
 	if changed {
 		if err := st.Save(); err != nil {
 			a.logf("saving the state: %v", err)
 		}
 	}
+}
+
+// alertReports writes each scheduled report newly found missing or
+// changed to the system log, once per report and problem (LEDGER4): the
+// Application log, event 101, on Windows; the journal/syslog, ident
+// blackbox, on Linux. It says whether the ledger changed.
+func (a *App) alertReports(st *store.Store) bool {
+	alert := a.ReportAlert
+	if alert == nil {
+		alert = selfaudit.ReportProblem
+	}
+	changed := false
+	for i := range st.State.Reports {
+		r := &st.State.Reports[i]
+		p, what := "", ""
+		if r.Removed.IsZero() && r.Accepted == nil {
+			p, what = reportProblem(*r)
+		}
+		if p == r.Alerted {
+			continue
+		}
+		if p != "" {
+			m := report.MissingReport{Name: filepath.Base(r.Dir), Dir: r.Dir, From: r.From, To: r.To, Problem: p, What: what}
+			msg := "REPORT " + strings.ToUpper(p) + ": " + ReportProblemText(m, a.loc()) + ". Folder: " + r.Dir
+			if err := alert(msg); err != nil {
+				a.logf("writing the %s report %s to the system log failed: %v", p, m.Name, err)
+				continue // tried again at the next run
+			}
+		}
+		r.Alerted, changed = p, true
+	}
+	return changed
 }
 
 func fileSHA256(path string) (string, error) {

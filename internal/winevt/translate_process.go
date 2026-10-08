@@ -50,6 +50,60 @@ func hiddenPowerShell(proc, cmd, decoded string) int {
 	return n
 }
 
+// psScript is the script a PowerShell command line runs with -File
+// (any prefix of it: -f, -fi, -file), "" if none: "powershell -File
+// C:\Scripts\backup.ps1" reads "ran the script C:\Scripts\backup.ps1"
+// (UI21). Whatever follows -Command or -EncodedCommand is a command, not
+// a parameter, so -File is only looked for before them.
+func psScript(proc, cmd string) string {
+	b := strings.ToLower(filepath.Base(winPath(proc)))
+	if b != "powershell.exe" && b != "pwsh.exe" {
+		return ""
+	}
+	args := splitArgs(cmd)
+	for i := 1; i < len(args); i++ {
+		a := strings.ToLower(args[i])
+		if len(a) < 2 || (a[0] != '-' && a[0] != '/') {
+			continue
+		}
+		name := a[1:]
+		switch {
+		case strings.HasPrefix("command", name) || strings.HasPrefix("encodedcommand", name) || name == "ec":
+			return ""
+		case strings.HasPrefix("file", name) && i+1 < len(args):
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+// splitArgs splits a Windows command line at spaces outside double
+// quotes, removing the quotes.
+func splitArgs(cmd string) []string {
+	var out []string
+	var cur strings.Builder
+	quoted, any := false, false
+	for _, c := range cmd {
+		switch {
+		case c == '"':
+			quoted, any = !quoted, true
+		case (c == ' ' || c == '\t') && !quoted:
+			if any {
+				out = append(out, cur.String())
+				cur.Reset()
+				any = false
+			}
+		default:
+			cur.WriteRune(c)
+			any = true
+		}
+	}
+	if any {
+		out = append(out, cur.String())
+	}
+	return out
+}
+
 func (t *Translator) processCreated(r *Raw) *event.Event {
 	elev := r.Get("TokenElevationType")
 	label := r.Get("MandatoryLabel")
@@ -81,11 +135,21 @@ func (t *Translator) processCreated(r *Raw) *event.Event {
 		shown = proc + " (encoded command): " + decoded
 	}
 	e.Summary = fmt.Sprintf("%s ran with administrator rights: %s", user, shown)
+	script := ""
+	if decoded == "" {
+		script = psScript(proc, cmd)
+	}
+	if script != "" {
+		e.Summary = fmt.Sprintf("%s ran the script %s with administrator rights (PowerShell).", user, script)
+	}
 	// Quotes removed: PowerShell records "C:\...\wevtutil.exe" cl Security.
 	lc := strings.Join(strings.Fields(strings.ReplaceAll(strings.ToLower(cmd+" "+decoded), `"`, "")), " ")
 	if n := hiddenPowerShell(proc, cmd, decoded); n >= 2 {
 		e.Severity, e.Action = event.SevMedium, "hidden_powershell"
 		e.Summary = fmt.Sprintf("%s ran PowerShell hidden from view and around the script policy: %s", user, shown)
+		if script != "" {
+			e.Summary = fmt.Sprintf("%s ran the script %s hidden from view and around the script policy: %s", user, script, shown)
+		}
 		e.AddDetail("Why flagged", "A hidden window, bypassing the execution policy, no prompts and an encoded command are how scripts are run unseen; this run used "+fmt.Sprint(n)+" of them together.")
 	}
 	for _, frag := range auditTamper {
@@ -102,6 +166,7 @@ func (t *Translator) processCreated(r *Raw) *event.Event {
 	}
 	e.AddDetail("Program", proc)
 	e.AddDetail("Command line", cmd)
+	e.AddDetail("Script", script)
 	e.AddDetail("PowerShell command (decoded)", decoded)
 	e.AddDetail("Started by", r.Get("ParentProcessName"))
 	e.AddDetail("Elevation", expandTokens(elev))
