@@ -205,3 +205,61 @@ type ListItem struct {
 	Href, Ev                    string
 	Level                       string
 }
+
+// systemLevel is a system's level on Overview's Systems at a glance and
+// on the Systems page, decided once for both (owner, UI-R1): a problem
+// ("bad") is a red check or a high detection; a warning ("warn") an
+// amber check or a medium detection; otherwise "ok". cells are its six
+// checks (sysChecks); high and med its detections.
+func systemLevel(cells []CheckCell, high, med int) string {
+	level := "ok"
+	for _, c := range cells {
+		if levelRank(c.Level) < levelRank(level) {
+			level = c.Level
+		}
+	}
+	switch {
+	case high > 0:
+		return "bad"
+	case med > 0 && level == "ok":
+		return "warn"
+	}
+	return level
+}
+
+// sysDets is how many high and other detections each system has (by
+// lower-case name), and the newest high one's title, for systemLevel.
+type sysDets struct {
+	High, Med int
+	FirstHigh string
+}
+
+func (r *Report) detsBySystem() map[string]*sysDets {
+	out := map[string]*sysDets{}
+	for _, c := range r.detectionCards() { // newest first
+		h := strings.ToLower(c.Host)
+		d := out[h]
+		if d == nil {
+			d = &sysDets{}
+			out[h] = d
+		}
+		if c.Severity == "high" {
+			if d.High == 0 {
+				d.FirstHigh = c.Title
+			}
+			d.High++
+		} else {
+			d.Med++
+		}
+	}
+	return out
+}
+
+// checkCells are a system's checks' squares.
+func checkCells(checks []SysCheck) []CheckCell {
+	out := make([]CheckCell, 0, len(checks))
+	for _, c := range checks {
+		out = append(out, c.CheckCell)
+	}
+	return out
+}

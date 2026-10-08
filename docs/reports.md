@@ -1174,7 +1174,8 @@ Then one table of every report, newest first, grouped by month. **Report**
 is its day ("Wed 7 Oct"; a manual report shows its times, "Wed 7 Oct
 00:00 – 14:40"), with a **Latest** or **Manual** chip. **Notes** say what
 is wrong ("1 log cleared · 2 silent · 261 events lost", "logs-WS-04.zip
-missing") and, for a manual report, why it was made when that was given.
+missing"), only what Blackbox works out itself: a manual report has no
+reason field.
 Then **Systems** (reporting of all, "28/30"), **Events**, **High**,
 **Medium**, **Original logs** (the size of its log zips) and **Check**,
 from the ledger: **✓ OK**, **Changed** (hover for what changed) or

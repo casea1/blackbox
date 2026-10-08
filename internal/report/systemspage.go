@@ -259,18 +259,9 @@ func (r *Report) systemsPage() *SystemsPage {
 		got, want := r.collectionStrip(v, s, iv, append(clears, s.resets...))
 		v.Cells = r.sysChecks(s, cx, got, want)
 
-		// The level: the worst check, or a detection.
-		v.Level = "ok"
-		for _, c := range v.Cells {
-			if levelRank(c.Level) < levelRank(v.Level) {
-				v.Level = c.Level
-			}
-		}
-		if high > 0 {
-			v.Level = "bad"
-		} else if med > 0 && v.Level == "ok" {
-			v.Level = "warn"
-		}
+		// The level: the worst check, or a detection (systemLevel, as
+		// Overview's Systems at a glance).
+		v.Level = systemLevel(checkCells(v.Cells), high, med)
 		v.Checks = append([]SysCheck(nil), v.Cells...)
 		sort.SliceStable(v.Checks, func(i, j int) bool { return levelRank(v.Checks[i].Level) < levelRank(v.Checks[j].Level) })
 		var shorts []string

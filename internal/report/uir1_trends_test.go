@@ -164,18 +164,22 @@ func TestTrendsUsualMedian(t *testing.T) {
 }
 
 // UI-R1 All reports: the cards and the Check column from the ledger,
-// months newest first, chips, the manual reason, the filters' counts and
-// the older reports folded.
+// months newest first, chips, the filters' counts and the older reports
+// folded. A manual report has no reason (owner, UI-R1): an old
+// summary.json's "reason" is read harmlessly and not shown.
 func TestIndexFromLedger(t *testing.T) {
 	dir := t.TempDir()
 	loc := demo30Zone
 	day := time.Date(2026, 10, 7, 0, 0, 0, 0, loc)
 	checks := map[string]ReportCheck{}
-	write := func(name string, s Summary) {
+	write := func(name string, s Summary, extra ...string) {
 		if err := os.MkdirAll(filepath.Join(dir, name), 0o750); err != nil {
 			t.Fatal(err)
 		}
 		b, _ := json.Marshal(s)
+		for _, x := range extra { // a field older versions wrote
+			b = append(append(b[:len(b)-1], ','), append([]byte(x), '}')...)
+		}
 		os.WriteFile(filepath.Join(dir, name, "summary.json"), b, 0o640)
 	}
 	for d := 0; d < 30; d++ {
@@ -195,7 +199,7 @@ func TestIndexFromLedger(t *testing.T) {
 		}
 	}
 	write("2026-10-07_1440_ENG-NET_manual", Summary{Interim: true, WindowStart: day, WindowEnd: day.Add(14*time.Hour + 40*time.Minute), Hosts: []string{"a", "b"},
-		Events: 30, Reason: "jlee incident check", Detections: []Detection{{Severity: "high"}}})
+		Events: 30, Detections: []Detection{{Severity: "high"}}}, `"reason":"jlee incident check"`)
 	gone := MissingReport{Name: "2026-09-01_0000_ENG-NET", From: day.AddDate(0, 0, -37), To: day.AddDate(0, 0, -36), Problem: "missing",
 		Accepted: "Accepted as moved by alice on 3 Sep 2026: moved to the archive drive"}
 	err := WriteIndexWith(dir, IndexOptions{Site: "ENG-NET", Schedule: "daily at 00:00", Every: "daily", Loc: loc, Checks: checks,
@@ -214,7 +218,7 @@ func TestIndexFromLedger(t *testing.T) {
 		`<b class="bad">1 changed</b><span class="d">29 OK · 1 accepted as deleted · checked daily`,
 		"<b>31 reports</b><span class=\"d\">30 daily, 1 manual · ",
 		">October 2026</th>", ">September 2026</th>", ">August 2026</th>",
-		`Wed 7 Oct 00:00 – 14:40</a><span class="int">Manual</span>`, `<span class="why">jlee incident check</span>`,
+		`Wed 7 Oct 00:00 – 14:40</a><span class="int">Manual</span>`,
 		`Wed 7 Oct</a><span class="latest">Latest</span>`, "1 log cleared · 1 silent", ">1/2<", ">3.0 GB<",
 		`<span class="rxchk ok">✓ OK</span>`, `<span class="rxchk bad" title="Changed after it was written: logs-ubu-ws-04.zip is missing">Changed</span>`,
 		"logs-ubu-ws-04.zip missing", `<span class="rxchk mute">Accepted</span>`, "Accepted as moved by alice",
@@ -224,6 +228,9 @@ func TestIndexFromLedger(t *testing.T) {
 		if !strings.Contains(h, want) {
 			t.Errorf("index lacks %q", want)
 		}
+	}
+	if strings.Contains(h, "jlee incident check") || strings.Contains(h, `class="why"`) {
+		t.Error("a manual report's reason is shown")
 	}
 	if strings.Count(h, "data-older hidden") < 12 || strings.Contains(h, "Kept for") || strings.Contains(h, "calendar") {
 		t.Error("older rows, or a calendar")
