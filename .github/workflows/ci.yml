@@ -502,7 +502,8 @@ jobs:
           test "$(sudo stat -c '%U:%G %a' /srv/dropinbox)" = "root:blackbox-senders 1730" || { sudo stat /srv/dropinbox; exit 1; }
           # An SFTP sender's account, in the group.
           sudo useradd -M -s /usr/sbin/nologin -G blackbox-senders bbdrop
-          echo "another sender's batch" | sudo tee /srv/dropinbox/OTHER_id_0000000001_0123456789ab.bbx > /dev/null
+          # Another sender's batch, as a sender writes it (owner-only).
+          echo "another sender's batch" | sudo install -m 600 /dev/stdin /srv/dropinbox/OTHER_id_0000000001_0123456789ab.bbx
           sudo -u bbdrop test -r /srv/dropinbox/BLACKBOX-INBOX.txt || { echo "a sender can't read the inbox marker"; exit 1; }
           sudo -u bbdrop sh -c 'set -o noclobber; echo mine > /srv/dropinbox/MINE_id_0000000001_0123456789ab.bbx' || { echo "a sender can't add a file"; exit 1; }
           if sudo -u bbdrop ls /srv/dropinbox; then echo "a sender can list the inbox"; exit 1; fi

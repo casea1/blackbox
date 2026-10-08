@@ -432,7 +432,9 @@ func writeNew(src, path string) error {
 		return err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
+	// Readable by its owner only: on a Linux collector another sender in
+	// the same group must not read it, even knowing its name (DESIGN1).
+	out, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
