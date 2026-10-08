@@ -96,11 +96,15 @@ type AxisLabel struct {
 	Left template.CSS
 }
 
+// GlanceCol is a column of Systems at a glance: its heading, and the
+// short one a phone shows.
+type GlanceCol struct{ Name, Short string }
+
 // glanceChecks are the columns of Systems at a glance.
-var glanceChecks = []string{"Reporting", "Logs intact", "Settings", "Antivirus", "Orig. logs", "SCAP"}
+var glanceChecks = []GlanceCol{{"Reporting", "Rep."}, {"Logs intact", "Logs"}, {"Settings", "Set."}, {"Antivirus", "AV"}, {"Orig. logs", "Orig."}, {"SCAP", "SCAP"}}
 
 // GlanceChecks are the column headings, for the template.
-func (o *Overview) GlanceChecks() []string { return glanceChecks }
+func (o *Overview) GlanceChecks() []GlanceCol { return glanceChecks }
 
 // overview builds the Overview page.
 func (r *Report) overview(pages []*EventPage) *Overview {

@@ -791,14 +791,13 @@ sidebar is a bar with a **Menu** button that opens the same list.
 
 Every page has **one header**: a breadcrumb line (the report, its period
 and the time zone the page's times are in, then what the page holds,
-e.g. "Daily report · 7 Oct 00:00 – 8 Oct 00:00 EDT · 12 detections · 7
-high, 5 medium"), the title, and only the page's own buttons on the right:
+e.g. "Daily report · 7 Oct 00:00 – 8 Oct 00:00 EDT · 12 detections"), the title, and only the page's own buttons on the right:
 **Export**, and **Export CSV** on Detections. Search has the same kinds as
 chips, with their counts, and a timeline with times of day for a short
 period.
 
 **Export** opens a menu in two parts. **This page** is what the page shown
-holds, as CSV: "Detections shown (12)" (only the severity chosen), the
+holds, as CSV: "Detections shown (12)" (only those the filters show), the
 rows an event page or Search shows, Systems, every audit setting on Audit
 health, Inventory's systems, drives and accounts, the original-log zips. A
 page with nothing to list (the Overview, People, Trends) has no This page
@@ -821,12 +820,50 @@ the title says so in red ("This report's original logs do not match",
 failing check comes first with the file to blame, and the report card's
 line turns red. Then: "Check it yourself: `blackbox verify`".
 
-- **Overview.** Four headline numbers for this report (systems
-  reporting, detections, events, and systems whose audit settings match
-  the STIG), the activity counters that are not zero (the rest are named
-  in one line), **Health** with each problem once and a line for what is
-  fine, and **Detections**. The trends below it, which count every
-  report by calendar week, appear once there are two full weeks.
+- **Overview** (UI-R1). One line says what **needs review** ("Needs
+  review: 7 high detections, 2 systems not reporting"; also audit events
+  lost, or original logs not archived; medium detections only when there
+  is nothing else), with the most serious facts in a sentence or two: the
+  two worst high detections (logs cleared or auditing changed first, then
+  new access) and the systems that sent nothing. When there is nothing, it
+  says **Nothing needs review** in green. Under it, **one row of numbers**:
+  Detections (high · medium), Systems reporting (n / N, how many silent),
+  Events (privileged · logons) and Audit settings (systems matching the
+  STIG, settings to fix); each opens its page.
+  **Detections** lists up to eight, high first then newest, one line each:
+  the title, a short reason, the system and the time. A line opens that
+  detection on Detections; "All 12 detections (4 more medium) →" opens
+  the page. **Needs attention** has one line per kind of problem (not
+  reporting, logs cleared, CAT I findings, audit settings, events
+  overwritten, antivirus, original logs missing, …), with a short reason
+  and the systems (named when one or two, else counted); a line opens the
+  page with the detail. Then one "Fine: …" line for what is fine, with how
+  many systems are reporting normally.
+  **Activity this period** is the events per hour (per day over more than
+  eight days), Windows and Linux stacked in two colours, with a red dot on
+  each hour that has a detection. Clicking a bar opens Search for that
+  hour.
+  **Systems at a glance** lists only the systems with a red check, grouped
+  Servers / Workstations, with six squares (Reporting, Logs intact,
+  Settings, Antivirus, Original logs, SCAP; green ok, amber warning, red
+  problem, grey no data; each opens its detail) and the events; then "23
+  more systems with no problems (20 with warnings, 3 all OK)" and a link
+  to all of them on the Systems page. The trends and "what changed" are on
+  Trends.
+- **Detections** (UI-R1). A **filter bar**: All / High / Medium with
+  counts, System, Person, and Servers / workstations. On the left, the
+  detections grouped **High · n** and **Medium · n**, newest first in each,
+  one line each with the system and time. On the right, the one chosen:
+  its title and severity, **one plain sentence** of what happened, **four
+  facts** (System with its OS and role, Person with what the account is
+  there, When with the time zone, Record: the log, event ID and record
+  number), and one line on **why it matters** and what the original logs
+  in this report still hold of it. **What happened** lists the events ten
+  minutes either side on that system for that person, the detection's own
+  events marked in red; a row opens the event. **Open in Search (±10 min)**
+  and **Everything <person> did** open Search. **Related this period**
+  lists the other detections with the same person or system. Export CSV
+  saves the detections the filters show.
 - **Each fact once.** The Systems page gives a system's audit settings
   to fix as a count that links to Audit health, which lists them. A
   system that sent nothing says so once.
@@ -842,7 +879,7 @@ line turns red. Then: "Check it yourself: `blackbox verify`".
 - **A manual report** says so in a banner on the Overview, and in a
   "Manual" chip by the title on every other page.
 - **On a phone** (390 pixels wide) the page never scrolls sideways: the
-  Overview's tiles wrap their text instead of cutting it, and the manual
+  Overview's numbers wrap their notes instead of cutting them, and the manual
   banner puts its label above its text (UI20).
 - **SSH logons on Windows** show the address they came from: the 4624
   Windows writes for an OpenSSH sign-in has none, so Blackbox reads the
