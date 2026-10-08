@@ -62,6 +62,7 @@ func Linux(st *store.Store, opt Options) (*store.Run, error) {
 	}
 	tr.AuthFromSyslog = !haveAudit
 	tr.SudoFromSyslog = haveAudit && SudoRs()
+	tr.SSHFromSyslog = haveAudit
 
 	sys := firstExisting(SystemLogs)
 	if sys == "" {
@@ -70,10 +71,10 @@ func Linux(st *store.Store, opt Options) (*store.Run, error) {
 		run.Channels = append(run.Channels, followJournal(st, tr, parser, host, start, opt))
 	} else {
 		run.Channels = append(run.Channels, followSyslog(st, tr, parser, host, sys, start, opt))
-		if !haveAudit || tr.SudoFromSyslog {
-			if auth := firstExisting(AuthLogs); auth != "" {
-				run.Channels = append(run.Channels, followSyslog(st, tr, parser, host, auth, start, opt))
-			}
+		// With auditd too: sshd's lines say how someone signed in, and
+		// Ubuntu 26.04 records SSH sign-ins nowhere else (LNX1).
+		if auth := firstExisting(AuthLogs); auth != "" {
+			run.Channels = append(run.Channels, followSyslog(st, tr, parser, host, auth, start, opt))
 		}
 	}
 	run.Duration = opt.Now().Sub(start).Seconds()
@@ -308,7 +309,8 @@ func AuditOffText(status string, statusErr error, active string) string {
 // LinuxFiles translates exported Linux logs for a one-off report. Audit
 // logs are read first so user names learned from them apply to the other
 // logs. Authentication messages in the syslog files are used only when no
-// audit log is given.
+// audit log is given, except sshd's sign-in lines, which are always used
+// (LNX1).
 func LinuxFiles(auditFiles, syslogFiles []string, host, passwd string, now time.Time) ([]*event.Event, *store.Run, error) {
 	users := linuxlog.Users{}
 	if passwd != "" {
@@ -320,6 +322,7 @@ func LinuxFiles(auditFiles, syslogFiles []string, host, passwd string, now time.
 	}
 	tr := linuxlog.NewTranslator(host, users)
 	tr.AuthFromSyslog = len(auditFiles) == 0
+	tr.SSHFromSyslog = len(auditFiles) > 0
 	var events []*event.Event
 	run := &store.Run{Time: now, Host: host}
 	for _, f := range auditFiles {

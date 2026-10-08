@@ -44,7 +44,8 @@ func TestOpenSSH10FailedLogons(t *testing.T) {
 	}
 }
 
-// U5: the same tries read from auth.log (no auditd) are one row each too.
+// U5: the same tries read from auth.log (no auditd) are one row each too,
+// claude's given-up key logon included (LNX1).
 func TestOpenSSH10FailedLogonsAuthLog(t *testing.T) {
 	evs, _, err := collect.LinuxFiles(nil, []string{"../../testdata/v0.10.4/u5-openssh10-auth.log"}, "ubuntu-server", "", time.Unix(1791160000, 0))
 	if err != nil {
@@ -57,7 +58,7 @@ func TestOpenSSH10FailedLogonsAuthLog(t *testing.T) {
 			got = append(got, e.User)
 		}
 	}
-	if strings.Join(got, ",") != "bbuser,bbuser,bbuser,admin,oracle,postgres" {
+	if strings.Join(got, ",") != "bbuser,bbuser,bbuser,admin,oracle,postgres,claude" {
 		t.Errorf("rows for %v", got)
 	}
 }

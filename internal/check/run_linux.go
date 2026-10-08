@@ -53,6 +53,15 @@ func Run() []Result {
 			fm, dm = f.Mode(), d.Mode()
 		}
 		out = append(out, EvaluateAuditLogPerms(fm, dm, ferr, derr))
+		var starts, logins int
+		a, serr := os.Open("/var/log/audit/audit.log")
+		if serr == nil {
+			starts, logins, serr = SSHAuditCounts(a)
+			a.Close()
+		}
+		if r, ok := EvaluateSSHLogons(exists("/usr/sbin/sshd"), starts, logins, serr); ok {
+			out = append(out, r)
+		}
 	}
 	if cl, err := os.ReadFile("/proc/cmdline"); err == nil {
 		grub, _ := os.ReadFile("/etc/default/grub")

@@ -11,6 +11,8 @@
 //  2. sshAttempts: sshd's password check (USER_AUTH) and its failed logon
 //     (USER_LOGIN) for one try are one row, matched by process ID in either
 //     order; the name tried comes from the check (U5).
+//     sshdLines: sshd's own line about a failed SSH try (auth.log or the
+//     journal) is joined to the audit record of the same try (LNX1).
 //     unknownNames: a Linux "wrong password" for a name sshd then calls
 //     unknown says "the user name does not exist" (U6).
 //  3. mergeAdminLogons: an administrator's 4624 and 4672 (one logon ID) are one
@@ -18,6 +20,9 @@
 //  4. dedupe: records with the same DedupeKey on one computer within
 //     dedupeWindow are one row, keeping the highest Priority; two failed
 //     logons of the same kind (recordKind) are two attempts, never merged.
+//     A Linux sign-in's row keeps the details of every record of it: the
+//     audit log's USER_LOGIN or USER_START and sshd's "Accepted" line,
+//     which alone says how the person signed in (LNX1).
 //  4b. selfChanges: a "blackbox config set" command line is joined to
 //     Blackbox's own record of the change it made (A15); with no record,
 //     on a computer whose Blackbox records its changes, the command
@@ -199,6 +204,15 @@ func (r *Report) dedupe(in []*event.Event) []*event.Event {
 			if strings.HasPrefix(e.DedupeKey, "bbreport|") && kept.Fields != nil {
 				mergeReportFiles(kept, e)
 			}
+			// One sign-in: sshd's line has the method and key, the
+			// audit record the program and terminal (LNX1).
+			if strings.HasPrefix(e.DedupeKey, "lxlogon|") {
+				for _, d := range e.Details {
+					if detail(kept, d.Label) == "" {
+						kept.AddDetail(d.Label, d.Value)
+					}
+				}
+			}
 			// One service, recorded under its service name and its
 			// display name: show both.
 			if strings.HasPrefix(e.DedupeKey, "svc|") && e.Target != "" && !strings.EqualFold(e.Target, kept.Target) {
@@ -303,6 +317,74 @@ func sshAttempts(events []*event.Event) []*event.Event {
 		// One try: never merged with another try by dedupe.
 		keep.DedupeKey = ""
 		keep.AddDetail("Process ID", keep.Fields["pid"])
+	}
+	out := events[:0]
+	for _, e := range events {
+		if !drop[e] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// sshdLines joins sshd's own line about a failed SSH try ("Failed
+// password for claude from …", read from auth.log or the journal) to the
+// audit record of the same try, so a try is one row (LNX1). The audit
+// record (USER_AUTH, USER_LOGIN, or the two joined by sshAttempts) is
+// kept, with sshd's reason, which says whether a password or a key was
+// refused and whether the name exists. They match on the computer, the
+// source address and the account (or an audit record that does not know
+// the name), within 5 seconds, and each audit record takes at most one
+// line. A line with no audit record of its try is a row of its own.
+func sshdLines(events []*event.Event) []*event.Event {
+	const near = 5 * time.Second
+	isLine := func(e *event.Event) bool {
+		return e.OS == "linux" && e.Action == "logon_failed" && e.Source != "auditd" && strings.HasPrefix(e.RecordType, "sshd")
+	}
+	isAudit := func(e *event.Event) bool {
+		return e.OS == "linux" && e.Action == "logon_failed" && e.Source == "auditd" &&
+			strings.HasPrefix(filepath.Base(strings.ReplaceAll(e.Fields["exe"], "\\", "/")), "sshd")
+	}
+	used := map[*event.Event]bool{}
+	drop := map[*event.Event]bool{}
+	for i, l := range events {
+		if !isLine(l) {
+			continue
+		}
+		match := func(a *event.Event) bool {
+			return isAudit(a) && !used[a] && a.Host == l.Host && a.SourceIP == l.SourceIP &&
+				(a.User == l.User || strings.HasPrefix(a.User, "("))
+		}
+		var best *event.Event
+		var gap time.Duration
+		for j := i - 1; j >= 0 && l.Time.Sub(events[j].Time) <= near; j-- {
+			if match(events[j]) {
+				best, gap = events[j], l.Time.Sub(events[j].Time)
+				break
+			}
+		}
+		for j := i + 1; j < len(events) && events[j].Time.Sub(l.Time) <= near; j++ {
+			if match(events[j]) {
+				if best == nil || events[j].Time.Sub(l.Time) < gap {
+					best = events[j]
+				}
+				break
+			}
+		}
+		if best == nil {
+			continue
+		}
+		used[best], drop[l] = true, true
+		best.User, best.Target, best.Summary = l.User, l.Target, l.Summary
+		for k := range best.Details {
+			if best.Details[k].Label == "Reason" {
+				best.Details[k].Value = detail(l, "Reason")
+			}
+		}
+		best.AddDetail("Authentication", detail(l, "Authentication"))
+	}
+	if len(drop) == 0 {
+		return events
 	}
 	out := events[:0]
 	for _, e := range events {

@@ -1,5 +1,6 @@
-// Logons and failed logons from auditd (USER_LOGIN, USER_AUTH, USER_ACCT),
-// including the name tried in an unknown-user SSH attempt.
+// Logons and failed logons from auditd (USER_LOGIN, USER_AUTH, USER_ACCT,
+// and USER_START for SSH sessions), including the name tried in an
+// unknown-user SSH attempt.
 
 package linuxlog
 
@@ -97,16 +98,7 @@ func (t *Translator) userLogin(r *Record) *event.Event {
 	}
 	how, label := session(exe, term)
 	if r.Get("res") == "success" {
-		if acct == "" {
-			return nil
-		}
-		e := &event.Event{Category: event.CatLogon, Action: "logon", User: acct, Outcome: "success", SourceIP: addr,
-			Interactive: true, Summary: fmt.Sprintf("%s logged on %s%s.", acct, how, fromAddr(addr)), DedupeKey: logonKey(acct, addr)}
-		e.AddDetail("Logon type", label)
-		e.AddDetail("Source address", addr)
-		e.AddDetail("Terminal", term)
-		e.AddDetail("Program", exe)
-		return e
+		return logon(acct, how, label, addr, term, exe)
 	}
 	reason := "wrong password"
 	if program(exe) == "sshd" {
@@ -121,6 +113,35 @@ func (t *Translator) userLogin(r *Record) *event.Event {
 		}
 	}
 	return t.failedLogon(acct, how, label, addr, term, exe, reason, 2)
+}
+
+func logon(acct, how, label, addr, term, exe string) *event.Event {
+	if acct == "" {
+		return nil
+	}
+	e := &event.Event{Category: event.CatLogon, Action: "logon", User: acct, Outcome: "success", SourceIP: addr,
+		Interactive: true, Summary: fmt.Sprintf("%s logged on %s%s.", acct, how, fromAddr(addr)), DedupeKey: logonKey(acct, addr)}
+	e.AddDetail("Logon type", label)
+	e.AddDetail("Source address", addr)
+	e.AddDetail("Terminal", term)
+	e.AddDetail("Program", exe)
+	return e
+}
+
+// sshSessionStart is the logon of an SSH session sshd opened (USER_START).
+// Ubuntu 26.04's sshd-session writes no USER_LOGIN record, so this is
+// the only audit record of the sign-in (LNX1). Where sshd does write
+// USER_LOGIN, the two have the same DedupeKey and the report shows one
+// row, as it does with sshd's "Accepted" line in auth.log, which says how
+// the person signed in.
+func (t *Translator) sshSessionStart(r *Record) *event.Event {
+	exe, term := r.Get("exe"), r.Get("terminal")
+	addr := cleanAddr(r.Get("addr"))
+	if addr == "" {
+		addr = cleanAddr(r.Get("hostname"))
+	}
+	how, label := session(exe, term)
+	return logon(t.acct(r), how, label, addr, term, exe)
 }
 
 func (t *Translator) failedLogon(acct, how, label, addr, term, exe, reason string, prio int) *event.Event {

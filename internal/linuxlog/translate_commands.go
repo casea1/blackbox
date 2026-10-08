@@ -369,6 +369,9 @@ func (t *Translator) userStart(r *Record) *event.Event {
 	if r.Get("res") != "success" {
 		return nil
 	}
+	if program(r.Get("exe")) == "sshd" {
+		return t.sshSessionStart(r)
+	}
 	actor, acct := t.actor(r), t.acct(r)
 	switch base(r.Get("exe")) {
 	case "su":

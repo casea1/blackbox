@@ -326,6 +326,7 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	formerRuns(runs, opt.Systems)
 	events = r.exclude(events)
 	events = sshAttempts(events)
+	events = sshdLines(events)
 	unknownNames(events)
 	events = mergeAdminLogons(events)
 	events = sshLogonPairs(events)

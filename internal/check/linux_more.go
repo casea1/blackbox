@@ -1,15 +1,18 @@
 package check
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
 )
 
-// More Linux checks (A6, A11, O1): what auditd does when its disk fills,
-// who it tells, the audit log's permissions, time synchronisation, boot
-// settings waiting for a reboot, and sudo-rs.
+// More Linux checks (A6, A11, O1, LNX1): what auditd does when its disk
+// fills, who it tells, the audit log's permissions, time synchronisation,
+// boot settings waiting for a reboot, sudo-rs, and an sshd that records no
+// logon in the audit log.
 
 // EvaluateAuditdActions checks what auditd does as its disk fills or
 // fails. SUSPEND and IGNORE stop recording without anyone knowing.
@@ -194,4 +197,49 @@ func EvaluateW32Time(state, typ string) Result {
 		r.Status, r.Have = Pass, "running, "+typ
 	}
 	return r
+}
+
+var sshdExeRE = regexp.MustCompile(`exe="[^"]*/sshd(?:-session|-auth)?"`)
+
+// SSHAuditCounts counts the SSH sessions sshd opened (USER_START) and
+// the successful logons it recorded (USER_LOGIN) in an audit log.
+func SSHAuditCounts(r io.Reader) (starts, logins int, err error) {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+	for sc.Scan() {
+		l := sc.Text()
+		if !sshdExeRE.MatchString(l) || !strings.Contains(l, "res=success") {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(l, "type=USER_START "):
+			starts++
+		case strings.HasPrefix(l, "type=USER_LOGIN "):
+			logins++
+		}
+	}
+	return starts, logins, sc.Err()
+}
+
+// EvaluateSSHLogons warns when sshd opens sessions but records no logon
+// (USER_LOGIN) in the audit log, as Ubuntu 26.04's sshd-session does
+// (LNX1). ok is false when sshd is not installed.
+func EvaluateSSHLogons(sshd bool, starts, logins int, err error) (r Result, ok bool) {
+	if !sshd {
+		return r, false
+	}
+	r = Result{Area: "Audit service", Item: "sshd records SSH logons (USER_LOGIN) in the audit log", Want: "a USER_LOGIN for each SSH session",
+		Affects: "Logons: SSH sign-ins come from the session start (USER_START), and how the person signed in only from auth.log or the journal"}
+	switch {
+	case err != nil:
+		r.Status, r.Have = Info, "could not read the audit log (run as root)"
+	case logins > 0:
+		r.Status, r.Have = Pass, fmt.Sprintf("%d SSH logons recorded", logins)
+	case starts == 0:
+		r.Status, r.Have = Info, "no SSH sessions in the audit log yet"
+	default:
+		r.Status, r.Have = Warn, fmt.Sprintf("%d SSH sessions opened (USER_START), no USER_LOGIN", starts)
+		r.Fix = "Nothing to change in Blackbox: it reports each SSH sign-in from its USER_START record, and takes the method (password or key) and refused keys from sshd's lines in auth.log or the journal. Keep auth.log (rsyslog) or a persistent journal so those lines are kept"
+	}
+	return r, true
 }
