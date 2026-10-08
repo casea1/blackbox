@@ -501,7 +501,8 @@ jobs:
           # A failure names its line as an annotation, readable without the log.
           trap 'echo "::error title=drop-only inbox::line $LINENO: $BASH_COMMAND"' ERR
           sudo ./blackbox install --yes --site CI --inbox /srv/dropinbox --report-dir /srv/bb-drop-reports --no-first-report
-          test "$(sudo stat -c '%U:%G %a' /srv/dropinbox)" = "root:blackbox-senders 1730" || { sudo stat /srv/dropinbox; exit 1; }
+          got="$(sudo stat -c '%U:%G %a' /srv/dropinbox)"
+          test "$got" = "root:blackbox-senders 1730" || { echo "::error::the inbox is $got, not root:blackbox-senders 1730"; sudo ls -la /srv/dropinbox; exit 1; }
           # An SFTP sender's account, in the group.
           sudo useradd -M -s /usr/sbin/nologin -G blackbox-senders bbdrop
           # Another sender's batch, as a sender writes it (owner-only).
