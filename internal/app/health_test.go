@@ -14,6 +14,7 @@ import (
 	"github.com/casea1/blackbox/internal/check"
 	"github.com/casea1/blackbox/internal/collect"
 	"github.com/casea1/blackbox/internal/config"
+	"github.com/casea1/blackbox/internal/inventory"
 	"github.com/casea1/blackbox/internal/lan"
 	"github.com/casea1/blackbox/internal/rollover"
 	"github.com/casea1/blackbox/internal/store"
@@ -332,5 +333,39 @@ func TestStatusLocalTimesOnly(t *testing.T) {
 		if got := zoneText(now, loc); got != want {
 			t.Errorf("zone %v: %q", loc, got)
 		}
+	}
+}
+
+// UX10b: setup records a settings check, with the inventory, at install
+// and upgrade, so status and the next report show the settings as the
+// new version found them.
+func TestRecordCheckAtSetup(t *testing.T) {
+	st, _ := store.Open(t.TempDir())
+	now := time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC)
+	st.State.LastCheck = now.Add(-2 * time.Hour) // the earlier version's
+	st.Save()
+	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportEvery: "weekly", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute}, Version: "test", Loc: time.UTC,
+		Now: func() time.Time { return now },
+		RunCheck: func() []check.Result {
+			return []check.Result{{Area: "Audit policy", Item: "Logon", Status: check.Fail}}
+		},
+		Inventory: func() *inventory.Inventory { return &inventory.Inventory{Model: "Precision 3660"} }}
+	rs, err := a.RecordCheck()
+	if err != nil || len(rs) != 1 || rs[0].Item != "Logon" {
+		t.Fatalf("check: %+v %v", rs, err)
+	}
+	st, _ = store.Open(st.Dir)
+	if !st.State.LastCheck.Equal(now) {
+		t.Errorf("last check %v", st.State.LastCheck)
+	}
+	got, err := st.LatestChecks(now.AddDate(0, 0, -1), now.Add(time.Minute))
+	rec := got[store.SystemKey(collect.LocalHost())]
+	if err != nil || rec == nil || len(rec.Results) != 1 || rec.Inventory == nil || rec.Inventory.Model != "Precision 3660" {
+		t.Fatalf("recorded: %+v %v", got, err)
+	}
+	var b bytes.Buffer
+	a.Status(&b)
+	if !strings.Contains(b.String(), "Settings checked: 2026-10-08 09:00") {
+		t.Errorf("status:\n%s", b.String())
 	}
 }

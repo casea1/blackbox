@@ -72,6 +72,9 @@ type App struct {
 	// Inventory reads this computer's hardware and accounts (nil:
 	// inventory.Collect); tests replace it.
 	Inventory func() *inventory.Inventory
+	// RunCheck checks the audit settings (nil: check.Run); tests
+	// replace it.
+	RunCheck func() []check.Result
 }
 
 func (a *App) now() time.Time {
@@ -879,20 +882,57 @@ func (a *App) CheckTurnover() func(string) (rollover.Loss, bool) {
 // recordChecks checks this system's audit settings and keeps the result,
 // so it reaches reports here or on the collector.
 func (a *App) recordChecks(st *store.Store, host string, force bool) error {
-	if !check.Supported {
-		return nil
+	_, err := a.checkNow(st, host, force)
+	return err
+}
+
+// checkNow is recordChecks, returning what it recorded (nil when no check
+// was due, or checks are not supported here).
+func (a *App) checkNow(st *store.Store, host string, force bool) (*store.CheckRecord, error) {
+	if !check.Supported && a.RunCheck == nil {
+		return nil, nil
 	}
 	now := a.now()
 	if !force && !checkDue(st.State.LastCheck, a.bootTime(), now) {
-		return nil
+		return nil, nil
+	}
+	run := a.RunCheck
+	if run == nil {
+		run = check.Run
 	}
 	check.Turnover = turnover(st, now, a.Cfg.CollectEvery)
-	rec := &store.CheckRecord{Time: now, Host: host, OS: runtime.GOOS, Results: check.Run(), Inventory: a.inventory()}
+	rec := &store.CheckRecord{Time: now, Host: host, OS: runtime.GOOS, Results: run(), Inventory: a.inventory()}
 	if err := st.AppendChecks(rec); err != nil {
-		return err
+		return rec, err
 	}
 	st.State.LastCheck = now
-	return nil
+	return rec, nil
+}
+
+// RecordCheck checks the audit settings now and keeps the result with
+// this computer's inventory, as a collection does (UX10b). Setup calls it
+// at every install and upgrade, so the settings an upgrade or a change of
+// settings left are what status and the next report show, not a check
+// made up to a day before by the earlier version. It returns the results
+// to show, even when they could not be kept.
+func (a *App) RecordCheck() ([]check.Result, error) {
+	st, unlock, err := a.openWait(sendWait)
+	if err != nil {
+		run := a.RunCheck
+		if run == nil {
+			run = check.Run
+		}
+		return run(), err
+	}
+	defer unlock()
+	rec, err := a.checkNow(st, collect.LocalHost(), true)
+	if serr := st.Save(); err == nil {
+		err = serr
+	}
+	if rec == nil {
+		return nil, err
+	}
+	return rec.Results, err
 }
 
 // receive imports batches other systems have delivered to this

@@ -608,7 +608,10 @@ operating-system scan.
 ## Inventory
 
 The **Inventory** page (under Audit) lists what each system is, read with
-its daily settings check by Blackbox 0.13 or later:
+its daily settings check by Blackbox 0.13 or later. Setup also keeps the
+check it shows, with the inventory, at every install and upgrade (UX10b),
+so an upgrade's settings and inventory are in `status` (**Settings
+checked**) and the next report at once, not after the next daily check:
 
 - **The system:** make and model, serial number (from the BIOS on Windows,
   DMI on Linux), BIOS version, operating system, processor and memory, and
