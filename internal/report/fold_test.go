@@ -32,7 +32,7 @@ func TestFoldedRows(t *testing.T) {
 	events := []*event.Event{
 		elevated(0, cmd, `C:\Windows\explorer.exe`), elevated(0, con, cmd),
 		elevated(5, cmd, `C:\Windows\explorer.exe`), elevated(5, con, cmd),
-		elevated(9, con, `C:\Tools\other.exe`), // its parent has no row: stays
+		elevated(9, con, `C:\Tools\other.exe`), // its parent has no row, nor its user a logon: left out (UX1b)
 	}
 	for i := 0; i < 7; i++ {
 		events = append(events, refused(i))
@@ -51,8 +51,8 @@ func TestFoldedRows(t *testing.T) {
 		}
 		return
 	}
-	if n := count(func(e *event.Event) bool { return strings.HasSuffix(e.Process, "conhost.exe") }); n != 1 {
-		t.Errorf("%d console host rows, want 1 (the one with no parent row)", n)
+	if n := count(func(e *event.Event) bool { return strings.HasSuffix(e.Process, "conhost.exe") }); n != 0 {
+		t.Errorf("%d console host rows, want none", n)
 	}
 	// The two cmd.exe runs are identical too: one row ×2, with both
 	// console windows in its details.
@@ -80,7 +80,7 @@ func TestFoldedRows(t *testing.T) {
 	if n := count(func(e *event.Event) bool { return e.Action == "logon_failed" }); n != 3 {
 		t.Errorf("failed logons folded: %d rows", n)
 	}
-	if r.Folded != 2+1+6 {
+	if r.Folded != 2+1+6+1 {
 		t.Errorf("folded %d", r.Folded)
 	}
 	// The row shows ×7.
