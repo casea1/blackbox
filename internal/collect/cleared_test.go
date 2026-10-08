@@ -1,6 +1,8 @@
 package collect
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +19,16 @@ func TestClearedNotLost(t *testing.T) {
 		{Channel: "System"},
 	}}
 	clear := &event.Event{Time: at.Add(-time.Minute), User: "claude", Action: "log_cleared"}
-	ClearedNotLost(run, map[string]*event.Event{"microsoft-windows-powershell/operational": clear}, nil)
+	var logged []string
+	logf := func(f string, a ...any) { logged = append(logged, fmt.Sprintf(f, a...)) }
+	ClearedNotLost(run, map[string]*event.Event{"microsoft-windows-powershell/operational": clear}, logf)
+	LogOverwritten(run, logf)
+	// LC2c: the cleared log is not also logged as overwritten.
+	all := strings.Join(logged, "\n")
+	if strings.Contains(all, "PowerShell/Operational: 200 events were overwritten") ||
+		!strings.Contains(all, "Security: 50 events were overwritten before they could be collected") {
+		t.Errorf("log:\n%s", all)
+	}
 	ps, sec := run.Channels[0], run.Channels[1]
 	if ps.Gap != nil || !ps.Cleared || ps.ClearedBy != "claude" || !ps.ClearedAt.Equal(clear.Time) {
 		t.Errorf("cleared PowerShell log: %+v", ps)

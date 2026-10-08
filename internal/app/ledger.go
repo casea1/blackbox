@@ -66,6 +66,7 @@ func noteReport(st *store.Store, dir string, from, to, made time.Time) {
 			}
 		}
 	}
+	rec.FileCount = report.CountFiles(dir)
 	st.State.Reports = append(st.State.Reports, rec)
 }
 
@@ -132,7 +133,9 @@ func (a *App) verifyReports(st *store.Store) {
 					bad = n + " is missing"
 					break
 				}
-				continue // can't read it now: not reported as changed
+				// A listed file that can't be read is not verified (VER2).
+				bad = n + " could not be read, so it is not verified (" + err.Error() + ")"
+				break
 			}
 			if got != files[n] {
 				bad = n + " was changed (its SHA-256 no longer matches the manifest)"
@@ -261,6 +264,18 @@ func reportProblem(r store.ReportRecord) (problem, what string) {
 		case err == nil && files[n] >= 0 && fi.Size() != files[n]:
 			return "changed", n + " was changed (its size differs)"
 		}
+	}
+	// A file added since it was written, anywhere in the folder (VER2):
+	// more files than when it was written, named when the manifest does
+	// not list them.
+	if n := report.CountFiles(r.Dir); r.FileCount > 0 && n > r.FileCount {
+		what := fmt.Sprintf("%d files were added after the report was written (it had %d, now %d)", n-r.FileCount, r.FileCount, n)
+		if added, err := report.Unlisted(r.Dir); err == nil && len(added) == 1 {
+			what = fmt.Sprintf("%s was added after the report was written (it is not in the manifest)", added[0])
+		} else if err == nil && len(added) > 1 {
+			what = fmt.Sprintf("%s and %d more files were added after the report was written (they are not in the manifest)", added[0], len(added)-1)
+		}
+		return "changed", what
 	}
 	if r.Bad != "" {
 		return "changed", r.Bad

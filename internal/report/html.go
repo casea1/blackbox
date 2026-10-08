@@ -371,7 +371,8 @@ func (r *Report) WriteHTML(w io.Writer, pages []*EventPage) error {
 	if err != nil {
 		return err
 	}
-	meta := map[string]any{"pages": pages, "zone": zoneName(r.Generated, r.Location)}
+	_, zoneOff := r.Generated.In(r.Location).Zone()
+	meta := map[string]any{"pages": pages, "zone": zoneName(r.Generated, r.Location), "zoneOff": zoneOff}
 	// For the event panel: which detection an event is part of, each
 	// system's original-log zip and what it runs.
 	rowDet, dets := map[int]int{}, []string{}
