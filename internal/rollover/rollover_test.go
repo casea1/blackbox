@@ -47,7 +47,7 @@ func TestAdviceByRate(t *testing.T) {
 	}
 	// Turned over faster than collection.
 	l.Held = 5 * time.Minute
-	if got := l.Advice(true); !strings.Contains(got, "too small for how fast it is written") || !strings.Contains(got, "at least 240 MB") {
+	if got := l.Advice(true); !strings.Contains(got, "too small for how fast it is written") || !strings.Contains(got, "at least 256 MB") {
 		t.Errorf("too small: %s", got)
 	}
 	if !Critical("Security") || !Critical("/var/log/audit/audit.log") {
@@ -100,5 +100,33 @@ func TestNeededCapped(t *testing.T) {
 	}
 	if !Critical("/var/log/audit/audit.log") || !Critical("/srv/audit/audit.log") || Critical("Microsoft-Windows-PowerShell/Operational") {
 		t.Error("critical logs")
+	}
+}
+
+// STAT2: the size advised moves in steps (a power of two MB, 1 GB and 2
+// GB for the PowerShell log), so it is the same from run to run while the
+// measured rate moves a little.
+func TestNeededSteps(t *testing.T) {
+	ps := "Microsoft-Windows-PowerShell/Operational"
+	for _, c := range []struct {
+		channel string
+		held    time.Duration
+		want    string
+	}{
+		{ps, 3 * time.Hour, "1 GB"},                  // 400 MB: the PowerShell minimum
+		{ps, 55 * time.Minute, "2 GB"},               // 1.3 GB
+		{ps, 50 * time.Minute, "2 GB"},               // 1.4 GB
+		{ps, time.Minute, "2 GB"},                    // capped
+		{"Application", 3 * time.Hour, "128 MB"},     // 80 MB
+		{"Application", 170 * time.Minute, "128 MB"}, // 85 MB
+	} {
+		size := uint64(300 << 20)
+		if c.channel == "Application" {
+			size = 60 << 20
+		}
+		l := Loss{Channel: c.channel, Held: c.held, Every: time.Hour, MaxSize: size}
+		if got := Size(l.Needed()); got != c.want {
+			t.Errorf("%s held %v: %s, want %s", c.channel, c.held, got, c.want)
+		}
 	}
 }

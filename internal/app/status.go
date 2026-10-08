@@ -115,6 +115,10 @@ func (a *App) Status(w io.Writer) error {
 	}
 	var byLog []*overwrites
 	logIdx := map[string]*overwrites{}
+	// The advice for a log (with a size, often a long command) is given
+	// once: on its "Logs incomplete" line, or else on its "Events lost"
+	// line (STAT2).
+	advised := map[string]bool{}
 	for _, g := range s.LogGaps {
 		// The audit record's gap makes status exit 4; another log's (the
 		// PowerShell log) is its own, lower line, as for lost events
@@ -164,6 +168,7 @@ func (a *App) Status(w io.Writer) error {
 		for _, l := range losses {
 			if store.SystemKey(l.Host) == store.SystemKey(host) && strings.EqualFold(l.Channel, o.source) {
 				fix = l.Advice(true)
+				advised[store.SystemKey(l.Host)+"|"+strings.ToLower(l.Channel)] = true
 				break
 			}
 		}
@@ -184,14 +189,18 @@ func (a *App) Status(w io.Writer) error {
 	}
 	for _, l := range losses {
 		local := store.SystemKey(l.Host) == store.SystemKey(host)
+		text := LostText(l, a.loc(), local)
+		if advised[store.SystemKey(l.Host)+"|"+strings.ToLower(l.Channel)] {
+			text = lostCount(l, a.loc()) + " What to do: see Logs incomplete above."
+		}
 		if rollover.Critical(l.Channel) {
-			p("EVENTS LOST:", "%s", LostText(l, a.loc(), local))
+			p("EVENTS LOST:", "%s", text)
 			attention = append(attention, "events were lost to log rollover") // C6
 			continue
 		}
 		// Another log's loss is its own, lower line (LOG1): it does not
 		// make status exit 4.
-		p("Events lost:", "%s", LostText(l, a.loc(), local))
+		p("Events lost:", "%s", text)
 	}
 	// The clock moved back (T3, T1): a stored time in the future, or a
 	// change noticed since the last report.
@@ -496,8 +505,13 @@ func BlockedText(b *store.Blocked, loc *time.Location) string {
 // than collection, a larger log, with the size. local says whether the
 // log is this computer's.
 func LostText(l LostLog, loc *time.Location, local bool) string {
-	return fmt.Sprintf("%s on %s: %s events overwritten before they could be collected, since %s. %s",
-		rollover.Name(l.Channel), l.Host, commaNum(l.Count), stampLocal(l.Since, loc), l.Advice(local))
+	return lostCount(l, loc) + " " + l.Advice(local)
+}
+
+// lostCount is LostText without the advice.
+func lostCount(l LostLog, loc *time.Location) string {
+	return fmt.Sprintf("%s on %s: %s events overwritten before they could be collected, since %s.",
+		rollover.Name(l.Channel), l.Host, commaNum(l.Count), stampLocal(l.Since, loc))
 }
 
 func commaNum(n uint64) string {

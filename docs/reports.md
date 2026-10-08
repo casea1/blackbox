@@ -658,7 +658,11 @@ The Overview flags a report as incomplete when:
   between collections is too small for its volume, and collecting more
   often would not help, so the size it needs is given; collecting every 15
   minutes is suggested only to a system that collects less often. The
-  size given is capped at 2 GB, the same as `blackbox check` gives. The
+  size given is rounded up to a power of two (256 MB, 512 MB, 1 GB, 2 GB),
+  so it stays the same from run to run, and capped at 2 GB, the same as
+  `blackbox check` gives. `blackbox status` gives this advice once per log,
+  on its **Logs incomplete** line; its **Events lost** line points there
+  (STAT2). The
   original logs exported at each collection hold what each log had at that
   moment: events written and overwritten between two collections are in no
   export

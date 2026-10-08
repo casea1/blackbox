@@ -609,6 +609,12 @@ func TestLogsIncompleteOneLinePerLog(t *testing.T) {
 		!strings.Contains(out, "collecting more often would not help") || strings.Contains(out, "collect more often (blackbox config set") {
 		t.Errorf("status:\n%s", out)
 	}
+	// STAT2: the size advice is given once, on the Logs incomplete line;
+	// the Events lost line points to it. The size is a stable step.
+	if n := strings.Count(out, "Make it at least"); n != 1 || strings.Count(out, "wevtutil") != 1 ||
+		!strings.Contains(out, "Make it at least 1 GB") || !strings.Contains(out, "What to do: see Logs incomplete above.") {
+		t.Errorf("advice %d times:\n%s", n, out)
+	}
 }
 
 // AR7: at a scheduled report, a daily archive that fails its check (here
