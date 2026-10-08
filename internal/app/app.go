@@ -1247,6 +1247,8 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 	} else {
 		events = SelectWindow(all, prevEnd, prevGen, selEnd, generated)
 	}
+	// Inbox conflicts recorded since the last report are High rows (SEC1).
+	events = append(events, lan.ConflictEvents(st, prevGen, generated)...)
 	// Never a period that starts after it ends (T3): after the clock was
 	// moved back, the previous period ended in what is now the future.
 	windowStart := prevEnd
@@ -1459,10 +1461,17 @@ func (a *App) inboxWarnings() []string {
 	if a.Cfg.Inbox == "" {
 		return nil
 	}
+	var out []string
 	if bad := lan.Unreadable(a.Cfg.Inbox); len(bad) > 0 {
-		return []string{unreadableText(bad) + ". Their events are not in this report; fix the file permissions so the next run imports them."}
+		out = append(out, unreadableText(bad)+". Their events are not in this report; fix the file permissions so the next run imports them.")
 	}
-	return nil
+	// SEC2: files set aside are in no report until sent again.
+	if rej := lan.Rejected(a.Cfg.Inbox); len(rej) > 0 {
+		out = append(out, fmt.Sprintf("%d file%s in the inbox could not be used and %s set aside in %s; their data is not in this report: %s",
+			len(rej), map[bool]string{true: "s"}[len(rej) != 1], map[bool]string{true: "were", false: "was"}[len(rej) != 1],
+			filepath.Join(a.Cfg.Inbox, "rejected"), strings.Join(rej, "; ")))
+	}
+	return out
 }
 
 func lanWarnings(st *store.Store, since, until time.Time, loc *time.Location) []string {

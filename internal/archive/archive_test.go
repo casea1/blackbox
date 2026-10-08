@@ -93,7 +93,7 @@ func TestCreateVerifyFileAndPrune(t *testing.T) {
 	}
 
 	reports := filepath.Join(dir, "archives")
-	dest, err := File(path, reports, info)
+	dest, _, err := File(path, reports, info)
 	if err != nil || filepath.Base(filepath.Dir(dest)) != "ubu" {
 		t.Fatalf("file: %s %v", dest, err)
 	}

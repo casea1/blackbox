@@ -102,7 +102,14 @@ type State struct {
 	Send    *SendState              `json:"send,omitempty"`
 	Senders map[string]*SenderState `json:"senders,omitempty"` // by sender ID
 	Systems map[string]*System      `json:"systems,omitempty"` // by SystemKey(host)
-	Pending *PendingImport          `json:"pending_import,omitempty"`
+	// InboxFolders are the senders' own folders in this collector's
+	// inbox, by folder name in upper case, and Renames the former names
+	// an administrator accepted (SEC1).
+	InboxFolders map[string]*InboxFolder `json:"inbox_folders,omitempty"`
+	Renames      []Rename                `json:"renames,omitempty"`
+	// InboxConflicts are kept 90 days (SEC1).
+	InboxConflicts []InboxConflict `json:"inbox_conflicts,omitempty"`
+	Pending        *PendingImport  `json:"pending_import,omitempty"`
 
 	// RemovedReports are report folders deleted under retention_days since
 	// the last scheduled report, which lists them (A9).

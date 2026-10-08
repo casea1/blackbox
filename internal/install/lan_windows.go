@@ -187,3 +187,25 @@ func firewallAdvice(logf func(string, ...any), port int) {
 		logf("%-20s %s", label, l)
 	}
 }
+
+// SenderFolderAccess lets only account write into a sender's folder in
+// the inbox (SEC1): it can create files and write them, but not delete or
+// rename them, change their permissions, or reach another sender's
+// folder. Administrators and SYSTEM keep full control, and the account
+// joins the senders group, which gives access to the share.
+func SenderFolderAccess(dir, account string) error {
+	const create = "(OI)(CI)(RD,WD,AD,REA,WEA,X,RA,WA,RC,S)"
+	if out, err := hidden.Command("icacls.exe", dir, "/inheritance:r",
+		"/grant:r", "*S-1-5-32-544:(OI)(CI)F", "/grant:r", "*S-1-5-18:(OI)(CI)F",
+		"/grant:r", account+":"+create,
+		// OWNER RIGHTS: the files the account creates are its own, but
+		// owning them gives it nothing more (no changing their permissions).
+		"/grant:r", "*S-1-3-4:(OI)(CI)(RD,REA,X,RA,RC,S)").CombinedOutput(); err != nil {
+		return fmt.Errorf("set permissions on %s: %v: %s", dir, err, strings.TrimSpace(string(out)))
+	}
+	out, err := hidden.Command("net.exe", "localgroup", SendersGroup, account, "/add").CombinedOutput()
+	if err != nil && !strings.Contains(string(out), "1378") { // 1378: already a member
+		return fmt.Errorf("add %s to %q: %v: %s", account, SendersGroup, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}

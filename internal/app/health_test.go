@@ -56,7 +56,7 @@ func TestLostEventsAreReported(t *testing.T) {
 func TestNoBatchSince(t *testing.T) {
 	st, _ := store.Open(t.TempDir())
 	now := time.Date(2026, 10, 2, 15, 0, 0, 0, time.UTC)
-	st.NoteSystem("claude-code", "linux", "0.9.2", "claude-code", now.Add(-3*time.Hour), now.Add(-3*time.Hour), now.Add(-3*time.Hour))
+	st.NoteSystem("bbtest-sender-7f3a", "linux", "0.9.2", "bbtest-sender-7f3a", now.Add(-3*time.Hour), now.Add(-3*time.Hour), now.Add(-3*time.Hour))
 	st.Save()
 	a := &App{Cfg: &config.Config{DataDir: st.Dir, Inbox: t.TempDir(), ReportEvery: "weekly"}, Now: func() time.Time { return now }, Loc: time.UTC}
 	var b bytes.Buffer
@@ -88,9 +88,9 @@ func TestStandaloneShowsOnlyItself(t *testing.T) {
 	st, _ := store.Open(t.TempDir())
 	now := time.Date(2026, 10, 2, 15, 0, 0, 0, time.UTC)
 	st.State.LastWindowEnd = now.AddDate(0, 0, -3)
-	st.NoteSystem("claude-code", "linux", "0.9.2", "claude-code", now.AddDate(0, 0, -4), now.AddDate(0, 0, -4), now.AddDate(0, 0, -4))
+	st.NoteSystem("bbtest-sender-7f3a", "linux", "0.9.2", "bbtest-sender-7f3a", now.AddDate(0, 0, -4), now.AddDate(0, 0, -4), now.AddDate(0, 0, -4))
 	st.Save()
-	st.AppendChecks(&store.CheckRecord{Time: now.Add(-time.Hour), Host: "claude-code", OS: "linux",
+	st.AppendChecks(&store.CheckRecord{Time: now.Add(-time.Hour), Host: "bbtest-sender-7f3a", OS: "linux",
 		Results: []check.Result{{Area: "Audit service", Item: "auditd", Status: check.Fail}}})
 	a := &App{Cfg: &config.Config{DataDir: st.Dir, ReportEvery: "weekly"}, Now: func() time.Time { return now }, Loc: time.UTC}
 	h, err := a.Health()
@@ -101,7 +101,7 @@ func TestStandaloneShowsOnlyItself(t *testing.T) {
 		t.Errorf("a former sender is still shown: gaps %v, quiet %v", h.AuditGaps, h.Quiet)
 	}
 	a.Cfg.Inbox = t.TempDir()
-	if h, _ := a.Health(); h.AuditGaps["claude-code"] != 1 || len(h.Quiet) != 1 {
+	if h, _ := a.Health(); h.AuditGaps["bbtest-sender-7f3a"] != 1 || len(h.Quiet) != 1 {
 		t.Errorf("a collector should show its sender: gaps %v, quiet %v", h.AuditGaps, h.Quiet)
 	}
 }

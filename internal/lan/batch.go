@@ -90,6 +90,9 @@ type Batch struct {
 	Events [][]byte
 	Runs   [][]byte
 	Checks [][]byte
+	// Sum is the SHA-256 of its contents, from its end marker: the same
+	// batch delivered twice has the same Sum (SEC1).
+	Sum string
 }
 
 // Records is the number of events, runs and checks in the batch.
@@ -148,7 +151,9 @@ func (b *Batch) Bytes() ([]byte, error) {
 // ErrIncomplete means a batch ended before its trailer: it was cut short.
 var ErrIncomplete = errors.New("batch is incomplete (no end marker)")
 
-// Decode reads and verifies a batch.
+// Decode reads and verifies a batch. When the header could be read but
+// the rest is unusable, the batch (header only) comes back with the
+// error, so the collector knows whose batch it set aside (SEC2).
 func Decode(r io.Reader) (*Batch, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
@@ -180,18 +185,19 @@ func Decode(r io.Reader) (*Batch, error) {
 		}
 		var rec record
 		if err := json.Unmarshal(raw, &rec); err != nil {
-			return nil, fmt.Errorf("batch record %d is damaged: %v", n+1, err)
+			return head(b), fmt.Errorf("batch record %d is damaged: %v", n+1, err)
 		}
 		if rec.End != nil {
 			if rec.End.Records != n {
-				return nil, fmt.Errorf("batch should hold %d records but has %d", rec.End.Records, n)
+				return head(b), fmt.Errorf("batch should hold %d records but has %d", rec.End.Records, n)
 			}
 			if got := hex.EncodeToString(h.Sum(nil)); got != rec.End.SHA256 {
-				return nil, errors.New("batch contents do not match their checksum (altered or damaged)")
+				return head(b), errors.New("batch contents do not match their checksum (altered or damaged)")
 			}
 			if sc.Scan() {
-				return nil, errors.New("batch has data after its end marker")
+				return head(b), errors.New("batch has data after its end marker")
 			}
+			b.Sum = rec.End.SHA256
 			return b, nil
 		}
 		h.Write(raw)
@@ -205,18 +211,24 @@ func Decode(r io.Reader) (*Batch, error) {
 		case rec.Checks != nil:
 			b.Checks = append(b.Checks, []byte(rec.Checks))
 		default:
-			return nil, fmt.Errorf("batch record %d is empty: %s", n+1, l)
+			return head(b), fmt.Errorf("batch record %d is of no known type: %.200s", n+1, l)
 		}
 		n++
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("reading batch: %w", err)
+		if first {
+			return nil, fmt.Errorf("reading batch: %w", err)
+		}
+		return head(b), fmt.Errorf("reading batch: %w", err)
 	}
 	if lr.N <= 0 {
-		return nil, fmt.Errorf("batch is larger than %d MB", maxBatchBytes>>20)
+		return head(b), fmt.Errorf("batch is larger than %d MB", maxBatchBytes>>20)
 	}
 	if first {
 		return nil, errors.New("batch is empty")
 	}
-	return nil, ErrIncomplete
+	return head(b), ErrIncomplete
 }
+
+// head is a batch's header alone, for a batch that can't be used.
+func head(b *Batch) *Batch { return &Batch{Header: b.Header} }

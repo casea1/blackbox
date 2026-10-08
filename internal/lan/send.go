@@ -2,10 +2,13 @@ package lan
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -210,6 +213,7 @@ func Deliver(st *store.Store, inbox, host string, keep bool) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	dir, own := deliveryDir(st, inbox, host)
 	sent := 0
 	for _, name := range list {
 		seq, err := strconv.ParseUint(strings.TrimSuffix(name, batchExt), 10, 64)
@@ -218,7 +222,7 @@ func Deliver(st *store.Store, inbox, host string, keep bool) (int, error) {
 		}
 		src := filepath.Join(OutboxDir(st), name)
 		final := InboxName(host, st.State.Send.ID, seq)
-		if err := copyInto(src, inbox, final); err != nil {
+		if _, err := copyInto(src, dir, final, own); err != nil {
 			return sent, fmt.Errorf("copy batch %d to %s: %w", seq, inbox, err)
 		}
 		if err := retire(st, src, name, keep); err != nil {
@@ -312,6 +316,7 @@ func Resend(st *store.Store, inbox, host string, from, to uint64) (sent []uint64
 	if st.State.Send == nil {
 		return nil, nil, errors.New("this computer has not sent any batches yet")
 	}
+	dir, own := deliveryDir(st, inbox, host)
 	for seq := from; seq <= to; seq++ {
 		src := filepath.Join(SentDir(st), outboxName(seq))
 		if _, err := os.Stat(src); err != nil {
@@ -321,7 +326,7 @@ func Resend(st *store.Store, inbox, host string, from, to uint64) (sent []uint64
 			}
 			continue
 		}
-		if err := copyInto(src, inbox, InboxName(host, st.State.Send.ID, seq)); err != nil {
+		if _, err := copyInto(src, dir, InboxName(host, st.State.Send.ID, seq), own); err != nil {
 			return sent, missing, fmt.Errorf("copy batch %d to %s: %w", seq, inbox, err)
 		}
 		sent = append(sent, seq)
@@ -350,10 +355,11 @@ func DeliverArchives(st *store.Store, inbox string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	dir, own := deliveryDir(st, inbox, "")
 	sent := 0
 	for _, name := range list {
 		src := filepath.Join(OutboxDir(st), name)
-		if err := copyInto(src, inbox, archivePrefix+st.State.Send.ID+"_"+name); err != nil {
+		if _, err := copyInto(src, dir, archivePrefix+st.State.Send.ID+"_"+name, own); err != nil {
 			return sent, fmt.Errorf("copy log archive %s to %s: %w", name, inbox, err)
 		}
 		if err := os.Remove(src); err != nil {
@@ -380,13 +386,104 @@ func safeName(s string) string {
 	return s
 }
 
-// copyInto copies src into dir as name: written under a temporary name,
-// flushed to disk, then renamed, so the collector never sees half a file.
-func copyInto(src, dir, name string) error {
-	final := filepath.Join(dir, name)
-	if _, err := os.Stat(final); err == nil {
-		return nil // already delivered (the outbox copy was not removed last time)
+// deliveryDir is where this computer delivers in the collector's inbox:
+// its own folder (SEC1), or the inbox itself for a collector set up
+// before there were sender folders. host "" keeps the folder found by
+// the last Deliver.
+func deliveryDir(st *store.Store, inbox, host string) (dir string, own bool) {
+	s := st.State.Send
+	folder := ""
+	if _, err := os.Stat(filepath.Join(inbox, s.Folder, SenderMarker)); host == "" && s.Folder != "" && err == nil {
+		folder = s.Folder
+	} else {
+		folder = SenderFolder(inbox, host)
 	}
+	s.Folder = folder
+	return filepath.Join(inbox, folder), folder != ""
+}
+
+// copyInto copies src into dir as name, and returns the name used. A file
+// already there under that name counts as delivered only if it is the
+// same; otherwise the copy goes under a new name (name-2.bbx), so a file
+// someone else put there is never taken for this one (SEC1).
+//
+// In the inbox itself it is written under a temporary name, flushed, then
+// renamed, so the collector never sees half a file. In a sender's own
+// folder (own) the account can create files but not rename or delete
+// them: the file is written in place, and the collector waits for a file
+// that is not complete yet.
+func copyInto(src, dir, name string, own bool) (string, error) {
+	for n := 1; n < 100; n++ {
+		final := name
+		if n > 1 {
+			final = AgainName(name, n)
+		}
+		path := filepath.Join(dir, final)
+		if _, err := os.Stat(path); err == nil {
+			if sameFile(src, path) {
+				return final, nil // already delivered (the outbox copy was not removed last time)
+			}
+			continue
+		}
+		var err error
+		if own {
+			err = writeNew(src, path)
+			if errors.Is(err, fs.ErrExist) {
+				continue
+			}
+		} else {
+			err = writeRenamed(src, dir, final)
+		}
+		return final, err
+	}
+	return "", fmt.Errorf("%s: too many different files already have its name", name)
+}
+
+// sameFile reports whether two files have the same contents.
+func sameFile(a, b string) bool {
+	x, err1 := fileSum(a)
+	y, err2 := fileSum(b)
+	return err1 == nil && err2 == nil && x == y
+}
+
+func fileSum(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// writeNew writes src to path, which must not exist yet.
+func writeNew(src, path string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+// writeRenamed writes src to dir/name through a temporary name.
+func writeRenamed(src, dir, name string) error {
+	final := filepath.Join(dir, name)
 	tmp := filepath.Join(dir, "."+name+".partial")
 	in, err := os.Open(src)
 	if err != nil {
@@ -412,10 +509,6 @@ func copyInto(src, dir, name string) error {
 		return err
 	}
 	if err := os.Rename(tmp, final); err != nil {
-		if _, serr := os.Stat(final); serr == nil {
-			os.Remove(tmp)
-			return nil
-		}
 		os.Remove(tmp)
 		return err
 	}
@@ -537,4 +630,60 @@ func restamp(path string, first uint64, earlier string) error {
 		return err
 	}
 	return store.WriteFileAtomic(path, out, 0o640)
+}
+
+// NewID gives this computer a new sender ID, for a computer cloned from
+// another (SEC1). Waiting batches are rewritten under the new ID,
+// numbered from 1; batches kept for resending belong to the old ID and
+// are moved aside (sent-OLDID), so they are never resent under the new
+// one.
+func NewID(st *store.Store) (old, id string, err error) {
+	if st.State.Send == nil {
+		st.State.Send = &store.SendState{ID: store.NewID(), NextSeq: 1}
+		return "", st.State.Send.ID, st.Save()
+	}
+	s := st.State.Send
+	old, id = s.ID, store.NewID()
+	list, err := outbox(st)
+	if err != nil {
+		return old, "", err
+	}
+	type renum struct{ from, to string }
+	var moves []renum
+	seq := uint64(1)
+	for _, name := range list {
+		path := filepath.Join(OutboxDir(st), name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return old, "", err
+		}
+		b, err := Decode(bytes.NewReader(data))
+		if err != nil {
+			return old, "", fmt.Errorf("%s: %w", name, err)
+		}
+		b.SenderID, b.Seq, b.FirstSeq, b.Earlier, b.Kept = id, seq, 0, "", &store.SeqRange{}
+		out, err := b.Bytes()
+		if err != nil {
+			return old, "", err
+		}
+		tmp := path + ".new"
+		if err := store.WriteFileAtomic(tmp, out, 0o640); err != nil {
+			return old, "", err
+		}
+		moves = append(moves, renum{tmp, filepath.Join(OutboxDir(st), outboxName(seq))})
+		os.Remove(path)
+		seq++
+	}
+	for _, m := range moves {
+		if err := os.Rename(m.from, m.to); err != nil {
+			return old, "", err
+		}
+	}
+	if _, err := os.Stat(SentDir(st)); err == nil {
+		if err := os.Rename(SentDir(st), filepath.Join(OutboxDir(st), "sent-"+old)); err != nil {
+			return old, "", err
+		}
+	}
+	s.ID, s.NextSeq, s.FirstSeq, s.Earlier = id, seq, 0, ""
+	return old, id, st.Save()
 }

@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // L9: a file that can't be moved aside is not said to be set aside.
@@ -14,7 +15,7 @@ func TestRejectSaysSetAsideOnlyIfMoved(t *testing.T) {
 	os.WriteFile(filepath.Join(inbox, "x_1.bbx"), []byte("junk"), 0o600)
 	// "rejected" is a file, so the folder can't be made and nothing moves.
 	os.WriteFile(filepath.Join(inbox, "rejected"), nil, 0o600)
-	msg := reject(inbox, "x_1.bbx", "not a batch")
+	msg := reject(inbox, inbox, "", "x_1.bbx", "not a batch", time.Now())
 	if strings.Contains(msg, "set aside in") || !strings.Contains(msg, "stays in the inbox") {
 		t.Errorf("message: %s", msg)
 	}
@@ -24,7 +25,7 @@ func TestRejectSaysSetAsideOnlyIfMoved(t *testing.T) {
 
 	inbox = t.TempDir()
 	os.WriteFile(filepath.Join(inbox, "x_1.bbx"), []byte("junk"), 0o600)
-	if msg := reject(inbox, "x_1.bbx", "not a batch"); !strings.Contains(msg, "set aside in") {
+	if msg := reject(inbox, inbox, "", "x_1.bbx", "not a batch", time.Now()); !strings.Contains(msg, "set aside in") {
 		t.Errorf("message: %s", msg)
 	}
 }
