@@ -61,3 +61,11 @@ func TestEventPanelClosesOnNavigation(t *testing.T) {
 		t.Error("a page change leaves the event panel open")
 	}
 }
+
+// UI-R1 final check: Original logs' Inside column was #8A96B3 on the
+// table's #EEF2F9, a contrast of 2.6 (axe-core: serious).
+func TestOriginalLogsInsideContrast(t *testing.T) {
+	if !strings.Contains(styleCSS, "table.lt td.mute{color:#5A6785}") {
+		t.Error("Original logs' Inside column is too faint")
+	}
+}
