@@ -366,7 +366,7 @@ func cmdConfig(args []string) error {
 		fmt.Printf("Settings file:   %s\n\n", src)
 		fmt.Printf("  site_name          %s\n", cfg.SiteName)
 		fmt.Printf("  report_every       %s\n", cfg.ReportEvery)
-		fmt.Printf("  report_at          %s   (%s)\n", cfg.ReportAt, cfg.ReportAt.Describe(cfg.ReportEvery))
+		fmt.Printf("  report_at          %s   (%s)\n", cfg.ReportAt.Show(cfg.ReportEvery), cfg.ReportAt.Describe(cfg.ReportEvery))
 		fmt.Printf("  report_dir         %s\n", dir)
 		logs := cfg.ArchivesDir()
 		if cfg.ArchiveDir == "" {

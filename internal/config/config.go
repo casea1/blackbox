@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -454,6 +455,93 @@ func SetValues(path string, kv [][2]string) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// Refresh rewrites a config file written by an earlier version with the
+// current template's comments, keeping every setting as it is written
+// there (CONF1b): an upgrade otherwise keeps comments that no longer hold
+// ("Events are collected every hour regardless"). A setting the template
+// does not have is kept at the end; one the file does not have is left
+// out, so its default still applies. Nothing is written unless the new
+// file reads back with the same settings. The file as it was is kept
+// next to it as <name>.old, with any comments of your own. It says
+// whether the file changed.
+func Refresh(path string) (bool, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	text := string(b)
+	nl := "\n"
+	if strings.Contains(text, "\r\n") {
+		nl = "\r\n"
+	}
+	keyOf := func(l string) string {
+		t := strings.TrimSpace(l)
+		if t == "" || strings.HasPrefix(t, "#") {
+			return ""
+		}
+		k, _, ok := strings.Cut(t, "=")
+		if !ok {
+			return ""
+		}
+		return strings.ToLower(strings.TrimSpace(k))
+	}
+	have := map[string]string{}
+	var order []string
+	for _, l := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		if k := keyOf(l); k != "" {
+			if _, dup := have[k]; !dup {
+				order = append(order, k)
+			}
+			have[k] = strings.TrimSpace(l)
+		}
+	}
+	var out []string
+	used := map[string]bool{}
+	for _, l := range strings.Split(Render("", "weekly", DefaultReportAt, "", time.Hour), "\n") {
+		k := keyOf(l)
+		if k == "" {
+			out = append(out, l)
+			continue
+		}
+		if line, ok := have[k]; ok {
+			out = append(out, line)
+			used[k] = true
+		}
+	}
+	var extra []string
+	for _, k := range order {
+		if !used[k] {
+			extra = append(extra, have[k])
+		}
+	}
+	if len(extra) > 0 {
+		if n := len(out); n > 0 && out[n-1] == "" {
+			out = out[:n-1]
+		}
+		out = append(append(append(out, "# Kept from the earlier settings file:"), extra...), "")
+	}
+	next := strings.Join(out, nl)
+	if next == text {
+		return false, nil
+	}
+	was, err := parse(strings.NewReader(text), path)
+	if err != nil {
+		return false, err
+	}
+	now, err := parse(strings.NewReader(next), path)
+	if err != nil || !reflect.DeepEqual(was, now) {
+		return false, fmt.Errorf("the refreshed settings file would not read the same; left as it is")
+	}
+	if err := os.WriteFile(path+".old", b, 0o640); err != nil {
+		return false, err
+	}
+	tmp := path + ".new"
+	if err := os.WriteFile(tmp, []byte(next), 0o640); err != nil {
+		return false, err
+	}
+	return true, os.Rename(tmp, path)
 }
 
 func list(v string) []string {

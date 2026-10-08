@@ -230,6 +230,11 @@ func shown(v string) string {
 	return v
 }
 
+// DefenderUpdate is Microsoft Defender updating itself (its log's 2000 or
+// 2014). It is never a row: the report uses it to tell a code integrity
+// failure on a Defender platform file during the update (T2b).
+const DefenderUpdate = "av_updated"
+
 // ReportFilesFlag lists, in Fields, the files of a report a row of
 // changes to Blackbox's reports folder covers, one per line; "" is the
 // report's folder itself (LEDGER3).

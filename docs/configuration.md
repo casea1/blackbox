@@ -7,6 +7,9 @@ file:
 - lines starting with `#` are comments
 - lists are comma-separated
 - changes take effect at the next collection or report, including one you run now with `blackbox report`
+- an upgrade rewrites the comments to the new version's, keeping every
+  setting as it is (CONF1b); the file as it was, with any comments of
+  your own, is kept next to it as `blackbox.conf.old`
 
 | Setting | Default | Meaning |
 |---|---|---|

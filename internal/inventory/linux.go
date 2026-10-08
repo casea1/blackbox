@@ -44,9 +44,24 @@ func Linux(root string, serialOf func(dev string) string) *Inventory {
 			inv.Memory = kb * 1024
 		}
 	}
+	inv.Server = !linuxDesktop(root, read)
 	inv.Drives = linuxDrives(root, read, serialOf)
 	inv.Accounts = linuxAccounts(read("etc/passwd"), read("etc/group"), read("etc/shadow"), int(time.Now().Unix()/86400))
 	return inv
+}
+
+// linuxDesktop says whether a desktop is installed: a display manager, or
+// a graphical (X11 or Wayland) session to log on to.
+func linuxDesktop(root string, read func(string) string) bool {
+	if read("etc/X11/default-display-manager") != "" {
+		return true
+	}
+	for _, d := range []string{"usr/share/xsessions", "usr/share/wayland-sessions"} {
+		if entries, _ := os.ReadDir(filepath.Join(root, d)); len(entries) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func linuxDrives(root string, read func(string) string, serialOf func(string) string) []Drive {

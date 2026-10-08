@@ -827,9 +827,14 @@ func lostAdvice(gaps []GapItem, critical bool) string {
 	return strings.Join(parts, " ")
 }
 
+// lostNote says what the count covers: the collections whose record
+// numbers were checked for overwritten events (UX10).
 func lostNote(other uint64, runs int) string {
 	if other > 0 {
 		return commas(int(other)) + " from other logs"
 	}
-	return plural(runs, "run")
+	if runs == 1 {
+		return "checked at 1 collection"
+	}
+	return "checked at " + commas(runs) + " collections"
 }
