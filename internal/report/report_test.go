@@ -543,7 +543,7 @@ func TestVMOffIsNotFlagged(t *testing.T) {
 	if len(r.Silent) != 1 || r.Silent[0].Name != "WS-04" {
 		t.Errorf("silent: %+v", r.Silent)
 	}
-	if k := r.overview(nil).KPIs[0]; k.Value != "2 / 4" || !k.Bad || k.Note != "2 sent nothing" {
+	if k := r.overview(nil).Strip[1]; k.Label != "Systems reporting" || k.Value != "2 / 4" || !k.Bad || k.Note != "2 silent" {
 		t.Errorf("systems reporting: %+v", k)
 	}
 }

@@ -644,3 +644,51 @@ a.cell:hover{outline:2px solid rgba(11,95,255,.4)}
 @media (max-width:640px){.pop{width:calc(100vw - 16px)!important}}
 /* A stat card's note never widens the page: cut short, whole on hover. */
 .ec{grid-template-columns:auto minmax(0,1fr)}.ec .d{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* UI-R1: Overview, Detections */
+/* Overview: the summary line, the number strip, two lists, activity per
+   hour and the systems with a problem. */
+.ovsum{display:grid;grid-template-columns:10px minmax(0,1fr);gap:0 16px;align-items:start;margin-bottom:12px;border-left:3px solid #D12C2C}
+.ovsum>i{width:10px;height:10px;border-radius:50%;background:#D12C2C;margin-top:7px}
+.ovsum b{display:block;font-size:16px;font-weight:650;color:#0B1630}.ovsum p{margin:3px 0 0;font-size:13px;color:#3A4766}
+.ovsum.clean2{border-left-color:#1A9A50}.ovsum.clean2>i{background:#1A9A50}.ovsum.clean2 b{color:#147A3D}
+.ovstrip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:0;margin-bottom:12px}
+.ovstrip a{display:block;padding:14px 18px;color:inherit;text-decoration:none;min-width:0}
+.ovstrip a+a{border-left:1px solid rgba(0,30,98,.08)}.ovstrip a:hover{background:rgba(11,95,255,.04)}
+.ovstrip span{display:block;font-size:12px;font-weight:550;color:#3A4766}
+.ovstrip b{display:block;font-size:24px;font-weight:700;letter-spacing:-.5px;line-height:1.2;color:#0A2A7A}.ovstrip b.bad{color:#D12C2C}
+.ovstrip small{display:block;font-size:12px;color:#5A6785;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ovrow{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}
+.ovdets .li1{grid-template-columns:8px minmax(0,1fr) 92px 48px}
+.ovdets .li1 .s{overflow:hidden;text-overflow:ellipsis}
+.ovmore{display:inline-block;margin-top:12px;font-size:13px;font-weight:600}
+.ovattn .li1{grid-template-columns:8px minmax(0,1fr) auto}
+.ovattn .li1 .c{font-size:13px;color:#0B1630;text-align:right;max-width:200px;overflow-wrap:anywhere}
+.ovattn .li1 .c:after{content:" ›";color:#8A96B3}
+.ovfine{margin:12px 0 0;line-height:1.5}
+.ovact .ph{flex-wrap:wrap;gap:6px 12px}
+.ovleg span{display:inline-flex;align-items:center;gap:4px;margin-left:8px}.ovleg i{display:inline-block;width:9px;height:9px}
+.ovleg i.w,.ach i.w{background:#3B6FF5}.ovleg i.l,.ach i.l{background:#14A3A3}.ovleg i.d{border-radius:50%;background:#D12C2C}
+.ach{display:flex;align-items:flex-end;gap:4px;height:92px;padding-top:14px;border-bottom:1px solid rgba(0,30,98,.14)}
+.ach.dense{gap:1px}
+.ach>a,.ach>span{flex:1 1 0;min-width:0;height:100%;display:flex;flex-direction:column-reverse;position:relative;text-decoration:none}
+.ach>a:hover i,.ach>a:focus-visible i{filter:brightness(.82)}
+.ach>a:focus-visible{outline:2px solid #0B5FFF;outline-offset:1px}
+.ach i{display:block;width:100%}
+.ach em{position:absolute;left:50%;top:-12px;width:7px;height:7px;margin-left:-3.5px;border-radius:50%;background:#D12C2C}
+.ach-l{position:relative;height:18px;margin-top:4px;font:11px 'Source Code Pro',monospace;color:#5A6785}
+.ach-l span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap}
+.ach-l span:first-child{transform:none}.ach-l span:last-child:not(:first-child){transform:translateX(-100%)}
+.ovglance .ph{flex-wrap:wrap;gap:6px 12px}
+.ovgt{overflow-x:auto}
+.ovgt th.c,.ovgt td.c{text-align:center;width:11%}.ovgt th.n,.ovgt td.n{text-align:right;width:9%}
+.ovgt td{padding:9px 10px;vertical-align:middle}.ovgt td.n{font:12.5px 'Source Code Pro',monospace;color:#5A6785}
+.ovgt td a{font-weight:600;color:#0B1630;text-decoration:none}.ovgt td a:hover{text-decoration:underline}
+.ovgt td small{display:block;font-size:12px;color:#5A6785}
+.ovgt tr.g th{padding:14px 10px 6px;font-size:11px;letter-spacing:.08em;color:#5A6785}
+.ovgfoot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 16px;margin-top:12px;font-size:13px;color:#5A6785}
+.ovgfoot a{font-weight:600}
+@media (max-width:1250px){.ovstrip{grid-template-columns:repeat(2,minmax(0,1fr))}.ovstrip a:nth-child(3){border-left:0}.ovstrip a:nth-child(n+3){border-top:1px solid rgba(0,30,98,.08)}}
+@media (max-width:640px){
+  .ovdets .li1{grid-template-columns:8px minmax(0,1fr) auto}
+  .ach{gap:1px}
+}
