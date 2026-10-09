@@ -1,6 +1,7 @@
 #!/bin/sh
 # Builds release packages into dist/:
 #   Blackbox-Setup-VERSION.exe           Windows: the one file to carry over (blackbox.exe marked windowed)
+#   blackbox-VERSION-windows-amd64.exe   Windows: the console program, for setup at a prompt or over SSH
 #   blackbox-VERSION-linux-amd64.tar.gz  blackbox + install.sh + uninstall.sh
 #   blackbox-VERSION-linux-arm64.tar.gz
 #   SHA256SUMS
@@ -58,6 +59,10 @@ package() { # os arch
 		# which setup installs unchanged; the setup file itself is the same
 		# program marked windowed, then signed (A10).
 		sign "$dir/$exe"
+		# Also on its own: a prompt waits for a console program, so setup's
+		# questions can be answered at cmd or over SSH (the windowed setup
+		# file returns to the prompt at once, which then takes the answers).
+		cp "$dir/$exe" "dist/blackbox-${VERSION}-$1-$2.exe"
 		go run ./scripts/winres -version "$VERSION" -arch "$2" -payload "$dir/$exe" -o "$syso"
 		CGO_ENABLED=0 GOOS="$1" GOARCH="$2" go build -trimpath -buildvcs=false -ldflags "$LDFLAGS" -o "$dir/setup.exe" ./cmd/blackbox
 		rm -f "$syso"
