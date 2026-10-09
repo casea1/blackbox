@@ -34,6 +34,9 @@ const (
 	fileAddFile          = 0x2 // FILE_WRITE_DATA on a file: "Create files / write data"
 	synchronize          = 0x100000
 	fileGenericRead      = 0x120089
+	fileReadEA           = 0x8
+	fileReadAttributes   = 0x80
+	readControl          = 0x20000
 	seFileObject         = 1
 	ownerSecurityInfo    = 0x1
 	daclSecurityInfo     = 0x4
@@ -52,6 +55,11 @@ type dropACE struct {
 //   - SYSTEM and Administrators: full control, this folder and everything in it;
 //   - the senders' group: Create files / write data and Synchronize, on this
 //     folder only, so the files a sender creates inherit no entry for it;
+//   - the senders' group: Read attributes, Read extended attributes and
+//     Read permissions on the files in it, not their contents. A Linux
+//     sender's sshfs mount (SFTP) looks up the file it has just created,
+//     and fails the create when it can't (SFTP1). Without List folder a
+//     sender can only look up a name it knows, and batch names are random;
 //   - OWNER RIGHTS: no rights, on the files in it, so the account that
 //     creates a file gets no implicit Read permissions / Change permissions
 //     on it as its owner.
@@ -63,6 +71,7 @@ func dropOnlyACEs(senders string) []dropACE {
 		{"S-1-5-18", objectInheritAce | containerInheritAce, fileAllAccess},
 		{"S-1-5-32-544", objectInheritAce | containerInheritAce, fileAllAccess},
 		{senders, 0, fileAddFile | synchronize},
+		{senders, objectInheritAce | inheritOnlyAce, fileReadAttributes | fileReadEA | readControl},
 		{"S-1-3-4", objectInheritAce | containerInheritAce | inheritOnlyAce, 0},
 	}
 }

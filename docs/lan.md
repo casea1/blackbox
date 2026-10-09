@@ -324,6 +324,11 @@ for another's.
     *Synchronize* on the inbox folder only. It has no *List folder*,
     *Read*, *Create folders*, *Delete* or *Change permissions*, and the
     files a sender creates inherit no entry for it.
+  - On the files in it, **Blackbox Senders** can read their attributes
+    and permissions, not their contents. A Linux sender's SFTP (sshfs)
+    mount looks up each file it creates, and fails the delivery when it
+    can't. Without *List folder*, a sender can only look up a name it
+    knows, and batch names are random.
   - **OWNER RIGHTS** has no rights on the files, so the account that
     created a file gets nothing from owning it (no reading or changing its
     permissions).
