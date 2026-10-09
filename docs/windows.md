@@ -29,10 +29,21 @@ The window asks exactly the same questions as `blackbox install` at a
 command prompt, which still works and is what scripts use:
 
 ```
-Blackbox-Setup-<version>.exe install --yes --site "Lab 3" --report-dir D:\AuditReports
+blackbox-<version>-windows-amd64.exe install --yes --site "Lab 3" --report-dir D:\AuditReports
 ```
 
-(From cmd.exe, put `start /wait` in front so the prompt waits for it.)
+**At a command prompt or over SSH, use `blackbox-<version>-windows-amd64.exe`**
+(also on the release page): the same program as the setup file, without
+the window. The setup file is a windowed program, so cmd.exe does not wait
+for it and takes your answers itself ("'y' is not recognized…"). From an
+elevated prompt:
+
+```
+blackbox-<version>-windows-amd64.exe install
+```
+
+asks the same questions as the window, and upgrades an installed Blackbox
+the same way.
 
 A run with `--yes` keeps the earlier answers you don't repeat. Giving only `--inbox` (or only `--send-to`) replaces the computer's earlier role: a former sender given `--inbox` becomes a collector.
 

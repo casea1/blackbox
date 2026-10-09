@@ -90,6 +90,7 @@ jobs:
           | System | File | Install |
           |---|---|---|
           | Windows 11 / Server 2025 | \`Blackbox-Setup-${VERSION}.exe\` | Double-click it and answer the questions (it also upgrades an installed Blackbox) |
+          | Windows, at a prompt or over SSH | \`blackbox-${VERSION}-windows-amd64.exe\` | Run \`blackbox-${VERSION}-windows-amd64.exe install\` as an administrator and answer the questions (the same program as the setup file, without the window) |
           | Linux (x86-64) | \`blackbox-${VERSION}-linux-amd64.tar.gz\` | Extract, then \`sudo ./install.sh\` |
           | Linux (ARM64) | \`blackbox-${VERSION}-linux-arm64.tar.gz\` | Extract, then \`sudo ./install.sh\` |
 
