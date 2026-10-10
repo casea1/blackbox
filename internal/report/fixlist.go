@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // The fix list (FIX1) is a page for the administrators who fix what the
@@ -66,11 +67,18 @@ type FixRule struct {
 // FixList builds the fix list from the report: every system with a
 // setting to fix, a log losing events, or an open SCAP finding.
 func (r *Report) FixList() *FixList {
-	fl := &FixList{Site: r.Site, Version: r.Version, Generated: r.Generated.In(r.Location).Format("2 Jan 2006 15:04")}
+	loc := r.Location
+	if loc == nil {
+		loc = time.Local
+	}
+	fl := &FixList{Site: r.Site, Version: r.Version, Generated: r.Generated.In(loc).Format("2 Jan 2006 15:04")}
 	if !r.WindowStart.IsZero() {
-		fl.Period = r.WindowStart.In(r.Location).Format("2 Jan 2006") + " – " + r.WindowEnd.In(r.Location).Format("2 Jan 2006")
+		fl.Period = r.WindowStart.In(loc).Format("2 Jan 2006") + " – " + r.WindowEnd.In(loc).Format("2 Jan 2006")
 	}
 	hp := r.healthPage()
+	if hp == nil {
+		return fl // no systems
+	}
 	losses := map[string][]LossRow{}
 	for _, l := range hp.Losses {
 		losses[strings.ToUpper(l.Host)] = append(losses[strings.ToUpper(l.Host)], l)
