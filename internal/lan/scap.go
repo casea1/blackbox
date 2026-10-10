@@ -160,6 +160,14 @@ func importScap(st *store.Store, dir, name string, dirs Dirs, now time.Time) err
 	if !archive.UsableHost(host) {
 		return fmt.Errorf("it gives the computer as %q, which is not a usable name", res[0].Host)
 	}
+	// Every result in the file must be for the same computer, the one
+	// checked against the signature below: a sender may only report on
+	// itself.
+	for _, r := range res[1:] {
+		if h := store.SystemKey(r.Host); h != store.SystemKey(res[0].Host) {
+			return fmt.Errorf("it holds results for more than one computer (%s and %s)", host, r.Host)
+		}
+	}
 	// Its signature, in NAME.sig, written before it (DESIGN1): the
 	// computer that sent it, and the hash of the result.
 	sig, pub, err := readSig(path, "scap")
