@@ -1576,10 +1576,10 @@ func (a *App) inboxWarnings() []string {
 		out = append(out, unreadableText(bad)+". Their events are not in this report; fix the file permissions so the next run imports them.")
 	}
 	// SEC2: files set aside are in no report until sent again.
-	if rej := lan.Rejected(a.Cfg.Inbox); len(rej) > 0 {
+	if rej := lan.Rejected(lan.SetAsideDir(a.Cfg.DataDir)); len(rej) > 0 {
 		out = append(out, fmt.Sprintf("%d file%s in the inbox could not be used and %s set aside in %s; their data is not in this report: %s",
 			len(rej), map[bool]string{true: "s"}[len(rej) != 1], map[bool]string{true: "were", false: "was"}[len(rej) != 1],
-			filepath.Join(a.Cfg.Inbox, "rejected"), strings.Join(rej, "; ")))
+			lan.SetAsideDir(a.Cfg.DataDir), strings.Join(rej, "; ")))
 	}
 	return out
 }

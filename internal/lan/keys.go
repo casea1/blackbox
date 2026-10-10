@@ -33,7 +33,7 @@ import (
 // The 0.23 checks (sender ID, numbering, former names, hashes) still
 // apply after these, as a second line.
 
-// heldDir is where held deliveries wait, in inbox/rejected.
+// heldDir is where held deliveries wait, in the set-aside folder.
 const heldDir = "held"
 
 // newSenderDays is how long status names a new sender.
@@ -143,28 +143,15 @@ func wasCalled(st *store.Store, old, host string, former []string, now time.Time
 	return hasName(former, old) && !liveElsewhere(st, old, "", now)
 }
 
-// holdFile moves a delivery to inbox/rejected/held, with a note, and
-// remembers it with the computer's pinned key.
-func holdFile(inbox, name string, h *heldError, now time.Time) string {
-	dir := filepath.Join(inbox, rejectedDir, heldDir)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return fmt.Sprintf("%s is held, but could not be moved aside (%v); it stays in the inbox", name, err)
-	}
-	dest := name
-	for i := 2; i < 100; i++ {
-		if _, err := os.Lstat(filepath.Join(dir, dest)); err != nil {
-			break
-		}
-		dest = AgainName(name, i)
-	}
-	if err := os.Rename(filepath.Join(inbox, name), filepath.Join(dir, dest)); err != nil {
-		return fmt.Sprintf("%s is held, but could not be moved aside (%v); it stays in the inbox", name, errReason(err))
-	}
-	if _, err := os.Stat(filepath.Join(inbox, name+sigExt)); err == nil {
-		os.Rename(filepath.Join(inbox, name+sigExt), filepath.Join(dir, dest+sigExt))
-	}
+// holdFile moves a delivery to the held folder of the set-aside folder,
+// with a note, and remembers it with the computer's pinned key.
+func holdFile(aside, inbox, name string, h *heldError, now time.Time) string {
+	dir := filepath.Join(aside, heldDir)
 	note := fmt.Sprintf("%s was held by Blackbox at %s.\n\nWhy: %s\n", name, now.Format("2006-01-02 15:04:05 -07:00"), h.why)
-	os.WriteFile(filepath.Join(dir, dest+whyExt), []byte(strings.ReplaceAll(note, "\n", "\r\n")), 0o640)
+	dest, err := setAside(inbox, name, dir, note)
+	if err != nil {
+		return fmt.Sprintf("%s is held, but could not be moved aside (%s); it stays in the inbox", name, errReason(err))
+	}
 	if h.pin != nil {
 		h.pin.HeldFiles = append(h.pin.HeldFiles, dest)
 	}
@@ -173,22 +160,22 @@ func holdFile(inbox, name string, h *heldError, now time.Time) string {
 
 // releaseHeld moves a computer's held files back into the inbox, where
 // the next import takes them. It returns how many it moved.
-func releaseHeld(inbox string, k *store.SenderKey) int {
-	dir := filepath.Join(inbox, rejectedDir, heldDir)
+func releaseHeld(inbox, aside string, k *store.SenderKey) int {
+	dir := filepath.Join(aside, heldDir)
 	n := 0
 	var left []string
 	for _, name := range k.HeldFiles {
 		src := filepath.Join(dir, name)
-		if _, err := os.Stat(src); err != nil {
+		if _, err := os.Lstat(src); err != nil {
 			continue // removed by hand
 		}
 		to := migratedName(name)
-		if err := os.Rename(src, filepath.Join(inbox, to)); err != nil {
+		if err := moveFile(src, filepath.Join(inbox, to)); err != nil {
 			left = append(left, name)
 			continue
 		}
-		if _, err := os.Stat(src + sigExt); err == nil {
-			os.Rename(src+sigExt, filepath.Join(inbox, to+sigExt))
+		if _, err := os.Lstat(src + sigExt); err == nil {
+			moveFile(src+sigExt, filepath.Join(inbox, to+sigExt))
 		}
 		os.Remove(src + whyExt)
 		n++
@@ -197,9 +184,9 @@ func releaseHeld(inbox string, k *store.SenderKey) int {
 	return n
 }
 
-// Held lists the files waiting in inbox/rejected/held, with why.
-func Held(inbox string) []string {
-	dir := filepath.Join(inbox, rejectedDir, heldDir)
+// Held lists the files waiting in the held folder of aside.
+func Held(aside string) []string {
+	dir := filepath.Join(aside, heldDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
@@ -240,7 +227,7 @@ func SetKey(st *store.Store, inbox, host string, act KeyAction, who, why string,
 		}
 		k.Held, k.Since = false, now
 		k.Changes = append(k.Changes, store.KeyNote{What: "approved", FP: k.FP, Who: who, When: now, Reason: why})
-		moved = releaseHeld(inbox, k)
+		moved = releaseHeld(inbox, SetAsideDir(st.Dir), k)
 	case Rekey:
 		if k.NewFP == "" {
 			return 0, fmt.Errorf("%s has not signed with a different key", k.Host)
@@ -250,11 +237,11 @@ func SetKey(st *store.Store, inbox, host string, act KeyAction, who, why string,
 		k.NewKey, k.NewFP, k.NewSeen, k.Held = "", "", time.Time{}, false
 		k.Changes = append(k.Changes, store.KeyNote{What: "rekeyed", FP: k.FP, Who: who, When: now, Reason: why + " (was " + old + ")"})
 		forgetSenderKeys(st, k.Host)
-		moved = releaseHeld(inbox, k)
+		moved = releaseHeld(inbox, SetAsideDir(st.Dir), k)
 	case Forget:
 		delete(st.State.SenderKeys, hk)
 		forgetSenderKeys(st, k.Host)
-		moved = releaseHeld(inbox, k)
+		moved = releaseHeld(inbox, SetAsideDir(st.Dir), k)
 	default:
 		return 0, fmt.Errorf("unknown action %q", act)
 	}

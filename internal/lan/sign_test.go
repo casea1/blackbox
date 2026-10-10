@@ -125,7 +125,7 @@ func TestKeyPinnedThenChangeHeld(t *testing.T) {
 	if cs := ConflictEvents(col, t0.Add(30*time.Minute), t0.Add(2*time.Hour)); len(cs) != 1 || cs[0].Severity != "high" || !strings.Contains(cs[0].Summary, "is now signing with a different key") {
 		t.Errorf("High row: %+v", cs)
 	}
-	if h := Held(in); len(h) != 1 {
+	if h := Held(SetAsideDir(col.Dir)); len(h) != 1 {
 		t.Errorf("held: %v", h)
 	}
 	// Held again at the next run, not imported.
@@ -473,10 +473,10 @@ func TestStrayFilesSetAside(t *testing.T) {
 		t.Fatalf("set aside: %v", res.Rejected)
 	}
 	for _, n := range []string{"probe2.txt", ".hidden", "notes.txt.sig", "desktop.ini"} {
-		if _, err := os.Stat(filepath.Join(in, rejectedDir, n)); err != nil {
+		if _, err := os.Stat(filepath.Join(SetAsideDir(col.Dir), n)); err != nil {
 			t.Errorf("%s not set aside: %v", n, err)
 		}
-		why, err := os.ReadFile(filepath.Join(in, rejectedDir, n+whyExt))
+		why, err := os.ReadFile(filepath.Join(SetAsideDir(col.Dir), n+whyExt))
 		if err != nil || !strings.Contains(string(why), "not a Blackbox delivery") {
 			t.Errorf("%s: note %q %v", n, why, err)
 		}
@@ -486,7 +486,7 @@ func TestStrayFilesSetAside(t *testing.T) {
 			t.Errorf("%s was moved: %v", p, err)
 		}
 	}
-	if got := Rejected(in); len(got) != 4 {
+	if got := Rejected(SetAsideDir(col.Dir)); len(got) != 4 {
 		t.Errorf("Rejected lists %v", got)
 	}
 	// Ten minutes on, the recent one goes too.

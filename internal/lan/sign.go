@@ -310,7 +310,7 @@ func makeSig(k *Key, path, kind, host, senderID, what string, now time.Time) ([]
 // readSig reads and checks the .sig next to path, if there is one: nil,
 // nil when there is none. It returns what it says and the signer's key.
 func readSig(path, kind string) (*sigFile, []byte, error) {
-	b, err := os.ReadFile(path + sigExt)
+	b, _, err := readInbox(path+sigExt, 1<<20)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil, nil
 	}
@@ -343,7 +343,7 @@ func readSig(path, kind string) (*sigFile, []byte, error) {
 var errSigIncomplete = errors.New("its signature file is incomplete or damaged")
 
 func fileSHA256(path string) (string, error) {
-	f, err := os.Open(path)
+	f, _, err := openInbox(path)
 	if err != nil {
 		return "", err
 	}

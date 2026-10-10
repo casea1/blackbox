@@ -238,7 +238,7 @@ func TestRejectsBadFiles(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(in, ".WS-01_abc_0000000002.bbx.partial")); err != nil {
 		t.Error("a file still being copied must be left alone")
 	}
-	if _, err := os.Stat(filepath.Join(in, "rejected", "notes.bbx")); err != nil {
+	if _, err := os.Stat(filepath.Join(SetAsideDir(col.Dir), "notes.bbx")); err != nil {
 		t.Error("bad file not set aside")
 	}
 }
@@ -345,7 +345,7 @@ func TestLogArchivesAreDeliveredAndFiled(t *testing.T) {
 	if res.Archives != 0 || len(res.Rejected) != 1 {
 		t.Fatalf("damaged archive: %+v", res)
 	}
-	if _, err := os.Stat(filepath.Join(in, "rejected", "archive_abc_WS-02_x.zip")); err != nil {
+	if _, err := os.Stat(filepath.Join(SetAsideDir(col.Dir), "archive_abc_WS-02_x.zip")); err != nil {
 		t.Error("damaged archive not in rejected")
 	}
 }
@@ -411,7 +411,7 @@ func TestUnreadableBatchDoesNotBlockImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Batches != 1 || len(res.Rejected) != 1 || !strings.Contains(res.Rejected[0], "could not be read") {
+	if res.Batches != 1 || len(res.Rejected) != 1 || !strings.Contains(res.Rejected[0], "not a regular file") {
 		t.Errorf("import: %+v", res)
 	}
 }

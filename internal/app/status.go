@@ -322,10 +322,10 @@ func (a *App) Status(w io.Writer) error {
 		}
 		// Files set aside (SEC2): their data is in no report until they
 		// are sent again.
-		if rej := lan.Rejected(a.Cfg.Inbox); len(rej) > 0 {
+		if rej := lan.Rejected(lan.SetAsideDir(a.Cfg.DataDir)); len(rej) > 0 {
 			attention = append(attention, "files in the inbox were set aside")
 			p("REJECTED:", "%d file%s set aside in %s; their data is not in the reports. The reason is in the .why.txt next to each:",
-				len(rej), map[bool]string{true: "s"}[len(rej) != 1], filepath.Join(a.Cfg.Inbox, "rejected"))
+				len(rej), map[bool]string{true: "s"}[len(rej) != 1], lan.SetAsideDir(a.Cfg.DataDir))
 			for _, r := range rej {
 				p("", "  %s", r)
 			}
