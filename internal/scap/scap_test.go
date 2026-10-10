@@ -93,3 +93,34 @@ func TestSSGStigIDFromReference(t *testing.T) {
 		t.Errorf("open rule: %+v", o)
 	}
 }
+
+// FIX1: a rule's fix text, and a complete fix script, are kept for the
+// fix list.
+func TestRuleFixText(t *testing.T) {
+	const x = `<?xml version="1.0"?>
+<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2" id="xccdf_t_benchmark_B">
+  <Rule id="xccdf_t_rule_a" severity="high"><title>A</title>
+    <fixtext>Configure the policy value for &quot;X&quot; to <xhtml:b xmlns:xhtml="http://www.w3.org/1999/xhtml">Enabled</xhtml:b>.</fixtext>
+    <fix system="urn:xccdf:fix:script:sh">echo 1 &gt; /proc/x</fix>
+  </Rule>
+  <Rule id="xccdf_t_rule_b" severity="low"><title>B</title>
+    <fix system="urn:xccdf:fix:script:sh">var=<sub idref="v"/></fix>
+  </Rule>
+  <TestResult id="xccdf_t_testresult_a" start-time="2026-10-05T00:17:00" end-time="2026-10-05T00:17:53">
+    <target>h</target>
+    <rule-result idref="xccdf_t_rule_a"><result>fail</result></rule-result>
+    <rule-result idref="xccdf_t_rule_b"><result>fail</result></rule-result>
+  </TestResult>
+</Benchmark>`
+	res, err := Parse(strings.NewReader(x))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := res[0].Open[0], res[0].Open[1]
+	if a.FixText != `Configure the policy value for "X" to Enabled.` || a.Script != "echo 1 > /proc/x" || a.ScriptLang != "sh" {
+		t.Errorf("rule a: %+v", a)
+	}
+	if b.Script != "" {
+		t.Errorf("rule b's script needs values filled in: %q", b.Script)
+	}
+}

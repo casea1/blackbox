@@ -137,8 +137,9 @@ func TestWriteAndVerify(t *testing.T) {
 			htmlFiles = append(htmlFiles, e.Name())
 		}
 	}
-	if len(htmlFiles) != 1 || htmlFiles[0] != "report.html" {
-		t.Fatalf("want exactly one HTML file (report.html), got %v", htmlFiles)
+	// The report is one page; the fix list (FIX1) is a page of its own.
+	if len(htmlFiles) != 2 || htmlFiles[0] != "fix-list.html" || htmlFiles[1] != "report.html" {
+		t.Fatalf("want report.html and fix-list.html, got %v", htmlFiles)
 	}
 	html, _ := os.ReadFile(filepath.Join(dir, "report.html"))
 	for _, want := range []string{

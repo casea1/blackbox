@@ -36,6 +36,9 @@ import (
 type App struct {
 	// final is set while the final report before sending is made (AR3).
 	final bool
+	// fixesOut, when set, makes report write only the fix list there
+	// (FIX1).
+	fixesOut string
 
 	Cfg     *config.Config
 	Version string
@@ -1213,6 +1216,24 @@ func (a *App) ReportNow(advance bool) (string, error) {
 	return a.report(st, a.now(), advance)
 }
 
+// FixList collects and writes the fix list (FIX1) for the time since the
+// last report to out, as a manual report would show it; it writes no
+// report and leaves the schedule alone.
+func (a *App) FixList(out string) error {
+	st, unlock, err := a.open()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := a.gather(st, true); err != nil {
+		return err
+	}
+	a.fixesOut = out
+	defer func() { a.fixesOut = "" }()
+	_, err = a.report(st, a.now(), false)
+	return err
+}
+
 // SendNow collects and sends to the collector straight away (for example
 // from a script that starts a virtual machine only for a short time).
 func (a *App) SendNow() (SendResult, error) {
@@ -1447,6 +1468,9 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 	}
 	if len(r.Hosts) == 0 {
 		r.Hosts = []string{collect.LocalHost()}
+	}
+	if a.fixesOut != "" {
+		return a.fixesOut, r.WriteFixListFile(a.fixesOut)
 	}
 	name := report.DirName(end, a.Cfg.SiteName, r.Hosts, collect.LocalHost(), a.loc())
 	if !advance {

@@ -60,6 +60,7 @@ Usage:
   blackbox reports accept NAME "why"
                                  Accept that a scheduled report is gone or changed on purpose
   blackbox report [options]      Collect and produce a report now
+  blackbox fixes [--out FILE]    Write the fix list: what to fix on each system, with commands
   blackbox report --xml FILE     Produce a report from exported Windows event logs (any OS)
   blackbox report --audit FILE --syslog FILE
                                  Produce a report from copied Linux logs (any OS)
@@ -108,6 +109,8 @@ func main() {
 		err = cmdRun(args)
 	case "report":
 		err = cmdReport(args)
+	case "fixes":
+		err = cmdFixes(args)
 	case "collect":
 		err = cmdCollect(args)
 	case "check":
@@ -925,6 +928,31 @@ type listFlag []string
 
 func (l *listFlag) String() string     { return strings.Join(*l, ",") }
 func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
+
+// cmdFixes writes the fix list (FIX1) for the time since the last report.
+func cmdFixes(args []string) error {
+	fs := flag.NewFlagSet("fixes", flag.ContinueOnError)
+	var c common
+	c.register(fs)
+	out := fs.String("out", "", "file to write (default: ./blackbox-fix-list-<time>.html)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := c.load()
+	if err != nil {
+		return err
+	}
+	if *out == "" {
+		*out = "blackbox-fix-list-" + time.Now().Format("2006-01-02_1504") + ".html"
+	}
+	if err := newApp(cfg, printf).FixList(*out); err != nil {
+		return err
+	}
+	abs, _ := filepath.Abs(*out)
+	fmt.Println("Fix list written:", abs)
+	fmt.Println("Open it in a web browser; print it to save a PDF. Every report folder also has one (fix-list.html).")
+	return nil
+}
 
 func cmdReport(args []string) error {
 	fs := flag.NewFlagSet("report", flag.ContinueOnError)

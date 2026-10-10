@@ -408,6 +408,9 @@ type ScapOpen struct {
 type OpenRule struct {
 	Cat, STIG, Title, RuleID, VulnID string
 	Level                            string // bad for CAT I, warn for CAT II, na for CAT III
+	// Fix is the benchmark's fix text, and Script a fix script it gives
+	// (Lang: sh or powershell), for the fix list (FIX1).
+	Fix, Script, Lang string
 }
 
 // ScapHref is where a system's open STIG rules are listed.
@@ -443,7 +446,7 @@ func (r *Report) scapOpen(host string) []ScapOpen {
 		so := ScapOpen{Benchmark: row.Benchmark, When: row.When}
 		for _, o := range open {
 			so.Rules = append(so.Rules, OpenRule{Cat: "CAT " + strings.Repeat("I", o.Cat()), STIG: o.STIGID, Title: o.Title, RuleID: o.ID, VulnID: o.VulnID,
-				Level: [4]string{"", "bad", "warn", "na"}[o.Cat()]})
+				Level: [4]string{"", "bad", "warn", "na"}[o.Cat()], Fix: o.FixText, Script: o.Script, Lang: o.ScriptLang})
 		}
 		out = append(out, so)
 	}
