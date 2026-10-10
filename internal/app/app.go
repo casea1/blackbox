@@ -138,7 +138,7 @@ func (a *App) scapScans() []*scap.Scan {
 	if dir == filepath.Join(a.Cfg.DataDir, "scap") {
 		os.MkdirAll(dir, 0o750) // the default folder, ready for results
 	}
-	found, notes := scap.Find(dir, a.scapReceivedDir())
+	found, notes := scap.FindWithReceived(a.scapReceivedDir(), dir)
 	for _, n := range notes {
 		a.logf("SCAP results: %s", n)
 	}

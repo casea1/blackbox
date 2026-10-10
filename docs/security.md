@@ -177,6 +177,10 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
   trusted as it comes (compare the key with the sender's `blackbox
   status`), and someone with administrator rights on a sender can use its
   key, as they can change what it collects.
+  A SCAP result file may only hold results for the computer that signed
+  it (since 0.27); one that also names another computer is set aside. A
+  report ignores a received result filed under a different computer's
+  folder, in case an earlier version kept one.
 - **No loops, no spoofed collectors.**
   - A computer refuses its own batches.
   - It only delivers to a folder that has the collector's marker file, so
