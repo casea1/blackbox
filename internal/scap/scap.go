@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -471,7 +472,30 @@ func candidate(name string) bool {
 // scan and the one before. The key is "HOST|benchmark ID". Files that
 // aren't SCAP results are skipped; problems reading real ones are
 // returned as notes.
-func Find(dirs ...string) (map[string]*Scan, []string) {
+func Find(dirs ...string) (map[string]*Scan, []string) { return find("", dirs) }
+
+// FindWithReceived is Find plus received, the folder where a collector
+// files the results its senders delivered, one folder per computer
+// (received/HOST). A result there counts only if it is for the computer
+// whose folder holds it, so a file a sender slipped in for another
+// computer, kept by a version before 0.27, is ignored.
+func FindWithReceived(received string, dirs ...string) (map[string]*Scan, []string) {
+	return find(received, append(dirs, received))
+}
+
+var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9.-]+`)
+
+// folderFor is the folder name a collector files host's results under
+// (the same as lan's safeName of the upper-cased name).
+func folderFor(host string) string {
+	s := unsafeChars.ReplaceAllString(strings.ToUpper(strings.TrimSpace(host)), "-")
+	if s == "" {
+		s = "UNKNOWN"
+	}
+	return s
+}
+
+func find(received string, dirs []string) (map[string]*Scan, []string) {
 	var all []*Result
 	var notes []string
 	seen := map[string]bool{}
@@ -487,7 +511,20 @@ func Find(dirs ...string) (map[string]*Scan, []string) {
 				}
 				return
 			}
+			var folder string
+			if received != "" {
+				if rel, err := filepath.Rel(received, path); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+					folder, _, _ = strings.Cut(filepath.ToSlash(rel), "/")
+					if folder == filepath.ToSlash(rel) {
+						folder = "-" // a file not in a computer's folder
+					}
+				}
+			}
 			for _, r := range res {
+				if folder != "" && !strings.EqualFold(folder, folderFor(r.Host)) {
+					notes = append(notes, fmt.Sprintf("%s: ignored the result for %s, which is not the computer it was received for (%s)", path, r.Host, folder))
+					continue
+				}
 				k := r.SHA256 + "|" + r.Host + "|" + r.BenchmarkID + "|" + r.When().String()
 				if !seen[k] {
 					seen[k] = true
