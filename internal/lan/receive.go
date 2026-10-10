@@ -203,10 +203,17 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 			err, trusted = fmt.Errorf("it was sent by this computer (a system cannot send to itself)"), false
 		}
 		// Its signature (DESIGN1); the checks below are the second line.
+		// Only a delivery whose signature verified is authenticated: what
+		// else it says (its number, its sender) may come from anyone who
+		// can write to the inbox, so nothing about that sender is changed
+		// for it when it is refused (SEC4).
 		var pub []byte
+		authed := false
 		if err == nil {
 			if pub, err = verifyBatch(b); err != nil {
 				trusted = false // not shown to be its sender's: no gap is noted
+			} else {
+				authed = pub != nil
 			}
 		}
 		// An unsigned copy of a batch already imported (signed) is the
@@ -245,8 +252,9 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 		}
 		if err != nil {
 			rej(it.name, err.Error())
-			// The batch's number stays missing until it is sent again (SEC2).
-			if trusted {
+			// The batch's number stays missing until it is sent again (SEC2),
+			// if the batch was shown to be its sender's (SEC4).
+			if trusted && authed {
 				if err := noteRejected(st, b, now); err != nil {
 					return res, err
 				}
