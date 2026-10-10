@@ -146,18 +146,18 @@ func (a *App) senderStatus(st *store.Store, now time.Time, p func(string, string
 			attention = append(attention, "unsigned deliveries are refused")
 		}
 	}
-	if held := lan.Held(a.Cfg.Inbox); len(held) > 0 {
-		p("Held:", "%d file%s wait in %s (see the lines above)", len(held), map[bool]string{true: "s"}[len(held) != 1], heldPath(a.Cfg.Inbox))
+	if held := lan.Held(lan.SetAsideDir(a.Cfg.DataDir)); len(held) > 0 {
+		p("Held:", "%d file%s wait in %s (see the lines above)", len(held), map[bool]string{true: "s"}[len(held) != 1], heldPath(a.Cfg.DataDir))
 	}
 	return attention
 }
 
-func heldPath(inbox string) string {
+func heldPath(dataDir string) string {
 	sep := "/"
-	if strings.Contains(inbox, `\`) {
+	if strings.Contains(dataDir, `\`) {
 		sep = `\`
 	}
-	return strings.TrimRight(inbox, `\/`) + sep + "rejected" + sep + "held"
+	return strings.TrimRight(dataDir, `\/`) + sep + "inbox-set-aside" + sep + "held"
 }
 
 // signingStatus writes a sender's status line about its own key, and

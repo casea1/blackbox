@@ -255,12 +255,25 @@ func addFile(zw *zip.Writer, s Source) (FileInfo, error) {
 // exports started in the same minute, AR7): they are matched to the list
 // in order, so such an archive still verifies (see Repair).
 func Verify(path string) (Info, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return Info{}, fmt.Errorf("not a readable zip file: %w", err)
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return Info{}, err
+	}
+	return VerifyReader(f, fi.Size())
+}
+
+// VerifyReader is Verify for an archive already open.
+func VerifyReader(r io.ReaderAt, size int64) (Info, error) {
 	var info Info
-	zr, err := zip.OpenReader(path)
+	zr, err := zip.NewReader(r, size)
 	if err != nil {
 		return info, fmt.Errorf("not a readable zip file: %w", err)
 	}
-	defer zr.Close()
 	files := map[string][]*zip.File{}
 	for _, f := range zr.File {
 		files[f.Name] = append(files[f.Name], f)

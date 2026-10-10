@@ -396,6 +396,12 @@ func ReadFile(path string) ([]*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	return ReadBytes(path, b)
+}
+
+// ReadBytes is ReadFile for the contents b of the file at path, already
+// read.
+func ReadBytes(path string, b []byte) ([]*Result, error) {
 	sum := sha256.Sum256(b)
 	var r io.Reader = bytes.NewReader(b)
 	if strings.HasSuffix(strings.ToLower(path), ".gz") {

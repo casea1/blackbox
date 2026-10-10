@@ -266,7 +266,7 @@ func TestSignedDeliveriesThrough023Folder(t *testing.T) {
 	if got, _ := filepath.Glob(filepath.Join(in, "*.sig")); len(got) != 0 {
 		t.Errorf("signatures left: %v", got)
 	}
-	if got, _ := filepath.Glob(filepath.Join(in, rejectedDir, "*")); len(got) != 0 {
+	if got, _ := filepath.Glob(filepath.Join(SetAsideDir(col.Dir), "*")); len(got) != 0 {
 		t.Errorf("rejected: %v", got)
 	}
 }

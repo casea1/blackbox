@@ -503,7 +503,7 @@ the same on a standalone computer and on a collector.
 
 A computer that sends to a collector delivers its daily archives with its
 events. The collector checks every file against its hash when it arrives;
-a damaged or altered zip is set aside in the inbox's `rejected` folder. A
+a damaged or altered zip is set aside in `inbox-set-aside` in the data folder. A
 day's logs go into the report whose period its save ends in, so a
 computer that was off catches up in the next report.
 

@@ -99,6 +99,8 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 		logf = func(string, ...any) {}
 	}
 	var res ImportResult
+	aside := SetAsideDir(st.Dir)
+	migrateSetAside(inbox, aside, logf)
 	MigrateSenderFolders(st, inbox, logf)
 	entries, err := os.ReadDir(inbox)
 	if err != nil {
@@ -111,11 +113,15 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 	}
 	var items []item
 	rej := func(name, why string) {
-		res.Rejected = append(res.Rejected, reject(inbox, inbox, "", name, why, now))
+		res.Rejected = append(res.Rejected, reject(aside, inbox, "", name, why, now))
 	}
 	for _, e := range entries {
 		n := e.Name()
 		if e.IsDir() {
+			continue
+		}
+		if !e.Type().IsRegular() {
+			rej(n, errNotRegular.Error()) // never opened (SEC6)
 			continue
 		}
 		if !isDelivery(n) {
@@ -133,7 +139,7 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 			switch err := importArchive(st, inbox, n, dirs, now); {
 			case errors.Is(err, errWriting):
 			case errors.As(err, &h):
-				res.Held = append(res.Held, holdFile(inbox, n, h, now))
+				res.Held = append(res.Held, holdFile(aside, inbox, n, h, now))
 			case err != nil:
 				rej(n, err.Error())
 			default:
@@ -145,7 +151,7 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 			switch err := importScap(st, inbox, n, dirs, now); {
 			case errors.Is(err, errWriting):
 			case errors.As(err, &h):
-				res.Held = append(res.Held, holdFile(inbox, n, h, now))
+				res.Held = append(res.Held, holdFile(aside, inbox, n, h, now))
 			case err != nil:
 				rej(n, err.Error())
 			default:
@@ -173,15 +179,12 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 	})
 	for _, it := range items {
 		path := filepath.Join(inbox, it.name)
-		// The size is checked before the file is read (SEC3b).
-		fi, err := os.Stat(path)
-		if err == nil && fi.Size() > maxBatchFile {
+		// The size is checked before the file is read (SEC3b), and only a
+		// regular file is read (SEC6).
+		data, fi, err := readInbox(path, maxBatchFile)
+		if fi != nil && fi.Size() > maxBatchFile {
 			rej(it.name, fmt.Sprintf("it is %d MB, larger than any batch Blackbox makes (%d MB)", fi.Size()>>20, maxBatchFile>>20))
 			continue
-		}
-		var data []byte
-		if err == nil {
-			data, err = os.ReadFile(path)
 		}
 		if err != nil {
 			// One file that can't be read must not hold up the others (L1).
@@ -233,7 +236,7 @@ func Import(st *store.Store, inbox string, dirs Dirs, now time.Time, logf func(s
 			var h *heldError
 			switch {
 			case v == hold && errors.As(jerr, &h):
-				res.Held = append(res.Held, holdFile(inbox, it.name, h, now))
+				res.Held = append(res.Held, holdFile(aside, inbox, it.name, h, now))
 				st.Save()
 				continue
 			case v == refuse:
@@ -397,7 +400,12 @@ func importArchive(st *store.Store, dir, name string, dirs Dirs, now time.Time) 
 	if err != nil {
 		return err
 	}
-	info, err := archive.Verify(path)
+	f, _, err := openInbox(path) // a regular file only (SEC6)
+	if err != nil {
+		return err
+	}
+	info, err := archive.VerifyReader(f, fi.Size())
+	f.Close()
 	if err != nil {
 		// A zip cut short can't be told from a damaged one (DESIGN1).
 		if writing(fi, now) {
@@ -422,8 +430,15 @@ func importArchive(st *store.Store, dir, name string, dirs Dirs, now time.Time) 
 		return err
 	}
 	writer := fileOwner(path)
-	dest, clash, err := archive.File(path, dirs.Archives, info)
+	// It is moved out of the inbox before it is filed, and checked again
+	// there, where no sender can change what the name points to (SEC6).
+	staged, err := stage(st, path, sig)
 	if err != nil {
+		return err
+	}
+	dest, clash, err := archive.File(staged, dirs.Archives, info)
+	if err != nil {
+		moveFile(staged, path)
 		return err
 	}
 	if clash != "" {
@@ -433,6 +448,36 @@ func importArchive(st *store.Store, dir, name string, dirs Dirs, now time.Time) 
 	}
 	os.Remove(path + sigExt)
 	return st.Save()
+}
+
+// stage moves an archive out of the inbox into the data folder, and
+// checks it is still a regular file with the contents its signature
+// gives. On error it is back in the inbox.
+func stage(st *store.Store, path string, sig *sigFile) (string, error) {
+	dir := filepath.Join(st.Dir, "inbox-importing")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return "", err
+	}
+	staged := filepath.Join(dir, filepath.Base(path))
+	os.Remove(staged)
+	if err := moveFile(path, staged); err != nil {
+		return "", err
+	}
+	fi, err := os.Lstat(staged)
+	switch {
+	case err != nil:
+	case !fi.Mode().IsRegular():
+		err = errNotRegular
+	case sig != nil:
+		if sum, serr := fileSHA256(staged); serr != nil || !strings.EqualFold(sum, sig.SHA256) {
+			err = errors.New("it changed while it was being imported")
+		}
+	}
+	if err != nil {
+		moveFile(staged, path)
+		return "", err
+	}
+	return staged, nil
 }
 
 // parseInboxName reads HOST_ID_SEQ-RANDOM.bbx (0.24, DESIGN1), and
@@ -540,7 +585,8 @@ func migratedName(n string) string {
 	return n + "-" + randomPart()
 }
 
-// rejectedDir is where unusable files are set aside, in the inbox.
+// rejectedDir is where versions before 0.27 set unusable files aside, in
+// the inbox; they are moved to SetAsideDir (migrateSetAside).
 const rejectedDir = "rejected"
 
 // reject moves an unusable file to inbox/rejected (so it is not retried
@@ -548,23 +594,13 @@ const rejectedDir = "rejected"
 // "set aside" only if the move worked (L9): a file that can't be moved
 // stays where it is, is tried again every run, and status and the report
 // list it (Unreadable).
-func reject(inbox, dir, folder, name, why string, now time.Time) string {
-	rdir := filepath.Join(inbox, rejectedDir)
+func reject(aside, dir, folder, name, why string, now time.Time) string {
 	writer := fileOwner(filepath.Join(dir, name))
-	err := os.MkdirAll(rdir, 0o750)
-	dest := name
-	if err == nil {
-		for i := 2; i < 100; i++ {
-			if _, serr := os.Lstat(filepath.Join(rdir, dest)); serr != nil {
-				break
-			}
-			dest = AgainName(name, i)
-		}
-		err = os.Rename(filepath.Join(dir, name), filepath.Join(rdir, dest))
-		if _, serr := os.Stat(filepath.Join(dir, name+sigExt)); err == nil && serr == nil {
-			os.Rename(filepath.Join(dir, name+sigExt), filepath.Join(rdir, dest+sigExt))
-		}
-	}
+	note := fmt.Sprintf("%s was set aside by Blackbox at %s.\n\nWritten by: %s\nWhy:        %s\n\n"+
+		"Its data is not in the reports. If it came from a Blackbox sender, fix the cause and send it again from that computer\n"+
+		"(blackbox send --resend NUMBER); then delete this file and its note. Until then, blackbox status says so.\n",
+		name, now.Format("2006-01-02 15:04:05 -07:00"), orUnknown(writer), why)
+	_, err := setAside(dir, name, aside, note)
 	shown := name
 	if folder != "" {
 		shown = filepath.Join(folder, name)
@@ -573,12 +609,7 @@ func reject(inbox, dir, folder, name, why string, now time.Time) string {
 		return fmt.Sprintf("%s could not be used (%s) and could not be set aside (%s); it stays in the inbox and is tried again every run",
 			shown, why, errReason(err))
 	}
-	note := fmt.Sprintf("%s was set aside by Blackbox at %s.\n\nWritten by: %s\nWhy:        %s\n\n"+
-		"Its data is not in the reports. If it came from a Blackbox sender, fix the cause and send it again from that computer\n"+
-		"(blackbox send --resend NUMBER); then delete this file and its note. Until then, blackbox status says so.\n",
-		name, now.Format("2006-01-02 15:04:05 -07:00"), orUnknown(writer), why)
-	os.WriteFile(filepath.Join(rdir, dest+whyExt), []byte(strings.ReplaceAll(note, "\n", "\r\n")), 0o640)
-	return fmt.Sprintf("%s was set aside in %s: %s", shown, rdir, why)
+	return fmt.Sprintf("%s was set aside in %s: %s", shown, aside, why)
 }
 
 // whyExt is the note next to a rejected file.
@@ -586,8 +617,8 @@ const whyExt = ".why.txt"
 
 // Rejected lists the files set aside in inbox/rejected, with why (from
 // each one's note), oldest first (SEC2).
-func Rejected(inbox string) []string {
-	entries, err := os.ReadDir(filepath.Join(inbox, rejectedDir))
+func Rejected(aside string) []string {
+	entries, err := os.ReadDir(aside)
 	if err != nil {
 		return nil
 	}
@@ -600,12 +631,12 @@ func Rejected(inbox string) []string {
 		// A signature set aside with its file is listed with it; one set
 		// aside alone (SEC1f) is listed itself.
 		if f, ok := strings.CutSuffix(n, sigExt); ok {
-			if _, err := os.Lstat(filepath.Join(inbox, rejectedDir, f)); err == nil {
+			if _, err := os.Lstat(filepath.Join(aside, f)); err == nil {
 				continue
 			}
 		}
 		why := ""
-		if b, err := os.ReadFile(filepath.Join(inbox, rejectedDir, n+whyExt)); err == nil {
+		if b, err := os.ReadFile(filepath.Join(aside, n+whyExt)); err == nil {
 			for _, l := range strings.Split(string(b), "\n") {
 				if v, ok := strings.CutPrefix(l, "Why:"); ok {
 					why = strings.TrimSpace(v)
@@ -647,7 +678,10 @@ func Unreadable(inbox string) []string {
 		if !strings.HasSuffix(n, batchExt) && !strings.HasSuffix(n, archiveExt) && !strings.HasSuffix(n, scapExt) {
 			continue
 		}
-		f, err := os.Open(filepath.Join(inbox, n))
+		f, _, err := openInbox(filepath.Join(inbox, n))
+		if errors.Is(err, errNotRegular) {
+			continue // set aside at the next import
+		}
 		if err != nil {
 			out = append(out, fmt.Sprintf("%s (%s)", n, errReason(err)))
 			continue

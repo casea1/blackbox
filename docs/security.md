@@ -197,7 +197,17 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
   Linux), logs it, and puts it in the note of any file it sets aside and
   in any High row about the inbox, as information: senders may share one
   delivery account. A file the collector can't use is set aside in
-  `inbox\rejected` with a `.why.txt`, and `blackbox status` exits 4.
+  `inbox-set-aside` in the data folder with a `.why.txt`, and `blackbox status` exits 4.
+- **Set-aside files are kept out of the inbox (SEC6, since 0.27).**
+  Senders can write to the inbox, so before 0.27 a sender could make the
+  `rejected` folder there first, with links in it that made the collector
+  (root or SYSTEM) write its notes over other files. Files set aside or
+  held now go to `inbox-set-aside` in the data folder, which only
+  administrators and the collector can write; what earlier versions set
+  aside in `inbox\rejected` is moved there at the first import. The
+  collector opens an inbox file only if it is a regular file: a link,
+  pipe or device is set aside without being opened, so it can't make the
+  collector read another file or wait forever.
 - **What the collector raises (SEC1).** Two different batches under one
   number, two computers using one sender ID (a cloned computer), two
   different original-log archives for one period, and a former name that

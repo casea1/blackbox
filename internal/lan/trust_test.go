@@ -144,7 +144,7 @@ func TestPartialFileWaitsThenRefused(t *testing.T) {
 			t.Errorf("not set aside: %s", r)
 		}
 	}
-	if why := strings.Join(Rejected(in), "\n"); strings.Count(why, "incomplete") < 5 {
+	if why := strings.Join(Rejected(SetAsideDir(col.Dir)), "\n"); strings.Count(why, "incomplete") < 5 {
 		t.Errorf("reasons:\n%s", why)
 	}
 	// The complete batch, delivered again, fills the gap.
@@ -200,7 +200,7 @@ func TestBadBatchesSetAside(t *testing.T) {
 	if len(snd.Missing) != 1 || snd.Missing[0].From != 2 || snd.Missing[0].To != 4 || snd.LastSeq != 5 {
 		t.Errorf("gaps: %+v, last %d", snd.Missing, snd.LastSeq)
 	}
-	rej := strings.Join(Rejected(in), "\n")
+	rej := strings.Join(Rejected(SetAsideDir(col.Dir)), "\n")
 	for _, want := range []string{"event 1 can't be read", "of no known type"} {
 		if !strings.Contains(rej, want) {
 			t.Errorf("rejected reasons lack %q:\n%s", want, rej)

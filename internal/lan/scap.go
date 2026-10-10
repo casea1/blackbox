@@ -120,14 +120,7 @@ func importScap(st *store.Store, dir, name string, dirs Dirs, now time.Time) err
 		return fmt.Errorf("it was sent by this computer (a system cannot send to itself)")
 	}
 	path := filepath.Join(dir, name)
-	fi, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	if fi.Size() > maxBatchFile {
-		return fmt.Errorf("it is %d MB, larger than Blackbox accepts (%d MB)", fi.Size()>>20, maxBatchFile>>20)
-	}
-	b, err := os.ReadFile(path)
+	b, fi, err := readInbox(path, maxBatchFile) // a regular file only (SEC6)
 	if err != nil {
 		return err
 	}
@@ -149,7 +142,7 @@ func importScap(st *store.Store, dir, name string, dirs Dirs, now time.Time) err
 	if len(sum) < 16 || !strings.HasPrefix(hex.EncodeToString(h[:]), strings.ToLower(sum)) {
 		return fmt.Errorf("its contents do not match the hash in its name (%s): altered or damaged", sum)
 	}
-	res, err := scap.ReadFile(path)
+	res, err := scap.ReadBytes(path, b)
 	if err != nil {
 		return fmt.Errorf("not a SCAP result: %w", err)
 	}

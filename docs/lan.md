@@ -378,10 +378,10 @@ for another's.
   and a **New senders** line under Needs attention. Compare the key with
   `blackbox status` on that computer. With `new_senders = hold` (setup:
   untick **Accept new computers automatically**), its deliveries wait in
-  `inbox/rejected/held` until `blackbox senders approve NAME`.
+  `inbox-set-aside\held` in the data folder until `blackbox senders approve NAME`.
 - **A key change** (a reinstall, a re-imaged computer, a restored data
   folder): a known computer delivering under a different key is **not
-  imported**. Its files wait in `inbox/rejected/held`, the next report has
+  imported**. Its files wait in `inbox-set-aside\held` in the data folder, the next report has
   a High row, and `blackbox status` says "ubu-ws-01 is now signing with a
   different key (SHA256:cd34…, was SHA256:ab12…). If that computer was
   reinstalled: blackbox senders rekey ubu-ws-01" (and exits 4). After
@@ -391,7 +391,7 @@ for another's.
   --new-id` on the copy.
 - **A signature that doesn't verify**, or a file signed for another
   computer, number or period than it says, is refused into
-  `inbox/rejected` with the reason.
+  `inbox-set-aside` in the data folder with the reason.
 
 On the collector, `blackbox senders` lists each computer with its key's
 fingerprint, when it was first seen, its last delivery, and whether it
@@ -440,7 +440,7 @@ sender ID, so nothing is missed or imported twice.
 
 **How the collector reads it.** A file that can't be read whole may still
 be being written. The collector leaves it for 10 minutes after it was
-last written, then moves it to `inbox\rejected` as incomplete (the sender
+last written, then moves it to `inbox-set-aside` in the data folder as incomplete (the sender
 sends a batch it could not finish again by itself).
 
 ### Upgrading from 0.23
@@ -482,7 +482,7 @@ Upgrade the senders first, then the collector:
 ### What the collector checks
 
 Each file it can't accept is moved to
-`inbox\rejected` with a `NAME.why.txt` note saying why and which account
+`inbox-set-aside` in the data folder with a `NAME.why.txt` note saying why and which account
 wrote it; `blackbox status` lists them and exits 4, the next report says
 so, and the rest are still imported:
 
@@ -668,7 +668,7 @@ and in `summary.json`:
 | A delivery never arrived (for example, deleted from the inbox) | Which batches from which computer are missing, and the `blackbox send --resend` command to run on that computer |
 | A computer's clock is ahead of the collector's | The computer and by how much. Event times from it may be wrong |
 | Events arrived after the report they belong to | Included in the next report, marked **Late** |
-| A delivery is damaged, altered, or its signature does not verify | It is set aside in `inbox\rejected` with a `.why.txt` note, `blackbox status` lists it and exits 4, and the report says so. The gap it leaves is reported |
+| A delivery is damaged, altered, or its signature does not verify | It is set aside in `inbox-set-aside` in the data folder with a `.why.txt` note, `blackbox status` lists it and exits 4, and the report says so. The gap it leaves is reported |
 | Two different files claim to be the same batch or archive, or two computers share a sender ID | A High row: both are kept (see [How the inbox is protected](#how-the-inbox-is-protected)) |
 | A computer delivers for the first time | An Info row with its key, and **New senders** under Needs attention. Each system's page says "Delivery: signed · key SHA256:ab12… since 8 Oct" |
 | A known computer signs with a different key, or two computers sign with one | A High row, and **Senders waiting for a decision** or **Two computers, one key** under Needs attention; the held files are not in the report until `blackbox senders rekey` |
