@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fix list{{if .Site}} · {{.Site}}{{end}}</title>
+<style>
+:root{--ink:#1d2330;--muted:#5b6475;--line:#d9dee7;--bg:#fff;--soft:#f5f7fa;--bad:#b42318;--bad-bg:#fdecea;--warn:#8a5a00;--warn-bg:#fff4dc;--na:#4a5568;--na-bg:#eef1f5;--code:#0f1729;--code-ink:#e6edf7;--accent:#1f5fbf}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:28px 24px 64px}
+h1{font-size:26px;margin:0 0 4px}
+h2{font-size:20px;margin:36px 0 4px;padding-top:18px;border-top:2px solid var(--line)}
+h3{font-size:16px;margin:22px 0 8px}
+.sub{color:var(--muted);margin:0 0 18px}
+.intro{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:0 0 20px}
+.intro p{margin:4px 0}
+table.sum{border-collapse:collapse;width:100%;margin:8px 0 4px}
+table.sum th,table.sum td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}
+table.sum th{font-size:13px;color:var(--muted);font-weight:600}
+table.sum .n{text-align:right;font-variant-numeric:tabular-nums}
+a{color:var(--accent)}
+.item{border:1px solid var(--line);border-left-width:5px;border-radius:6px;padding:10px 14px;margin:10px 0;break-inside:avoid}
+.item.bad{border-left-color:var(--bad)}.item.warn{border-left-color:#d69e2e}.item.na{border-left-color:#a0aec0}
+.item .t{font-weight:600}
+.tag{display:inline-block;font-size:12px;font-weight:600;border-radius:4px;padding:1px 6px;margin-right:6px;vertical-align:1px}
+.tag.bad{background:var(--bad-bg);color:var(--bad)}.tag.warn{background:var(--warn-bg);color:var(--warn)}.tag.na{background:var(--na-bg);color:var(--na)}
+.ids{color:var(--muted);font-size:13px}
+.kv{margin:4px 0;color:var(--muted);font-size:14px}
+.kv b{color:var(--ink);font-weight:600}
+.fix{margin:6px 0;white-space:pre-wrap}
+.note{font-size:13px;color:var(--muted)}
+.cmd{position:relative;margin:6px 0}
+.cmd .where{font-size:12px;color:var(--muted);margin-bottom:2px}
+.cmd pre{margin:0;background:var(--code);color:var(--code-ink);border-radius:6px;padding:10px 84px 10px 12px;overflow-x:auto;font:13px/1.45 Consolas,"Cascadia Mono",Menlo,monospace;white-space:pre-wrap;word-break:break-all}
+.cmd button{position:absolute;right:6px;bottom:6px;font:12px "Segoe UI",system-ui,sans-serif;border:1px solid #6b7a99;background:#24324d;color:#fff;border-radius:4px;padding:3px 10px;cursor:pointer}
+.cmd button.done{background:#1e6b3a;border-color:#2f8f52}
+.none{color:var(--muted)}
+@media print{
+  main{max-width:none;padding:0}
+  .cmd button,.noprint{display:none}
+  .cmd pre{background:#f3f4f6;color:#000;border:1px solid #c8ccd4;padding-right:12px}
+  h2{break-before:page;border-top:0;padding-top:0}
+  h2.first{break-before:auto}
+  a{color:inherit;text-decoration:none}
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Fix list{{if .Site}} · {{.Site}}{{end}}</h1>
+<p class="sub">{{if .Period}}Report period {{.Period}} · {{end}}made {{.Generated}} by Blackbox {{.Version}}</p>
+<div class="intro">
+<p>Everything to fix on each system: audit settings that don't match the STIG, logs too small to keep their events until Blackbox reads them, Blackbox's own advice (marked as advice, not a STIG rule), and open findings from the latest SCAP scans, CAT I first. It has no events and no people in it.</p>
+<p>Copy a command with its <b>Copy</b> button and run it on that system where it says. Where a Group Policy setting is given, setting it in a GPO fixes every computer the GPO covers. Check each command against your site's change process before running it. <span class="noprint">To save it as a PDF, print this page and choose "Save as PDF".</span></p>
+</div>
+{{if not .Systems}}<p class="none">Nothing to fix: every system matches on the settings Blackbox checks, no log lost events, and no SCAP finding is open.</p>{{else}}
+<table class="sum">
+<tr><th>System</th><th>OS</th><th class="n">Settings</th><th class="n">Log sizes</th><th class="n">CAT I</th><th class="n">CAT II</th><th class="n">CAT III</th></tr>
+{{range .Systems}}<tr><td><a href="#{{.Anchor}}">{{.Name}}</a></td><td>{{.OS}}</td><td class="n">{{len .Settings}}</td><td class="n">{{len .Logs}}</td><td class="n">{{index .Cat 1}}</td><td class="n">{{index .Cat 2}}</td><td class="n">{{index .Cat 3}}</td></tr>
+{{end}}<tr><th>{{len .Systems}} systems</th><th></th><th class="n">{{.Settings}}</th><th class="n">{{.Logs}}</th><th class="n">{{.Cat1}}</th><th class="n">{{.Cat2}}</th><th class="n">{{.Cat3}}</th></tr>
+</table>
+{{if .NoFixText}}<p class="note">Some SCAP results carry no fix text (the scanner left the benchmark's rules out of the results file): for those, look up the Vuln ID in STIG Viewer.</p>{{end}}
+{{range $i, $s := .Systems}}
+<h2 id="{{$s.Anchor}}"{{if eq $i 0}} class="first"{{end}}>{{$s.Name}}</h2>
+<p class="sub">{{$s.OS}}</p>
+{{if $s.Settings}}<h3>Audit settings</h3>
+{{range $s.Settings}}<div class="item {{.Level}}">
+<div class="t">{{if .Advice}}<span class="tag na">Blackbox advice</span>{{else if eq .Level "bad"}}<span class="tag bad">Gap</span>{{else}}<span class="tag warn">Warning</span>{{end}}{{.Title}}{{if .STIG}} <span class="ids">{{.STIG}}</span>{{end}}</div>
+<div class="kv">Now: <b>{{.Have}}</b>{{if and .Want (ne .Want "—")}} · Should be: <b>{{.Want}}</b>{{end}}</div>
+{{if .Fix}}<div class="fix">{{.Fix}}</div>{{end}}
+{{range .Cmds}}<div class="cmd"><div class="where">{{.Where}}</div><pre>{{.Text}}</pre><button type="button">Copy</button></div>{{end}}
+{{if .Note}}<div class="note">{{.Note}}</div>{{end}}
+</div>{{end}}{{end}}
+{{if $s.Logs}}<h3>Log sizes</h3>
+{{range $s.Logs}}<div class="item {{.Level}}">
+<div class="t">{{.Title}}</div>
+<div class="kv">{{.Have}}</div>
+{{if .Fix}}<div class="fix">{{.Fix}}</div>{{end}}
+{{range .Cmds}}<div class="cmd"><div class="where">{{.Where}}</div><pre>{{.Text}}</pre><button type="button">Copy</button></div>{{end}}
+</div>{{end}}{{end}}
+{{range $s.Scap}}<h3>SCAP: {{.Benchmark}} <span class="ids">scanned {{.When}}</span></h3>
+{{range .Rules}}<div class="item {{.Level}}">
+<div class="t"><span class="tag {{.Level}}">{{.Cat}}</span>{{.Title}}</div>
+<div class="ids">{{if .STIG}}{{.STIG}} · {{end}}{{.VulnID}}</div>
+{{if .Fix}}<div class="fix">{{.Fix}}</div>{{else}}<div class="note">No fix text in the scan results: look up {{.VulnID}} in STIG Viewer.</div>{{end}}
+{{range .Cmds}}<div class="cmd"><div class="where">{{.Where}}</div><pre>{{.Text}}</pre><button type="button">Copy</button></div>{{end}}
+</div>{{end}}{{end}}
+{{end}}{{end}}
+</main>
+<script>
+document.addEventListener("click", function (e) {
+  var b = e.target.closest(".cmd button");
+  if (!b) return;
+  var text = b.parentNode.querySelector("pre").textContent;
+  function done() { b.textContent = "Copied"; b.className = "done"; setTimeout(function () { b.textContent = "Copy"; b.className = ""; }, 1500); }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done, fallback);
+  } else fallback();
+  function fallback() {
+    var t = document.createElement("textarea");
+    t.value = text; t.style.position = "fixed"; t.style.opacity = "0";
+    document.body.appendChild(t); t.select();
+    try { document.execCommand("copy"); done(); } catch (x) {}
+    document.body.removeChild(t);
+  }
+});
+</script>
+</body>
+</html>

@@ -13,6 +13,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"os"
 	"path/filepath"
@@ -52,6 +53,10 @@ type Rule struct {
 	STIGID   string // WN11-00-000005 (the rule's version)
 	Title    string
 	Severity string // high, medium, low
+	// FixText is the benchmark's fix for the rule, in words, and Script
+	// a shell or PowerShell fix script it gives (OpenSCAP content), when
+	// it is complete as written; ScriptLang is "sh" or "powershell".
+	FixText, Script, ScriptLang string
 }
 
 // Cat is a rule's STIG category: 1 for high, 2 for medium, 3 for low.
@@ -105,6 +110,20 @@ func (r *Result) OpenByCat() [4]int {
 // open says whether a rule result is a finding still open, as STIG Viewer
 // and SCC count them.
 func open(result string) bool { return result == "fail" || result == "error" }
+
+type inner struct {
+	Body string `xml:",innerxml"`
+}
+
+var tagRE = regexp.MustCompile(`<[^>]*>`)
+
+// plain is an XCCDF text (which may hold XHTML) as plain text.
+func plain(s string) string {
+	s = strings.ReplaceAll(s, "<![CDATA[", "")
+	s = strings.ReplaceAll(s, "]]>", "")
+	s = tagRE.ReplaceAllString(s, "")
+	return strings.TrimSpace(html.UnescapeString(s))
+}
 
 type text struct {
 	Text string `xml:",chardata"`
@@ -190,11 +209,33 @@ func Parse(r io.Reader) ([]*Result, error) {
 					Version text     `xml:"version"`
 					Refs    []refXML `xml:"reference"`
 					Idents  []refXML `xml:"ident"`
+					FixText []inner  `xml:"fixtext"`
+					Fix     []struct {
+						System string `xml:"system,attr"`
+						Body   string `xml:",innerxml"`
+					} `xml:"fix"`
 				}
 				id, sev := attr("id"), attr("severity")
 				dec.DecodeElement(&x, &t)
 				depth--
 				rule := Rule{ID: id, Severity: sev, Title: strings.TrimSpace(x.Title.Text), STIGID: strings.TrimSpace(x.Version.Text)}
+				if len(x.FixText) > 0 {
+					rule.FixText = plain(x.FixText[0].Body)
+				}
+				for _, f := range x.Fix {
+					// A script with <sub> parts needs the profile's values
+					// filled in: it is not copied as it stands.
+					lang := ""
+					switch {
+					case strings.HasSuffix(f.System, ":script:sh"):
+						lang = "sh"
+					case strings.HasSuffix(f.System, ":script:powershell"):
+						lang = "powershell"
+					}
+					if lang != "" && rule.Script == "" && !strings.Contains(f.Body, "<") {
+						rule.Script, rule.ScriptLang = strings.TrimSpace(html.UnescapeString(f.Body)), lang
+					}
+				}
 				// SCC puts the STIG ID in the rule's version; SCAP Security
 				// Guide content (OpenSCAP) names it in a reference to the DISA
 				// STIG instead, next to the SRG ID (SC1).

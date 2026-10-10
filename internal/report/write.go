@@ -213,6 +213,11 @@ func (r *Report) Write(dir string) error {
 	if len(scapSums) > 0 {
 		contents["scap-open-rules.csv"] = r.scapCSV()
 	}
+	var fixes bytes.Buffer
+	if err := r.WriteFixList(&fixes); err != nil {
+		return fmt.Errorf("fix list: %w", err)
+	}
+	contents["fix-list.html"] = fixes.Bytes()
 	contents["README.txt"] = r.readme(scapSums)
 
 	sums := map[string]string{}
@@ -713,6 +718,7 @@ func (r *Report) readme(scap map[string]string) []byte {
 	line("  data/              the report's event data, read by report.html")
 	line("  summary.json       the counts, for scripts")
 	line("  events.zip         events.csv: every event in the report, for a spreadsheet")
+	line("  fix-list.html      what to fix on each system, with commands to copy (print it to save a PDF)")
 	for _, a := range r.Archives {
 		line("  %-18s the original logs of %s, unaltered (see below)", a.Name, a.Host)
 	}

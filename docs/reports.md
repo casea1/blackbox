@@ -660,6 +660,32 @@ system's operating-system scan.
   menu offers it. `summary.json` has each computer's score and open
   findings.
 
+## Fix list
+
+Every report folder has `fix-list.html`, a page for the administrators
+who fix what the report found. `blackbox fixes --out FILE` writes the same
+page on its own, for the time since the last report, without making a
+report or changing the schedule.
+
+- It lists every system with something to fix, CAT I findings and STIG
+  gaps first:
+  - audit settings that don't match the STIG;
+  - Blackbox's own advice, marked as advice, not a STIG rule;
+  - logs too small to keep their events until Blackbox reads them;
+  - open findings from the latest SCAP scans, by CAT, with the
+    benchmark's fix text.
+- Where a fix can be run as a command, the command is shown with a
+  **Copy** button, and where to run it. Examples: `auditpol` for a Windows
+  audit setting, `wevtutil` for a log size, the `augenrules` steps for
+  Linux audit rules, or the fix script an OpenSCAP benchmark gives. A
+  Group Policy setting is given too, where there is one.
+- It has no events and no people in it.
+- It is one file that needs no network. Print it and choose "Save as PDF"
+  for a PDF: each system starts on a new page and the Copy buttons are
+  left out.
+- Some scanners leave the fix text out of their results file. For those
+  findings the page says to look the Vuln ID up in STIG Viewer.
+
 ## Inventory
 
 The **Inventory** page (under More) lists what each system is, read with
