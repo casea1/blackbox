@@ -157,6 +157,11 @@ The Linux service is also sandboxed with `ProtectSystem=strict`,
   altered batches aside and reports them. These checks detect loss and
   accidental or careless change, not a determined attacker with write
   access to the inbox. Since 0.24 every delivery is also signed (below).
+  Since 0.27 a delivery that is unsigned when a key is expected, or
+  that fails its signature or cannot be read, never changes what the
+  collector has recorded for that sender (last batch number, missing
+  batches, pinned key). Only a delivery whose signature checks out can
+  move those records.
 - **Signed deliveries (DESIGN1).** Each sender signs every batch,
   original-log archive and SCAP result with its own Ed25519 key (inside
   Go's FIPS 140-3 module v1.0.0; it works with `GODEBUG=fips140=only`).
