@@ -618,23 +618,9 @@ func (r *Report) heatGrid(ws []trendWeek) HeatGrid {
 			top = max(top, x)
 		}
 	}
-	sum := func(v []int) int {
-		t := 0
-		for _, x := range v {
-			t += x
-		}
-		return t
-	}
-	sort.Slice(names, func(i, j int) bool {
-		a, b := counts[names[i]], counts[names[j]]
-		if a[n-1] != b[n-1] {
-			return a[n-1] > b[n-1]
-		}
-		if sum(a) != sum(b) {
-			return sum(a) > sum(b)
-		}
-		return naturalLess(names[i], names[j])
-	})
+	// By name, as on the other pages: a system is found where it is
+	// expected, and its row stays put from week to week.
+	sort.Slice(names, func(i, j int) bool { return naturalLess(names[i], names[j]) })
 	row := func(h string, v []int) WeekRow {
 		wr := WeekRow{Name: h, Href: "#systems/" + h}
 		for i := 0; i < n; i++ {
