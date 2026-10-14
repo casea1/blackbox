@@ -148,6 +148,12 @@ func TestTrendsUsualMedian(t *testing.T) {
 	if len(tr.Cards) != 6 || len(tr.Grid.Weeks) != 8 || len(tr.Grid.Rows)+len(tr.Grid.Others) != 30 || !strings.Contains(fmt.Sprint(tr.Grid.Rows), "{SRV-DC02 ") {
 		t.Errorf("cards %d, grid %v %d+%d %s", len(tr.Cards), tr.Grid.Weeks, len(tr.Grid.Rows), len(tr.Grid.Others), tr.Grid.Rows[0].Name)
 	}
+	// TREND2: the systems are in name order, as on the other pages.
+	for i := 1; i < len(tr.Grid.Rows); i++ {
+		if a, b := tr.Grid.Rows[i-1].Name, tr.Grid.Rows[i].Name; !naturalLess(a, b) {
+			t.Errorf("grid rows out of name order: %s before %s", a, b)
+		}
+	}
 	var lines []string
 	for _, c := range tr.Changes {
 		lines = append(lines, fmt.Sprintf("%s|%s|%s|%s|%s|%s", c.Level, c.Name, c.Measure, c.Usual, c.Now, c.Why))
