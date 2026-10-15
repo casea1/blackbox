@@ -108,7 +108,7 @@ func Install(opt Options) error {
 	}
 
 	// 5. The status icon, for administrators on a collector or standalone computer.
-	if err := setupTray(opt.Tray && opt.SendTo == "", logf); err != nil {
+	if err := setupTray(opt.Tray && opt.SendTo == "", opt.TrayGroups, logf); err != nil {
 		return err
 	}
 
@@ -193,7 +193,7 @@ func Uninstall(logf func(string, ...any)) error {
 	} else {
 		logf("Removed scheduled task \"%s\".", TaskName)
 	}
-	setupTray(false, logf)
+	setupTray(false, nil, logf)
 	hidden.Command("reg.exe", "delete", uninstallKey, "/f").Run()
 	removeInbox(logf)
 	share.SaveSecret(config.DefaultDataDir(), "") // removes the stored share password

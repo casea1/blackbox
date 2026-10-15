@@ -134,7 +134,9 @@ func Run(o Options) (Result, error) {
 	}
 	// Last, so its first look sees the first report. An icon already
 	// running restarts itself into the new version.
-	if o.StartTray && o.Answers.Tray && o.Answers.Role != install.RoleSender && runtime.GOOS == "windows" {
+	// With chosen groups (TRAY4) the person running setup may not be in
+	// them: the icon then starts at their members' next logon.
+	if o.StartTray && o.Answers.Tray && len(o.Answers.TrayGroups) == 0 && o.Answers.Role != install.RoleSender && runtime.GOOS == "windows" {
 		if err := install.StartTray(); err != nil {
 			logf("Note: the status icon could not be started now (%v); it appears at the next logon.", err)
 		}
@@ -257,7 +259,8 @@ func Current() (a install.Answers, defaultReports string, reinstall bool, err er
 	_, statErr := os.Stat(config.DefaultPath())
 	a = install.Answers{Site: cur.SiteName, ReportEvery: cur.ReportEvery, ReportAt: cur.ReportAt, ReportDir: cur.ReportDir, ArchiveDir: cur.ArchiveDir, ScapResults: cur.ScapResults,
 		CollectEvery: cur.CollectEvery, SendTo: cur.SendTo, ShareUser: cur.ShareUser, Inbox: cur.Inbox,
-		ShareInbox: install.InboxShared(), Tray: install.TrayWanted(), HoldNewSenders: cur.HoldNewSenders}
+		ShareInbox: install.InboxShared(), Tray: install.TrayWanted(), HoldNewSenders: cur.HoldNewSenders,
+		Network: cur.Network, TrayGroups: cur.TrayGroups, Asked: cur.SetupAsked}
 	return a, filepath.Join(config.DefaultDataDir(), "reports"), statErr == nil, nil
 }
 

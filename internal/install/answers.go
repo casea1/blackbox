@@ -26,7 +26,9 @@ const (
 	QInboxReach = "How will the other computers reach this inbox?"
 	QSendTo     = "Where is the collector's inbox?"
 	QInterval   = "How often should events be collected from the logs?"
-	QTray       = "Show Blackbox's status in the notification area (system tray) for administrators?"
+	QTray       = "Show Blackbox's status in the notification area (system tray)?"
+	QTrayGroups = "Who sees it: members of these Windows groups (several: separate with commas; blank: Administrators)"
+	QNetwork    = "Is this computer on its own, or on an offline network with other computers?"
 	QScap       = "Where are this computer's SCAP scan results (SCC or OpenSCAP) saved?"
 	QQuickVerb  = "upgrade"
 
@@ -34,8 +36,11 @@ const (
 	NoteReport   = "Use a folder you have locked down if you like; Blackbox only needs to write to it."
 	NoteArchive  = "The raw logs (.evtx, audit logs) of this computer and every sender are kept here until each scheduled report moves them into its folder. Allow a few MB a day per computer; choose a larger drive for many computers."
 	NoteInbox    = "Blackbox imports what arrives there every time it collects."
-	NoteScap     = "Optional. Blackbox reads the latest scan of each benchmark in this folder and its subfolders (SCC's Sessions folder works as it is) for the report's STIG compliance; a sender sends its latest scans to the collector. It never runs a scan. Type none to turn this off."
-	NoteKeep     = "Use it anyway? The data waits here until the collector can be reached."
+	// NoteVirtualBox explains the VirtualBox box: setup does not make the
+	// shared folder, and the account is who the VM's files arrive as.
+	NoteVirtualBox = "Add the inbox above as a Shared Folder in each VM's VirtualBox settings. A VM's files arrive as the Windows user running VirtualBox: enter that account (several: separate with commas). It may add files to the inbox and nothing else."
+	NoteScap       = "Optional. Blackbox reads the latest scan of each benchmark in this folder and its subfolders (SCC's Sessions folder works as it is) for the report's STIG compliance; a sender sends its latest scans to the collector. It never runs a scan. Type none to turn this off."
+	NoteKeep       = "Use it anyway? The data waits here until the collector can be reached."
 )
 
 // Choice is one option of a multiple-choice question.
@@ -47,11 +52,43 @@ type Choice struct {
 var (
 	Roles       = []string{RoleStandalone, RoleSender, RoleCollector}
 	RoleChoices = []Choice{
-		{"On this computer", "it produces its own reports"},
-		{"Send to a collector", "for a virtual machine, or a workstation on a LAN"},
-		{"This is the collector", "its reports cover it and every computer that sends to it"},
+		{"This computer only", "it collects its own events and makes its own reports"},
+		{"Send to a collector", "its events go to another computer on the network (or the PC hosting this virtual machine), which makes the reports"},
+		{"This is the collector", "it makes the reports, for itself and every computer that sends to it"},
 	}
 )
+
+// Networks a standalone computer or a collector can be on (NET1); every
+// one is offline.
+const (
+	NetStandalone = "standalone"
+	NetLAN        = "lan"
+)
+
+var (
+	Networks       = []string{NetStandalone, NetLAN}
+	NetworkChoices = []Choice{
+		{"On its own (standalone)", "no other computers or servers: reports mark network time sync as not applicable, and give the update-media way to update antivirus"},
+		{"On an offline network with other computers", "a domain or time server and file shares: reports expect the network's time source and update share"},
+	}
+)
+
+// DefaultNetwork is the answer suggested to a question not asked before:
+// a computer reporting on itself only is most often on its own.
+func DefaultNetwork(role string) string {
+	if role == RoleStandalone {
+		return NetStandalone
+	}
+	return NetLAN
+}
+
+// NetworkText is how a network answer reads in the summary.
+func NetworkText(n string) string {
+	if n == NetStandalone {
+		return "on its own (standalone)"
+	}
+	return "offline network with other computers"
+}
 
 // Report frequencies in the order they are offered.
 var (
@@ -102,6 +139,8 @@ func ForRole(a Answers) Answers {
 	}
 	if a.Role == RoleSender {
 		a.Tray = false // the status icon belongs where the reports are
+		a.TrayGroups = nil
+		a.Network = ""
 	}
 	return a
 }
@@ -228,6 +267,9 @@ func Summary(a Answers, defaultReports string, windows bool) []SummaryLine {
 			l = append(l, SummaryLine{"Share account", a.ShareUser})
 		}
 	}
+	if a.Role != RoleSender {
+		l = append(l, SummaryLine{"Network", NetworkText(a.Network)})
+	}
 	l = append(l, SummaryLine{"Collect events", EveryText(a.CollectEvery)})
 	scap := a.ScapResults
 	switch {
@@ -238,7 +280,11 @@ func Summary(a Answers, defaultReports string, windows bool) []SummaryLine {
 	}
 	l = append(l, SummaryLine{"SCAP results", scap})
 	if windows && a.Role != RoleSender {
-		l = append(l, SummaryLine{"Status icon", map[bool]string{true: "shown to administrators", false: "not shown"}[a.Tray]})
+		who := "Administrators"
+		if len(a.TrayGroups) > 0 {
+			who = strings.Join(a.TrayGroups, ", ")
+		}
+		l = append(l, SummaryLine{"Status icon", map[bool]string{true: "shown to " + who, false: "not shown"}[a.Tray]})
 	}
 	return l
 }

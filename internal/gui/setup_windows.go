@@ -163,6 +163,8 @@ func (s *setupWin) header() (title, sub string) {
 		return "Welcome to Blackbox setup", "Audit log collection and reporting"
 	case pRole:
 		return "This computer", install.QRole
+	case pNetwork:
+		return "Network", install.QNetwork
 	case pReports:
 		return "Reports", "What reports are called, how often they are produced and where they are saved"
 	case pArchive:
@@ -214,9 +216,16 @@ func (s *setupWin) build() {
 
 	switch s.page {
 	case pWelcome:
-		s.label(welcomeText(s.installed, s.version), x, y, w, 100)
+		text := welcomeText(s.installed, s.version)
+		if quickUpgrade(s.installed, s.version) && len(install.Unasked(s.a)) > 0 {
+			text, _, _ = strings.Cut(text, "\n\n") // no Upgrade now button to talk about (UPG1)
+		}
+		s.label(text, x, y, w, 100)
 		s.note("Program folder: "+filepath.Dir(install.ProgramPath())+"\nSettings and collected events: "+config.DefaultDataDir(), x, y+130, w, 40)
-		if quickUpgrade(s.installed, s.version) {
+		if news := install.Unasked(s.a); quickUpgrade(s.installed, s.version) && len(news) > 0 {
+			// UPG1: no one-click upgrade past a new question.
+			s.note("This version adds new settings: "+install.UnaskedText(news)+". Click Next to go through the settings; yours are filled in, the new ones with a suggestion.", x, y+184, w, 52)
+		} else if quickUpgrade(s.installed, s.version) {
 			// One click: the settings as they are (shown under the button).
 			s.c["quick"] = s.control("BUTTON", "Upgrade now, keep current settings", wsTabStop|bsDefPushButton, 0, x, y+184, 290, 32, false)
 			s.on(s.c["quick"], func(code uint16) {
@@ -238,6 +247,17 @@ func (s *setupWin) build() {
 			ch = append(ch, choiceText{c.Label, c.Detail})
 		}
 		s.radios = s.radios_(ch, indexOf(install.Roles, s.a.Role), x, y, w)
+	case pNetwork:
+		var ch []choiceText
+		for _, c := range install.NetworkChoices {
+			ch = append(ch, choiceText{c.Label, c.Detail})
+		}
+		cur := s.a.Network
+		if cur == "" {
+			cur = install.DefaultNetwork(s.a.Role)
+		}
+		s.radios = s.radios_(ch, indexOf(install.Networks, cur), x, y, w)
+		s.note("Every Blackbox computer is assumed to be offline. This only decides what the reports expect from the network around it.", x, y+150, w, 34)
 	case pReports:
 		s.label(install.QSite, x, y, w, 20)
 		s.c["site"] = s.edit(s.a.Site, x, y+22, w, false)
@@ -293,28 +313,29 @@ func (s *setupWin) build() {
 		}
 		s.c["inbox"] = s.edit(inbox, x, y+44, w-100, false)
 		s.button("Browse…", x+w-92, y+42, 92, false, func() { s.browse("inbox", "Which folder should other computers deliver to?") })
-		y += 92
+		// Signed deliveries (DESIGN1): ticked, a new computer is taken at
+		// its first signed delivery; unticked, it waits for approval. Below
+		// the Browse button (y+42..70), not over its lower edge.
+		s.c["acceptnew"] = s.check(install.QAcceptNewSenders+" (each computer signs what it sends; new ones appear in blackbox status)", !s.a.HoldNewSenders, x, y+80, w)
+		y += 112
 		s.label(install.QInboxReach, x, y, w, 20)
 		// Suggested only where VirtualBox is installed (S12).
 		vbox := install.VirtualBoxInstalled()
 		s.c["vm"] = s.check("Virtual machines on this PC send to it (VirtualBox shared folder)", len(s.a.InboxWriters) > 0 || (vbox && !s.a.ShareInbox), x, y+24, w)
-		s.note("Windows account(s) that run VirtualBox; it writes into the shared folder as that account (separate several with commas)", x+20, y+50, w-20, 34)
+		s.note(install.NoteVirtualBox, x+20, y+48, w-20, 46)
 		writers := strings.Join(s.a.InboxWriters, ", ")
 		if writers == "" && vbox {
 			writers = os.Getenv("USERNAME")
 		}
-		s.c["writers"] = s.edit(writers, x+20, y+86, w-20, false)
+		s.c["writers"] = s.edit(writers, x+20, y+96, w-20, false)
 		s.on(s.c["vm"], func(uint16) { enable(s.c["writers"], checked(s.c["vm"])) })
 		enable(s.c["writers"], checked(s.c["vm"]))
-		s.c["share"] = s.check("Share it on the network as "+install.ShareName+", so other computers can send to it", s.a.ShareInbox, x, y+122, w)
+		s.c["share"] = s.check("Share it on the network as "+install.ShareName+", so other computers can send to it", s.a.ShareInbox, x, y+128, w)
 		// The accounts other computers deliver as (S11).
-		s.note(install.NoteShareWriters, x+20, y+148, w-20, 34)
-		s.c["swriters"] = s.edit(strings.Join(s.a.ShareWriters, ", "), x+20, y+184, w-20, false)
+		s.note(install.NoteShareWriters, x+20, y+152, w-20, 34)
+		s.c["swriters"] = s.edit(strings.Join(s.a.ShareWriters, ", "), x+20, y+188, w-20, false)
 		s.on(s.c["share"], func(uint16) { enable(s.c["swriters"], checked(s.c["share"])) })
 		enable(s.c["swriters"], checked(s.c["share"]))
-		// Signed deliveries (DESIGN1): ticked, a new computer is taken at
-		// its first signed delivery; unticked, it waits for approval.
-		s.c["acceptnew"] = s.check(install.QAcceptNewSenders+" (each computer signs what it sends; new ones appear in blackbox status)", !s.a.HoldNewSenders, x, y-24, w)
 	case pSendTo:
 		s.label(install.QSendTo, x, y, w, 20)
 		s.note(strings.ReplaceAll(install.SendToExample(true), "\n", " "), x, y+20, w, 20)
@@ -346,8 +367,13 @@ func (s *setupWin) build() {
 		}
 		s.radios = s.radios_(ch, indexOf(ints, s.a.CollectEvery), x, y, w)
 		if s.a.Role != install.RoleSender {
-			s.c["tray"] = s.check("Show Blackbox's status in the notification area for administrators", s.tray, x, y+200, w)
-			s.note("An icon by the clock: collecting on schedule, something to look at, or stopped. Only members of Administrators see it.", x+20, y+224, w-20, 34)
+			s.c["tray"] = s.check("Show Blackbox's status in the notification area", s.tray, x, y+200, w)
+			s.note("An icon by the clock: collecting on schedule, something to look at, or stopped.", x+20, y+224, w-20, 18)
+			// TRAY4: who sees it.
+			s.note(install.QTrayGroups, x+20, y+246, w-20, 18)
+			s.c["traygroups"] = s.edit(strings.Join(s.a.TrayGroups, ", "), x+20, y+268, w-20, false)
+			s.on(s.c["tray"], func(uint16) { enable(s.c["traygroups"], checked(s.c["tray"])) })
+			enable(s.c["traygroups"], s.tray)
 		}
 	case pScap:
 		s.label(install.QScap, x, y, w, 20)
@@ -406,6 +432,9 @@ func indexOf[T comparable](list []T, v T) int {
 func (s *setupWin) final() install.Answers {
 	a := s.a
 	a.Tray = s.tray
+	// The window goes through every page, or offers "Upgrade now" only when
+	// there is no new question (UPG1).
+	a.Asked = strings.Split(strings.ReplaceAll(install.AllAsked(), " ", ""), ",")
 	return install.ForRole(a)
 }
 
@@ -417,6 +446,10 @@ func (s *setupWin) save() {
 	case pRole:
 		if len(s.radios) > 0 {
 			s.a.Role = install.Roles[selected(s.radios)]
+		}
+	case pNetwork:
+		if len(s.radios) > 0 {
+			s.a.Network = install.Networks[selected(s.radios)]
 		}
 	case pReports:
 		s.a.Site = get("site")
@@ -474,6 +507,9 @@ func (s *setupWin) save() {
 		}
 		if c, ok := s.c["tray"]; ok {
 			s.tray = checked(c)
+		}
+		if _, ok := s.c["traygroups"]; ok {
+			s.a.TrayGroups = install.SplitList(get("traygroups"))
 		}
 	}
 }
@@ -589,6 +625,12 @@ func (s *setupWin) check_() bool {
 			} else if !ok && messageBox(s.hwnd, d+" does not exist yet. Use it anyway? Blackbox reads it once scans are saved there.", "Blackbox setup", mbYesNo|mbIconQuestion) != idYes {
 				pSetFocus.Call(s.c["scap"])
 				return false
+			}
+		}
+	case pCollect:
+		if s.tray {
+			if err := install.CheckGroups(s.a.TrayGroups); err != nil {
+				return warn("traygroups", err.Error())
 			}
 		}
 	case pSendTo:

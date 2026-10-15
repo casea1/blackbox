@@ -233,7 +233,9 @@ environment variable (so it is not shown in the process list).
 	fs.Var(&writers, "inbox-writer", "Windows collector: an account allowed to deliver to the inbox, e.g. the user who runs VirtualBox (repeatable)")
 	yes := fs.Bool("yes", false, "do not ask questions; use the options given and current or default settings")
 	noReport := fs.Bool("no-first-report", false, "do not produce a report (or send) straight away")
-	tray := fs.Bool("tray", true, "Windows collector or standalone: show Blackbox's status in the notification area for administrators")
+	tray := fs.Bool("tray", true, "Windows collector or standalone: show Blackbox's status in the notification area")
+	trayGroups := fs.String("tray-groups", "", "Windows: the groups whose members see the status icon, comma-separated (default: Administrators; - for Administrators)")
+	network := fs.String("network", "", "standalone or collector: standalone (a computer on its own) or lan (an offline network with a domain or time server)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -314,6 +316,26 @@ environment variable (so it is not shown in the process list).
 		}
 		if *shareInbox {
 			ans.ShareInbox = true
+		}
+		switch *trayGroups {
+		case "":
+		case "-":
+			ans.TrayGroups = nil
+		default:
+			ans.TrayGroups = install.SplitList(*trayGroups)
+		}
+		if *trayGroups != "" {
+			ans.Asked = append(ans.Asked, "tray_groups") // answered on the command line
+		}
+		if *network != "" {
+			ans.Asked = append(ans.Asked, "network")
+		}
+		switch strings.ToLower(*network) {
+		case "":
+		case install.NetStandalone, install.NetLAN:
+			ans.Network = strings.ToLower(*network)
+		default:
+			return fmt.Errorf("--network must be standalone or lan")
 		}
 		switch strings.ToLower(*newSenders) {
 		case "":
