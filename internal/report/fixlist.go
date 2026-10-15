@@ -93,6 +93,8 @@ func (r *Report) FixList() *FixList {
 			s.OS = s.OS[:i]
 		}
 		s.Windows = strings.HasPrefix(s.OS, "Windows")
+		var rules *FixItem
+		var ruleNames []string
 		for _, l := range row.Table {
 			if (l.Class != "bad" && l.Class != "warn") || l.Check == "Logs intact" || l.Check == "Reporting" || l.Check == "STIG compliance (SCAP)" {
 				continue
@@ -102,7 +104,25 @@ func (r *Report) FixList() *FixList {
 				it.STIG = ""
 			}
 			it.Cmds = fixCommands(l.Check, l.Fix, s.Windows)
+			// The Linux audit rules a system lacks share one fix: one item
+			// listing them, with the commands once.
+			if strings.Contains(l.Fix, "--audit-rules --missing") && l.Have == "Missing" {
+				if rules == nil {
+					it.Title, it.STIG, it.Have, it.Want = "Missing audit rules", "", "", ""
+					s.Settings = append(s.Settings, it)
+					rules = &s.Settings[len(s.Settings)-1]
+				}
+				ruleNames = append(ruleNames, l.Check)
+				if it.Level == "bad" {
+					rules.Level, rules.Advice = "bad", false
+				}
+				continue
+			}
 			s.Settings = append(s.Settings, it)
+		}
+		if rules != nil {
+			rules.Title = fmt.Sprintf("Missing audit rules (%d)", len(ruleNames))
+			rules.Have = "Not loaded: " + strings.Join(ruleNames, " · ")
 		}
 		for _, l := range losses[strings.ToUpper(row.Name)] {
 			s.Logs = append(s.Logs, FixItem{Title: l.Log, Have: l.Lost + " events overwritten before Blackbox read them", Fix: l.Advice, Level: l.Level,
@@ -176,7 +196,7 @@ var (
 	logSizeRE   = regexp.MustCompile(`Event Log Service > ([^>]+?) > Specify the maximum log file size \(KB\): Enabled, (\d+)`)
 	wevtutilRE  = regexp.MustCompile(`wevtutil sl "[^"]+" /(?:ms:\d+|e:true)`)
 	// cmdStart are the commands a Linux fix may start with.
-	cmdStart = regexp.MustCompile(`^(auditctl|systemctl|chmod|augenrules|blackbox|update-grub|grub2-mkconfig|apt|dnf|sed|install) `)
+	cmdStart = regexp.MustCompile(`^(sudo )?(auditctl|systemctl|chmod|augenrules|blackbox|update-grub|grub2-mkconfig|apt|dnf|sed|install) `)
 )
 
 // fixCommands are the commands, ready to copy, that carry out a fix
@@ -213,7 +233,7 @@ func fixCommands(item, fix string, windows bool) []FixCmd {
 			part = part[:i]
 		}
 		if cmdStart.MatchString(part) {
-			out = append(out, FixCmd{part, "Run as root"})
+			out = append(out, FixCmd{part, "Run on the system, as a user who may use sudo"})
 		}
 	}
 	return out

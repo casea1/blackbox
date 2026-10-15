@@ -45,6 +45,15 @@ type Answers struct {
 	HoldNewSenders bool
 
 	Tray bool // Windows collector or standalone: the status icon for administrators
+	// TrayGroups are the Windows groups whose members see the status icon
+	// (none: Administrators) (TRAY4).
+	TrayGroups []string
+	// Network is NetStandalone (a computer on its own) or NetLAN (an
+	// offline network with a domain or time server), for a standalone
+	// computer or a collector (NET1).
+	Network string
+	// Asked are the setup questions this install has answered (UPG1).
+	Asked []string
 
 	// ScapResults is where this computer's SCC or OpenSCAP results are
 	// saved ("" = the scap folder in the data folder, "none" = off).
@@ -196,6 +205,18 @@ func (w *wizard) run(cur Answers, defaultReports string, reinstall bool) (Answer
 			w.printf("   %-18s%s\n", l.Label+":", l.Value)
 		}
 		w.printf("\n")
+		// A version that asks something the installed one did not: those
+		// questions first, then the rest as they are (UPG1).
+		if news := Unasked(a); len(news) > 0 {
+			w.printf("This version adds new settings: %s.\n", UnaskedText(news))
+			for _, o := range news {
+				if err := w.askNew(&a, o.ID); err != nil {
+					return a, err
+				}
+			}
+			a.Asked = strings.Split(strings.ReplaceAll(AllAsked(), " ", ""), ",")
+			w.printf("\n")
+		}
 		keep, err := w.yes("Keep these settings and "+QQuickVerb+" now?", true)
 		if err != nil {
 			return a, err
@@ -211,6 +232,11 @@ func (w *wizard) run(cur Answers, defaultReports string, reinstall bool) (Answer
 	}
 	tray := a.Tray
 	a = ForRole(a)
+	if a.Role != RoleSender {
+		if err := w.askNew(&a, "network"); err != nil {
+			return a, err
+		}
+	}
 
 	if a.Role == RoleStandalone || a.Role == RoleCollector {
 		if err := w.askReports(&a, defaultReports); err != nil {
@@ -238,7 +264,13 @@ func (w *wizard) run(cur Answers, defaultReports string, reinstall bool) (Answer
 		if a.Tray, err = w.yes("Show it?", tray); err != nil {
 			return a, err
 		}
+		if a.Tray {
+			if err := w.askNew(&a, "tray_groups"); err != nil {
+				return a, err
+			}
+		}
 	}
+	a.Asked = strings.Split(strings.ReplaceAll(AllAsked(), " ", ""), ",")
 	if err := w.askScap(&a); err != nil {
 		return a, err
 	}
@@ -591,6 +623,42 @@ func (w *wizard) askSendTo(a *Answers) error {
 		a.SendTo, a.ShareUser, a.SharePassword = s, user, pw
 		return nil
 	}
+}
+
+// askNew asks one of the questions in NewOptions.
+func (w *wizard) askNew(a *Answers, id string) error {
+	switch id {
+	case "network":
+		w.question(QNetwork)
+		cur := a.Network
+		if cur == "" {
+			cur = DefaultNetwork(a.Role)
+		}
+		i, err := w.choose(choiceLabels(NetworkChoices, 44), indexOf(Networks, cur))
+		if err != nil {
+			return err
+		}
+		a.Network = Networks[i]
+	case "tray_groups":
+		w.question(QTrayGroups)
+		for {
+			s, err := w.ask(strings.Join(a.TrayGroups, ", "))
+			if err != nil {
+				return err
+			}
+			if s == "-" {
+				s = ""
+			}
+			groups := SplitList(s)
+			if err := CheckGroups(groups); err != nil {
+				w.printf("   %v\n", err)
+				continue
+			}
+			a.TrayGroups = groups
+			break
+		}
+	}
+	return nil
 }
 
 func (w *wizard) askInterval(a *Answers) error {

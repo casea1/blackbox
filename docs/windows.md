@@ -16,9 +16,10 @@ there is no .NET, Go or other runtime to install.
 
 | Page | Asks |
 |---|---|
-| This computer | How will this computer's audit events be reviewed? On this computer, send to a collector, or this is the collector |
+| This computer | How will this computer's audit events be reviewed? This computer only, send to a collector, or this is the collector |
+| Network | Is this computer on its own (standalone), or on an offline network with other computers (a domain or time server, file shares)? On its own, reports show network time sync as not applicable and give the update-media way to update antivirus |
 | Reports | Site name; daily, weekly or monthly; when each report is ready (default Wednesday 00:00); where reports are saved, with **Browse…** |
-| Collection | How often events are collected (every 15 minutes is recommended), and whether to show the status icon to administrators |
+| Collection | How often events are collected (every 15 minutes is recommended), whether to show the status icon, and which groups see it (blank: Administrators; for example `LAB\Auditors`) |
 | Ready to install | A summary of your answers, and **Install** |
 
 The last page shows each step as it happens: the install, the audit
@@ -99,7 +100,11 @@ current settings filled in, so change only what you need.
 **To upgrade,** double-click the newer `Blackbox-Setup-<version>.exe`. It
 says which version is installed and lists your current settings; click
 **Upgrade now, keep current settings** to upgrade in one click, or **Next**
-to go through them. It doesn't move the report schedule. A collection running at that moment, or an open
+to go through them. When the new version asks something the installed one
+didn't (such as the Network page in 0.29), there is no one-click upgrade:
+**Next** goes through the pages with your settings filled in and the new
+ones suggested. `blackbox install --yes` uses the suggestion and lists
+each new setting it set. It doesn't move the report schedule. A collection running at that moment, or an open
 status icon, doesn't block it. Setup then checks the new program starts,
 and puts the previous one back if it doesn't. Installing or upgrading
 (also `blackbox install --yes`) starts a collection straight away, as on
@@ -151,8 +156,10 @@ it is refused.
 ## Status icon
 
 On a collector or standalone computer, members of **Administrators** see a
-Blackbox icon by the clock when they log on. It is started by the
-scheduled task **Blackbox Status**, with full rights, so there is no UAC
+Blackbox icon by the clock when they log on, or, when setup names groups
+(for example `LAB\Auditors`), members of those groups only. It is started
+by the scheduled task **Blackbox Status** (one per group: **Blackbox
+Status 2** and so on), with the member's highest rights, so there is no UAC
 prompt. Untick the box on the Collection page of setup to turn it off.
 
 The icon is the Blackbox logo. Its menu's status line and the notifications

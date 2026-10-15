@@ -73,19 +73,23 @@ func readPasswordPlain(r *bufio.Reader) (string, error) {
 
 func lines(l ...string) string { return strings.Join(l, "\n") + "\n" }
 
+// allAsked is Answers.Asked once setup has been through its questions.
+var allAsked = []string{"network", "tray_groups"}
+
 func TestWizardDefaults(t *testing.T) {
 	// Enter on every question, then Enter to confirm.
-	a, out, err := runWizard(t, lines("", "", "", "", "", "", "", "", ""), Answers{}, fakeEnv{}, false)
+	a, out, err := runWizard(t, lines("", "", "", "", "", "", "", "", "", ""), Answers{}, fakeEnv{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Answers{Role: RoleStandalone, ReportEvery: "weekly", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute} // C6
+	want := Answers{Role: RoleStandalone, ReportEvery: "weekly", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute, // C6
+		Network: NetStandalone, Asked: allAsked} // NET1: a standalone computer is on its own unless told otherwise
 	if !reflect.DeepEqual(a, want) {
 		t.Errorf("got %+v, want %+v", a, want)
 	}
-	for _, s := range []string{"1. How will this computer's audit events be reviewed?", "2. Site or system name", "3. How often should a report",
-		"4. Which day and time should each weekly report be ready", "5. Where should reports be saved", "6. Where should the original logs wait for the next report",
-		"7. How often should events be collected", "8. Where are this computer's SCAP scan results", "Original logs:    " + DefaultArchiveDir(),
+	for _, s := range []string{"1. How will this computer's audit events be reviewed?", "2. Is this computer on its own", "3. Site or system name", "4. How often should a report",
+		"5. Which day and time should each weekly report be ready", "6. Where should reports be saved", "7. Where should the original logs wait for the next report",
+		"8. How often should events be collected", "9. Where are this computer's SCAP scan results", "Network:          on its own (standalone)", "Original logs:    " + DefaultArchiveDir(),
 		"SCAP results:     " + DefaultScapDir(),
 		"weekly, ready Wednesday 00:00 (each covers the week to Tuesday night)", "Summary", "Install these settings?"} {
 		if !strings.Contains(out, s) {
@@ -103,6 +107,7 @@ func TestWizardAnswersAndRetries(t *testing.T) {
 	}
 	input := lines(append(append([]string{
 		"1",      // standalone
+		"",       // on its own (NET1)
 		"Lab 3",  // site
 		"9", "1", // invalid choice is asked again, then daily
 		"noon", "06:30", // invalid time is asked again
@@ -120,7 +125,8 @@ func TestWizardAnswersAndRetries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Answers{Role: RoleStandalone, Site: "Lab 3", ReportEvery: "daily", ReportAt: config.ReportAt{Day: time.Wednesday, Minute: 6*60 + 30}, ReportDir: abs("/srv/new-reports"), ArchiveDir: abs("/srv/logs"), CollectEvery: 15 * time.Minute}
+	want := Answers{Role: RoleStandalone, Site: "Lab 3", ReportEvery: "daily", ReportAt: config.ReportAt{Day: time.Wednesday, Minute: 6*60 + 30}, ReportDir: abs("/srv/new-reports"), ArchiveDir: abs("/srv/logs"), CollectEvery: 15 * time.Minute,
+		Network: NetStandalone, Asked: allAsked}
 	if !reflect.DeepEqual(a, want) {
 		t.Errorf("got %+v, want %+v", a, want)
 	}
@@ -132,8 +138,9 @@ func TestWizardAnswersAndRetries(t *testing.T) {
 }
 
 func TestWizardReinstallKeepsCurrentSettings(t *testing.T) {
-	cur := Answers{Role: RoleStandalone, Site: "Lab 3", ReportEvery: "monthly", ReportAt: config.ReportAt{Day: time.Thursday, Minute: 360}, ReportDir: abs("/srv/locked"), ArchiveDir: abs("/srv/logs"), CollectEvery: 2 * time.Hour}
-	a, out, err := runWizard(t, lines("n", "", "", "", "", "", "", "", "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true, abs("/srv/logs"): true}}, true)
+	cur := Answers{Role: RoleStandalone, Site: "Lab 3", ReportEvery: "monthly", ReportAt: config.ReportAt{Day: time.Thursday, Minute: 360}, ReportDir: abs("/srv/locked"), ArchiveDir: abs("/srv/logs"), CollectEvery: 2 * time.Hour,
+		Network: NetLAN, Asked: allAsked}
+	a, out, err := runWizard(t, lines("n", "", "", "", "", "", "", "", "", "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true, abs("/srv/logs"): true}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,8 +153,8 @@ func TestWizardReinstallKeepsCurrentSettings(t *testing.T) {
 }
 
 func TestWizardDefaultFolderAndClearSite(t *testing.T) {
-	cur := Answers{Site: "Old", ReportEvery: "weekly", ReportDir: abs("/srv/locked"), CollectEvery: time.Hour}
-	a, _, err := runWizard(t, lines("n", "", "-", "", "", abs("/var/lib/blackbox/reports"), "", "", "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true}}, true)
+	cur := Answers{Site: "Old", ReportEvery: "weekly", ReportDir: abs("/srv/locked"), CollectEvery: time.Hour, Asked: allAsked}
+	a, _, err := runWizard(t, lines("n", "", "", "-", "", "", abs("/var/lib/blackbox/reports"), "", "", "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +164,7 @@ func TestWizardDefaultFolderAndClearSite(t *testing.T) {
 }
 
 func TestWizardCancel(t *testing.T) {
-	if _, _, err := runWizard(t, lines("", "", "", "", "", "", "", "", "n"), Answers{}, fakeEnv{}, false); !errors.Is(err, ErrCancelled) {
+	if _, _, err := runWizard(t, lines("", "", "", "", "", "", "", "", "", "n"), Answers{}, fakeEnv{}, false); !errors.Is(err, ErrCancelled) {
 		t.Errorf("answering no should cancel, got %v", err)
 	}
 	if _, _, err := runWizard(t, "1\nLab", Answers{}, fakeEnv{}, false); !errors.Is(err, ErrCancelled) {
@@ -173,7 +180,7 @@ func TestWizardSenderFindsVirtualBoxFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Answers{Role: RoleSender, ReportEvery: "weekly", ReportAt: config.DefaultReportAt, SendTo: sf, CollectEvery: 15 * time.Minute}
+	want := Answers{Role: RoleSender, ReportEvery: "weekly", ReportAt: config.DefaultReportAt, SendTo: sf, CollectEvery: 15 * time.Minute, Asked: allAsked}
 	if !reflect.DeepEqual(a, want) {
 		t.Errorf("got %+v, want %+v", a, want)
 	}
@@ -228,6 +235,7 @@ func TestWizardSenderKeepsUnreachableCollector(t *testing.T) {
 func TestWizardWindowsCollector(t *testing.T) {
 	input := lines(
 		"3",      // collector
+		"",       // an offline network (NET1)
 		"Lab 3",  // site
 		"1",      // daily
 		"",       // at midnight
@@ -242,6 +250,7 @@ func TestWizardWindowsCollector(t *testing.T) {
 		"bbsend", // the account other computers deliver as (S11)
 		"",       // hourly
 		"y",      // status icon
+		"",       // shown to Administrators (TRAY4)
 		"",       // SCAP results: the default
 		"",       // confirm
 	)
@@ -250,12 +259,12 @@ func TestWizardWindowsCollector(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	want := Answers{Role: RoleCollector, Site: "Lab 3", ReportEvery: "daily", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute,
-		Inbox: abs("/srv/blackbox-inbox"), ShareInbox: true, InboxWriters: []string{"vmuser"}, ShareWriters: []string{"bbsend"}, Tray: true}
+		Inbox: abs("/srv/blackbox-inbox"), ShareInbox: true, InboxWriters: []string{"vmuser"}, ShareWriters: []string{"bbsend"}, Tray: true, Network: NetLAN, Asked: allAsked}
 	if !reflect.DeepEqual(a, want) {
 		t.Errorf("got %+v, want %+v", a, want)
 	}
 	if !strings.Contains(out, "shared on the network as BlackboxInbox") || !strings.Contains(out, "Can deliver:      vmuser, bbsend") ||
-		!strings.Contains(out, "Status icon:      shown to administrators") {
+		!strings.Contains(out, "Status icon:      shown to Administrators") {
 		t.Errorf("summary:\n%s", out)
 	}
 }
@@ -263,7 +272,7 @@ func TestWizardWindowsCollector(t *testing.T) {
 // S12: on a server without VirtualBox, the VirtualBox shared folder is not
 // suggested (Enter means no), and no account is filled in for it.
 func TestWizardNoVirtualBox(t *testing.T) {
-	input := lines("3", "", "", "", "", "", "", "y",
+	input := lines("3", "", "", "", "", "", "", "", "y",
 		"",       // accept new computers automatically
 		"",       // VMs on this PC send to it? Enter: no
 		"y",      // share it
@@ -283,8 +292,8 @@ func TestWizardNoVirtualBox(t *testing.T) {
 
 // Changing a collector back to standalone clears the LAN settings.
 func TestWizardBackToStandalone(t *testing.T) {
-	cur := Answers{Role: RoleCollector, Inbox: abs("/srv/blackbox-inbox"), ShareInbox: true, ReportEvery: "weekly", CollectEvery: time.Hour}
-	a, _, err := runWizard(t, lines("n", "1", "", "", "", "", "", "", "", ""), cur, fakeEnv{}, true)
+	cur := Answers{Role: RoleCollector, Inbox: abs("/srv/blackbox-inbox"), ShareInbox: true, ReportEvery: "weekly", CollectEvery: time.Hour, Asked: allAsked}
+	a, _, err := runWizard(t, lines("n", "1", "", "", "", "", "", "", "", "", ""), cur, fakeEnv{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +318,7 @@ func TestWizardSenderNoTray(t *testing.T) {
 // these settings and upgrade now?" applies them without the questions.
 func TestWizardQuickUpgrade(t *testing.T) {
 	cur := Answers{Role: RoleCollector, Site: "Lab 3", ReportEvery: "weekly", ReportAt: config.DefaultReportAt, Inbox: abs("/srv/inbox"),
-		ArchiveDir: abs("/srv/logs"), ScapResults: abs("/srv/scc"), CollectEvery: 15 * time.Minute}
+		ArchiveDir: abs("/srv/logs"), ScapResults: abs("/srv/scc"), CollectEvery: 15 * time.Minute, Network: NetLAN, Asked: allAsked}
 	a, out, err := runWizard(t, lines(""), cur, fakeEnv{}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -326,7 +335,7 @@ func TestWizardQuickUpgrade(t *testing.T) {
 		t.Error("asked the questions anyway")
 	}
 	// A first install has nothing to keep: no such question.
-	_, out, _ = runWizard(t, lines("", "", "", "", "", "", "", "", ""), Answers{}, fakeEnv{}, false)
+	_, out, _ = runWizard(t, lines("", "", "", "", "", "", "", "", "", ""), Answers{}, fakeEnv{}, false)
 	if strings.Contains(out, "Keep these settings") {
 		t.Error("a first install offered to keep settings")
 	}
@@ -346,5 +355,23 @@ func TestWizardScapFolder(t *testing.T) {
 	a, _, err = runWizard(t, lines("2", "", "", "none", ""), Answers{}, fakeEnv{inboxes: []string{abs("/media/sf_BlackboxInbox")}, reachable: map[string]string{abs("/media/sf_BlackboxInbox"): ""}}, false)
 	if err != nil || a.ScapResults != "none" {
 		t.Errorf("none: %+v %v", a, err)
+	}
+}
+
+// UPG1: an upgrade from a version that did not ask a question asks it
+// before offering to keep the rest as they are.
+func TestWizardUpgradeAsksNewQuestions(t *testing.T) {
+	cur := Answers{Role: RoleStandalone, Site: "Lab 3", ReportEvery: "weekly", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute}
+	// Network: on its own; on Windows, who sees the status icon (Enter);
+	// then Enter to keep the rest.
+	a, out, err := runWizard(t, lines("1", "", ""), cur, fakeEnv{}, true)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if !strings.Contains(out, "This version adds new settings: whether this computer is on its own or on an offline network") {
+		t.Errorf("output:\n%s", out)
+	}
+	if a.Network != NetStandalone || !reflect.DeepEqual(a.Asked, allAsked) || a.Site != "Lab 3" {
+		t.Errorf("got %+v", a)
 	}
 }

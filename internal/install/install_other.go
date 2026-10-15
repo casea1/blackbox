@@ -66,6 +66,9 @@ func InboxShared() bool { return false }
 // TrayWanted is always false here.
 func TrayWanted() bool { return false }
 
+// CheckGroups is for the Windows status icon only.
+func CheckGroups([]string) error { return nil }
+
 // StartTray is Windows only.
 func StartTray() error { return nil }
 

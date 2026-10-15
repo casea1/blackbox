@@ -55,7 +55,7 @@ func TestLayoutFixes(t *testing.T) {
 	if strings.Contains(h, `class="map mapfit"`) {
 		t.Errorf("the Overview still draws system tiles")
 	}
-	for _, want := range []string{`<th title="Removable storage">USB</th>`, `<th title="Log size and space settings">Log size</th>`,
+	for _, want := range []string{`<th title="Removable storage">Removable storage</th>`, `<th title="Log size and space settings">Log size</th>`,
 		`data-scrollcue`, `class="morecue"`, `data-hpane="settings"`, "Log size and space settings"} {
 		if !strings.Contains(h, want) {
 			t.Errorf("report lacks %q", want)

@@ -96,7 +96,7 @@ func TestPrepareReportDir(t *testing.T) {
 // The status icon starts at logon for members of Administrators, elevated,
 // one per person.
 func TestTrayTaskXML(t *testing.T) {
-	x := trayTaskXML(`C:\Program Files\Blackbox\blackboxw.exe`)
+	x := trayTaskXML(`C:\Program Files\Blackbox\blackboxw.exe`, AdministratorsSID)
 	for _, want := range []string{"<LogonTrigger>", "<GroupId>S-1-5-32-544</GroupId>", "<RunLevel>HighestAvailable</RunLevel>",
 		"<MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy>", "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>",
 		`<Command>C:\Program Files\Blackbox\blackboxw.exe</Command>`, "<Arguments>tray</Arguments>"} {
@@ -106,6 +106,10 @@ func TestTrayTaskXML(t *testing.T) {
 	}
 	if strings.Contains(x, "<UserId>") {
 		t.Error("the tray must run as the person logging on, not a fixed account")
+	}
+	// TRAY4: for a chosen group, its members.
+	if x := trayTaskXML(`C:\b.exe`, "S-1-5-21-1-2-3-1105"); !strings.Contains(x, "<GroupId>S-1-5-21-1-2-3-1105</GroupId>") {
+		t.Error("the tray task is not for the chosen group")
 	}
 }
 

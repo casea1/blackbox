@@ -63,6 +63,19 @@ type Config struct {
 	ScapResults    string
 	ScapMaxAgeDays int
 
+	// Network (network = standalone | lan) is the network this computer is
+	// on, all of it offline: standalone is a computer on its own, whose
+	// reports mark network time sync as not applicable and give only the
+	// offline way to update antivirus; lan (the default) has a domain or
+	// time server and file shares (NET1).
+	Network string
+	// TrayGroups (tray_groups) are the Windows groups whose members see
+	// the status icon; none = Administrators (TRAY4).
+	TrayGroups []string
+	// SetupAsked (setup_asked) are the setup questions this install has
+	// answered, so an upgrade asks only the new ones (UPG1).
+	SetupAsked []string
+
 	Path string // file the config was loaded from ("" if defaults)
 }
 
@@ -273,6 +286,19 @@ func (c *Config) set(k, v string) error {
 			return fmt.Errorf("keep_sent_days must be 0 or a positive number of days")
 		}
 		c.KeepSentDays = n
+	case "network":
+		switch strings.ToLower(v) {
+		case "", "lan":
+			c.Network = ""
+		case "standalone":
+			c.Network = "standalone"
+		default:
+			return fmt.Errorf("network must be standalone or lan")
+		}
+	case "tray_groups":
+		c.TrayGroups = list(v)
+	case "setup_asked":
+		c.SetupAsked = list(v)
 	case "new_senders":
 		switch strings.ToLower(v) {
 		case "", "accept":
@@ -412,7 +438,7 @@ func RawValues(path string) map[string]string {
 }
 
 // Settable lists the settings `blackbox config set` may change.
-var Settable = []string{"site_name", "report_every", "report_at", "report_dir", "archive_dir", "retention_days", "exclude_users", "exclude_processes", "working_hours", "people_aliases", "send_to", "inbox", "share_user", "keep_sent_days", "new_senders", "require_signed", "scap_results", "scap_max_age_days"}
+var Settable = []string{"site_name", "report_every", "report_at", "report_dir", "archive_dir", "retention_days", "exclude_users", "exclude_processes", "working_hours", "people_aliases", "send_to", "inbox", "share_user", "keep_sent_days", "new_senders", "require_signed", "scap_results", "scap_max_age_days", "network", "tray_groups"}
 
 // SetValue changes one user-settable setting in the config file (see
 // Settable), keeping its comments and line endings.
@@ -614,6 +640,10 @@ func keepName(path, version string) string {
 	}
 }
 
+// Standalone reports whether this computer is on its own, with no
+// network (network = standalone).
+func (c *Config) Standalone() bool { return c.Network == "standalone" }
+
 func list(v string) []string {
 	var out []string
 	for _, s := range strings.Split(v, ",") {
@@ -750,6 +780,20 @@ people_aliases =
 # A scan older than scap_max_age_days is pointed out as stale.
 scap_results =
 scap_max_age_days = 30
+
+# The network this computer is on (all of it offline): standalone for a
+# computer on its own, whose reports mark network time sync as not
+# applicable and give the update-media way to update antivirus; lan for an
+# offline network with a domain or time server and file shares.
+network = lan
+
+# Windows: the groups whose members see the status icon (several:
+# separate with commas). Blank: Administrators. Run setup after changing.
+tray_groups =
+
+# The setup questions this install has answered, so an upgrade asks only
+# new ones. Set by setup.
+setup_asked =
 
 `
 

@@ -97,25 +97,87 @@ func TrayWanted() bool {
 	return err != nil
 }
 
-// setupTray registers or removes the task that starts the status icon.
-func setupTray(on bool, logf func(string, ...any)) error {
+// CheckGroups says whether each name is a group on this computer or its
+// domain, for the status icon (TRAY4).
+func CheckGroups(groups []string) error {
+	for _, g := range groups {
+		_, _, typ, err := syscall.LookupSID("", g)
+		if err != nil {
+			return fmt.Errorf("No group %q on this computer or its domain. Enter group names as DOMAIN\\Group or Group, separated by commas.", g)
+		}
+		if typ != 2 && typ != 4 && typ != 5 {
+			return fmt.Errorf("%q is not a group (a user account?). Name the group whose members should see the icon.", g)
+		}
+	}
+	return nil
+}
+
+// trayTaskName is the task for the i-th group (from 0): "Blackbox
+// Status", then "Blackbox Status 2" and so on (TRAY4).
+func trayTaskName(i int) string {
+	if i == 0 {
+		return TrayTaskName
+	}
+	return fmt.Sprintf("%s %d", TrayTaskName, i+1)
+}
+
+// maxTrayGroups bounds the tasks removed when the groups change.
+const maxTrayGroups = 20
+
+// setupTray registers or removes the tasks that start the status icon,
+// one per group whose members see it (none: Administrators).
+func setupTray(on bool, groups []string, logf func(string, ...any)) error {
+	// The groups' SIDs first: a name that is not a group is refused
+	// before anything changes.
+	type grp struct{ name, sid string }
+	var list []grp
+	if on {
+		for _, g := range groups {
+			sid, _, typ, err := syscall.LookupSID("", g)
+			if err != nil {
+				return fmt.Errorf("status icon: no group %q on this computer or its domain: %v", g, err)
+			}
+			// SidTypeGroup 2, Alias 4, WellKnownGroup 5.
+			if typ != 2 && typ != 4 && typ != 5 {
+				return fmt.Errorf("status icon: %q is not a group (a user account?); name a group whose members should see it", g)
+			}
+			s, err := sid.String()
+			if err != nil {
+				return err
+			}
+			list = append(list, grp{g, s})
+		}
+		if len(list) == 0 {
+			list = []grp{{"Administrators", AdministratorsSID}}
+		}
+	}
+	removed := false
+	for i := len(list); i < maxTrayGroups; i++ {
+		if hidden.Command("schtasks.exe", "/Query", "/TN", trayTaskName(i)).Run() == nil {
+			hidden.Command("schtasks.exe", "/Delete", "/TN", trayTaskName(i), "/F").Run()
+			removed = true
+		}
+	}
 	if !on {
-		if hidden.Command("schtasks.exe", "/Query", "/TN", TrayTaskName).Run() == nil {
-			hidden.Command("schtasks.exe", "/Delete", "/TN", TrayTaskName, "/F").Run()
+		if removed {
 			logf("Status icon:         removed")
 		}
 		QuitTrays()
 		return nil
 	}
 	tmp := filepath.Join(os.TempDir(), "blackbox-tray-task.xml")
-	if err := os.WriteFile(tmp, utf16LE(trayTaskXML(WindowedPath())), 0o600); err != nil {
-		return err
-	}
 	defer os.Remove(tmp)
-	if out, err := hidden.Command("schtasks.exe", "/Create", "/TN", TrayTaskName, "/XML", tmp, "/F").CombinedOutput(); err != nil {
-		return fmt.Errorf("create status icon task: %v: %s", err, strings.TrimSpace(string(out)))
+	var names []string
+	for i, g := range list {
+		if err := os.WriteFile(tmp, utf16LE(trayTaskXML(WindowedPath(), g.sid)), 0o600); err != nil {
+			return err
+		}
+		if out, err := hidden.Command("schtasks.exe", "/Create", "/TN", trayTaskName(i), "/XML", tmp, "/F").CombinedOutput(); err != nil {
+			return fmt.Errorf("create status icon task for %s: %v: %s", g.name, err, strings.TrimSpace(string(out)))
+		}
+		names = append(names, g.name)
 	}
-	logf("Status icon:         shown to administrators when they log on (task \"%s\")", TrayTaskName)
+	logf("Status icon:         shown to members of %s when they log on", strings.Join(names, ", "))
 	return nil
 }
 

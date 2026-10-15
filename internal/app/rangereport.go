@@ -113,7 +113,7 @@ func (a *App) reportRange(st *store.Store, from, to time.Time) (string, error) {
 		rng += " " + strings.Join(notes, " ")
 	}
 	r := report.Build(events, runs, report.Options{
-		Site:        a.Cfg.SiteName,
+		Site: a.Cfg.SiteName, Standalone: a.Cfg.Standalone(),
 		WindowStart: from, WindowEnd: to, Generated: generated, Version: a.Version,
 		Source: "Live collection", Location: loc, InReportsDir: true, Interim: true, Range: rng, Period: "range", OwnRuns: ownRuns,
 		History:      report.History(a.ReportsDir(), to, report.HistoryWeeks),

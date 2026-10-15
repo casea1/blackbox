@@ -1449,7 +1449,7 @@ func (a *App) report(st *store.Store, end time.Time, advance bool) (string, erro
 		// The STIG compliance table shows once SCAP is in use: a folder
 		// chosen in the settings, or any scan found.
 		Scap: scans, ScapEnabled: len(scans) > 0 || (a.Cfg.ScapResults != "" && a.Cfg.ScapDir() != ""), ScapMaxAgeDays: a.Cfg.ScapMaxAgeDays,
-		Site:        a.Cfg.SiteName,
+		Site: a.Cfg.SiteName, Standalone: a.Cfg.Standalone(),
 		WindowStart: windowStart, WindowEnd: end, Generated: generated, Version: a.Version,
 		ClockBack: clockJumps(clockBack), MissingReports: reportProblems(st),
 		Source: "Live collection", Location: a.loc(), InReportsDir: true, Interim: !advance, Period: a.Cfg.ReportEvery,

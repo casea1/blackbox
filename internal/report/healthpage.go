@@ -25,8 +25,10 @@ var healthCols = []string{"Logon", "Account mgmt", "Policy change", "Privilege u
 // column fits at 1280 pixels, with the full name on hover (UI3).
 type HealthCol struct{ Short, Full string }
 
-var healthShort = map[string]string{"Account mgmt": "Accounts", "Policy change": "Policy", "Privilege use": "Privilege",
-	"Process creation": "Process", "Removable storage": "USB", "PowerShell logging": "PS log", "Antivirus": "AV", "Logs intact": "Intact"}
+// healthShort is a heading as shown, where the check's name is not
+// readable on its own; headings wrap onto two lines rather than being
+// cut short and explained in a key.
+var healthShort = map[string]string{"Account mgmt": "Account management"}
 
 // healthFull is a heading's full name, where it says more than the
 // column: on hover, and in the key under the table (UI19).
@@ -311,8 +313,14 @@ func (r *Report) healthPage() *HealthPage {
 			gapCards[key] = c
 			gapOrder = append(gapOrder, key)
 		}
-		c.Systems = append(c.Systems, host)
+		if len(c.Systems) == 0 || c.Systems[len(c.Systems)-1] != host {
+			c.Systems = append(c.Systems, host)
+		}
 	}
+	// The Linux audit rules a system lacks share one fix (install the
+	// missing rules): one card for them all, listing them, not a card per
+	// rule each repeating the same commands.
+	missingRules := map[string][]string{}
 
 	groups := []*HealthGroup{{Title: "Servers"}, {Title: "Workstations"}, {Title: "Virtual machines"}}
 	for _, s := range systems {
@@ -459,7 +467,19 @@ func (r *Report) healthPage() *HealthPage {
 					// rule on Server 2025).
 					key, stig = key+"|advice", ""
 				}
-				addGap(key, GapCard{Title: res.Item, STIG: stig, Explain: explain, Fix: res.Fix, Level: lv, Advice: adv, Affects: res.Affects}, s.Name)
+				if res.Area == "Audit rules" && res.Have == "Missing" && strings.Contains(res.Fix, "--audit-rules --missing") {
+					key = "auditrules|" + lv
+					if !slices.Contains(missingRules[key], res.Item) {
+						missingRules[key] = append(missingRules[key], res.Item)
+					}
+					what := "the STIG requires them"
+					if adv {
+						what = "Blackbox recommends them (its advice, not a STIG rule)"
+					}
+					addGap(key, GapCard{Title: "Missing audit rules", Explain: "Not loaded; " + what + ".", Fix: res.Fix, Level: lv, Advice: adv, Affects: res.Affects}, s.Name)
+				} else {
+					addGap(key, GapCard{Title: res.Item, STIG: stig, Explain: explain, Fix: res.Fix, Level: lv, Advice: adv, Affects: res.Affects}, s.Name)
+				}
 				addSTIG(key, baseOS(s), stig)
 				c := gapCards[key]
 				if fam := osFamily(s); !slices.Contains(c.os, fam) {
@@ -602,6 +622,10 @@ func (r *Report) healthPage() *HealthPage {
 	hp.Excluded = r.excludedText()
 	for _, k := range gapOrder {
 		c := gapCards[k]
+		if rules := missingRules[k]; len(rules) > 0 {
+			c.Title = fmt.Sprintf("Missing audit rules (%d)", len(rules))
+			c.Explain = strings.Join(rules, " · ") + ". " + c.Explain
+		}
 		if ids := gapSTIGs[k]; len(ids) > 1 {
 			var parts []string
 			for _, s := range ids {

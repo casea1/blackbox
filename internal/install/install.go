@@ -50,6 +50,18 @@ func writeConfig(path string, opt Options, crlf bool) error {
 	} else if kept != "" && opt.Logf != nil {
 		opt.Logf("settings file comments updated to this version (the earlier file is %s)", filepath.Base(kept))
 	}
+	// A silent upgrade (install --yes) answers no new question: say what
+	// each was set to (UPG1).
+	if opt.Logf != nil {
+		for _, o := range Unasked(opt.Answers) {
+			switch o.ID {
+			case "network":
+				opt.Logf("New setting:         %s: %s (change with: blackbox config set network standalone|lan)", o.What, NetworkText(opt.Network))
+			case "tray_groups":
+				opt.Logf("New setting:         %s: Administrators (change with: blackbox config set tray_groups \"GROUP, ...\", then run setup)", o.What)
+			}
+		}
+	}
 	return config.SetValues(path, [][2]string{
 		{"site_name", opt.Site},
 		{"report_every", opt.ReportEvery},
@@ -62,6 +74,9 @@ func writeConfig(path string, opt Options, crlf bool) error {
 		{"inbox", opt.Inbox},
 		{"new_senders", newSenders(opt)},
 		{"scap_results", opt.ScapResults},
+		{"network", opt.Network},
+		{"tray_groups", strings.Join(opt.TrayGroups, ", ")},
+		{"setup_asked", AllAsked()},
 	})
 }
 
@@ -536,11 +551,15 @@ const TrayTaskName = "Blackbox Status"
 // closes every running icon (on uninstall, or when the icon is turned off).
 const TrayQuitEvent = `Global\BlackboxTrayQuit`
 
-// trayTaskXML starts the status icon when any member of Administrators
-// logs on, in their session, with full rights (the task was registered by
-// an administrator, so there is no UAC prompt). Every administrator who is
-// logged on gets their own icon, so copies run side by side.
-func trayTaskXML(exe string) string {
+// AdministratorsSID is the built-in Administrators group: who sees the
+// status icon when no group is chosen.
+const AdministratorsSID = "S-1-5-32-544"
+
+// trayTaskXML starts the status icon when any member of the group (its
+// SID) logs on, in their session, with their highest rights (the task was
+// registered by an administrator, so there is no UAC prompt). Every member
+// who is logged on gets their own icon, so copies run side by side.
+func trayTaskXML(exe, groupSID string) string {
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
@@ -554,7 +573,7 @@ func trayTaskXML(exe string) string {
   </Triggers>
   <Principals>
     <Principal id="Author">
-      <GroupId>S-1-5-32-544</GroupId>
+      <GroupId>%s</GroupId>
       <RunLevel>HighestAvailable</RunLevel>
     </Principal>
   </Principals>
@@ -573,7 +592,7 @@ func trayTaskXML(exe string) string {
     </Exec>
   </Actions>
 </Task>
-`, xmlEscape(exe))
+`, xmlEscape(groupSID), xmlEscape(exe))
 }
 
 // Installed reports whether the program itself is installed (an uninstall

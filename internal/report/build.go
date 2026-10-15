@@ -23,6 +23,10 @@ const maxRowsPerSection = 5000
 
 // Options describe the report being built.
 type Options struct {
+	// Standalone: the computer reporting is on its own (network =
+	// standalone): network time sync is not applicable and antivirus is
+	// updated from media (NET1).
+	Standalone   bool
 	Site         string
 	WindowStart  time.Time // zero = from the beginning of collected data
 	WindowEnd    time.Time
@@ -333,6 +337,9 @@ type Report struct {
 func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	if opt.Location == nil {
 		opt.Location = time.Local
+	}
+	if opt.Standalone {
+		opt.CheckSets = standaloneSets(opt.CheckSets)
 	}
 	r := &Report{Options: opt, NewDevices: map[string]time.Time{}, Learned: map[string]time.Time{}, BySev: map[string]int{}}
 

@@ -27,7 +27,24 @@ var OldRulesFiles = []string{"/etc/audit/rules.d/99-blackbox.rules"}
 // rulesFix lists only the rules that are not already loaded (see
 // MissingRules), so a STIG baseline's own rules are never duplicated.
 // Blackbox prints them; an administrator installs them.
-const rulesFix = "blackbox check --audit-rules --missing | install -m 0600 /dev/stdin " + RulesFile + ", then augenrules --load"
+const rulesFix = "sudo blackbox check --audit-rules --missing | sudo install -m 0600 /dev/stdin " + RulesFile + ", then sudo augenrules --load"
+
+// oldRulesFix is how versions before 0.29 worded it: without sudo, which
+// both halves of the pipe need (one reads the loaded rules, the other
+// writes in /etc), so it failed when copied as it stood.
+const oldRulesFix = "blackbox check --audit-rules --missing | install -m 0600 /dev/stdin " + RulesFile + ", then augenrules --load"
+
+// CurrentFix is a fix as this version words it, for a result an earlier
+// version recorded.
+func CurrentFix(fix string) string {
+	if strings.HasPrefix(fix, oldRulesFix) {
+		return rulesFix + strings.TrimPrefix(fix, oldRulesFix)
+	}
+	if fix == "auditctl -e 1 (then load the rules)" {
+		return "sudo auditctl -e 1 (then load the rules)"
+	}
+	return fix
+}
 
 type ruleReq struct {
 	item, affects string
@@ -145,7 +162,7 @@ func EvaluateAuditRules(rulesText, statusText string) []Result {
 	case "1":
 		lock.Status, lock.Have, lock.Fix = Fail, "Not locked", rulesFix
 	case "0":
-		lock.Status, lock.Have, lock.Fix = Fail, "Auditing is OFF", "auditctl -e 1 (then load the rules)"
+		lock.Status, lock.Have, lock.Fix = Fail, "Auditing is OFF", "sudo auditctl -e 1 (then load the rules)"
 	default:
 		lock.Status, lock.Have = Error, "unknown (run as root)"
 	}

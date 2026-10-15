@@ -148,6 +148,18 @@
   if (menuBtn) menuBtn.addEventListener('click', function () { menu(!aside.classList.contains('open')); });
   if (aside) aside.addEventListener('click', function (e) { if (e.target.closest('nav a, .allrep')) menu(false); });
 
+  // ---- A filter's name opens its list too, not only its value: a click
+  // on "Kind" or "Person" in label.sel or .sq-dd shows the options. ----
+  document.addEventListener('click', function (e) {
+    var l = e.target.closest && e.target.closest('label.sq-dd, label.sel');
+    if (!l || e.target.tagName === 'SELECT') return;
+    var sel = l.querySelector('select');
+    if (!sel || sel.disabled) return;
+    e.preventDefault();
+    sel.focus();
+    try { if (sel.showPicker) sel.showPicker(); } catch (x) { /* older browsers: focused, opens with a key */ }
+  });
+
   // ---- Folded quiet items (UI-R1 foldrow): Show opens data-folded="ID" ----
   document.addEventListener('click', function (e) {
     var b = e.target.closest && e.target.closest('[data-foldbtn]');
