@@ -48,7 +48,10 @@ Each answer is checked as you give it. See the
 
 Setup then:
 
-- copies `blackbox` to `/usr/local/bin/`
+- copies `blackbox` to `/usr/local/bin/`, and links `/usr/bin/blackbox` to it
+  so `sudo blackbox` works on AlmaLinux, Rocky and RHEL too (their sudo
+  leaves `/usr/local/bin` out of its path). A file of that name that is not
+  a link is left alone.
 - creates `/var/lib/blackbox/` (root only) for reports and collected
   events, and `/etc/blackbox/blackbox.conf`
 - installs and starts `blackbox.timer`, which runs every 15 minutes (by default) and catches
