@@ -101,6 +101,13 @@ func main() {
 		if err = fs.Parse(args); err == nil {
 			if cmd == "setup" {
 				err = gui.Setup(version, *selftest)
+			} else if detached, derr := trayDetached(*selftest); detached || derr != nil {
+				// From a terminal: the windowed program shows the icon, so
+				// closing the terminal or Ctrl+C does not take it away.
+				err = derr
+				if derr == nil {
+					fmt.Println("Status icon started.")
+				}
 			} else {
 				err = gui.Tray(version, *selftest)
 			}
@@ -1244,4 +1251,26 @@ func flagRole(ans install.Answers, sendTo, inbox string) install.Answers {
 		ans.Inbox, ans.ShareInbox, ans.InboxWriters, ans.ShareWriters = "", false, nil, nil
 	}
 	return ans
+}
+
+// trayDetached starts the installed windowed program's status icon when
+// "blackbox tray" is run from the console program (Windows), and reports
+// that it did. The windowed program itself, or one not installed, shows
+// the icon in this process.
+func trayDetached(selftest bool) (bool, error) {
+	if runtime.GOOS != "windows" || selftest {
+		return false, nil
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return false, nil
+	}
+	w := install.WindowedPath()
+	if strings.EqualFold(filepath.Clean(self), filepath.Clean(w)) {
+		return false, nil
+	}
+	if _, err := os.Stat(w); err != nil {
+		return false, nil
+	}
+	return true, install.StartTray()
 }

@@ -17,8 +17,8 @@ type NewOption struct {
 // NewOptions are the setup questions an older install may not have been
 // asked. Add one here with every new setup question.
 var NewOptions = []NewOption{
-	{"network", "whether this computer is on its own or on an offline network",
-		func(a Answers) bool { return a.Role != RoleSender }},
+	{"network", "whether this computer is on a network",
+		func(a Answers) bool { return a.Role == RoleStandalone }},
 	{"tray_groups", "who sees the status icon",
 		func(a Answers) bool { return runtime.GOOS == "windows" && a.Role != RoleSender }},
 }

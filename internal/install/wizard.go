@@ -232,7 +232,7 @@ func (w *wizard) run(cur Answers, defaultReports string, reinstall bool) (Answer
 	}
 	tray := a.Tray
 	a = ForRole(a)
-	if a.Role != RoleSender {
+	if a.Role == RoleStandalone {
 		if err := w.askNew(&a, "network"); err != nil {
 			return a, err
 		}
@@ -511,7 +511,7 @@ func (w *wizard) askInbox(a *Answers) error {
 	w.printf("   Other computers on the network reach it through a Windows share.\n")
 	// Suggested only where VirtualBox is installed (S12).
 	vbox := w.virtualBox != nil && w.virtualBox()
-	vm, err := w.yes("Will virtual machines on this PC send to it (VirtualBox shared folder)?", len(a.InboxWriters) > 0 || (vbox && !a.ShareInbox))
+	vm, err := w.yes("Will virtual machines on this PC send to it (VirtualBox shared folder)?", len(a.InboxWriters) > 0)
 	if err != nil {
 		return err
 	}
@@ -634,11 +634,11 @@ func (w *wizard) askNew(a *Answers, id string) error {
 		if cur == "" {
 			cur = DefaultNetwork(a.Role)
 		}
-		i, err := w.choose(choiceLabels(NetworkChoices, 44), indexOf(Networks, cur))
+		lan, err := w.yes("On a network?", cur == NetLAN)
 		if err != nil {
 			return err
 		}
-		a.Network = Networks[i]
+		a.Network = map[bool]string{true: NetLAN, false: NetStandalone}[lan]
 	case "tray_groups":
 		w.question(QTrayGroups)
 		for {

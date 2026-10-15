@@ -12,7 +12,6 @@ type page int
 const (
 	pWelcome page = iota
 	pRole
-	pNetwork
 	pReports
 	pArchive
 	pInbox
@@ -30,9 +29,9 @@ func pagesFor(role string) []page {
 	case install.RoleSender:
 		return []page{pWelcome, pRole, pSendTo, pCollect, pScap, pSummary, pInstall}
 	case install.RoleCollector:
-		return []page{pWelcome, pRole, pNetwork, pReports, pArchive, pInbox, pCollect, pScap, pSummary, pInstall}
+		return []page{pWelcome, pRole, pReports, pArchive, pInbox, pCollect, pScap, pSummary, pInstall}
 	}
-	return []page{pWelcome, pRole, pNetwork, pReports, pArchive, pCollect, pScap, pSummary, pInstall}
+	return []page{pWelcome, pRole, pReports, pArchive, pCollect, pScap, pSummary, pInstall}
 }
 
 // step moves from p by delta (+1 next, -1 back) in the role's order.

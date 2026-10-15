@@ -193,3 +193,13 @@ func TestVersionLine(t *testing.T) {
 		}
 	}
 }
+
+// The status icon's tasks are found in one listing of every task.
+func TestTrayTaskNames(t *testing.T) {
+	csv := "\"\\Blackbox\",\"N/A\",\"Ready\"\r\n\"\\Blackbox Status\",\"N/A\",\"Ready\"\r\n\"\\Blackbox Status 2\",\"N/A\",\"Ready\"\r\n" +
+		"\"\\Blackbox Status 2\",\"N/A\",\"Ready\"\r\n\"\\Blackbox Statusbar\",\"N/A\",\"Ready\"\r\n\"\\Other\",\"N/A\",\"Ready\"\r\n"
+	got := trayTaskNames(csv)
+	if strings.Join(got, "|") != "Blackbox Status|Blackbox Status 2" {
+		t.Errorf("got %q", got)
+	}
+}
