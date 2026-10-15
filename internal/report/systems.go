@@ -320,6 +320,12 @@ func (r *Report) SystemsNeedingAttention() int {
 
 // NewCheckSet summarises one computer's audit settings check.
 func NewCheckSet(host string, at time.Time, rs []check.Result) CheckSet {
+	// A fix an earlier version worded so it fails as written is shown as
+	// this version words it.
+	rs = append([]check.Result(nil), rs...)
+	for i := range rs {
+		rs[i].Fix = check.CurrentFix(rs[i].Fix)
+	}
 	cs := CheckSet{Host: host, Time: at, Results: rs}
 	var audit []check.Result
 	for _, r := range rs {

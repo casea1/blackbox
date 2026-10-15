@@ -78,8 +78,8 @@ func TestAccessibility(t *testing.T) {
 		}
 		last = n
 	}
-	if !strings.Contains(h, `<p class="pm mxkey"><b>Columns:</b> <span>Accounts</span> Account management · `) ||
-		strings.Contains(h, "hover a heading") {
-		t.Error("Audit health has no key to its columns")
+	// The headings say what they are without a key under the table.
+	if !strings.Contains(h, `<th title="Account management">Account management</th>`) || strings.Contains(h, `class="pm mxkey"`) || strings.Contains(h, "hover a heading") {
+		t.Error("Audit health headings are not readable on their own")
 	}
 }

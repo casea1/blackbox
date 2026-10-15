@@ -67,7 +67,7 @@ a{color:var(--accent)}
 {{if $s.Settings}}<h3>Audit settings</h3>
 {{range $s.Settings}}<div class="item {{.Level}}">
 <div class="t">{{if .Advice}}<span class="tag na">Blackbox advice</span>{{else if eq .Level "bad"}}<span class="tag bad">Gap</span>{{else}}<span class="tag warn">Warning</span>{{end}}{{.Title}}{{if .STIG}} <span class="ids">{{.STIG}}</span>{{end}}</div>
-<div class="kv">Now: <b>{{.Have}}</b>{{if and .Want (ne .Want "—")}} · Should be: <b>{{.Want}}</b>{{end}}</div>
+<div class="kv">{{if .Want}}Now: <b>{{.Have}}</b>{{if ne .Want "—"}} · Should be: <b>{{.Want}}</b>{{end}}{{else}}{{.Have}}{{end}}</div>
 {{if .Fix}}<div class="fix">{{.Fix}}</div>{{end}}
 {{range .Cmds}}<div class="cmd"><div class="where">{{.Where}}</div><pre>{{.Text}}</pre><button type="button">Copy</button></div>{{end}}
 {{if .Note}}<div class="note">{{.Note}}</div>{{end}}
