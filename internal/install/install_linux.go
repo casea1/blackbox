@@ -52,6 +52,9 @@ func Install(opt Options) error {
 		}
 	}
 	logf("Installed program:   %s", dst)
+	if err := linkProgram(dst, SudoLink); err != nil {
+		logf("Could not link %s to %s (%v): with sudo, run %s by its full path.", SudoLink, dst, err, dst)
+	}
 
 	data := config.DefaultDataDir()
 	if err := os.MkdirAll(data, 0o700); err != nil {
@@ -130,12 +133,34 @@ func Uninstall(logf func(string, ...any)) error {
 		logf("Reports were kept in %s.", cfg.ReportsDir())
 	}
 	logf("Collected events were kept in %s.", config.DefaultDataDir())
-	logf("To remove the program: rm %s (and %s if no longer needed).", ProgramPath(), filepath.Dir(config.DefaultPath()))
+	logf("To remove the program: rm %s %s (and %s if no longer needed).", ProgramPath(), SudoLink, filepath.Dir(config.DefaultPath()))
 	return nil
 }
 
 // afterReportDirChange lets the sandboxed service write to the new report
 // folder (systemd ReadWritePaths), if Blackbox is installed.
+// SudoLink makes "sudo blackbox" work where sudo's secure_path leaves
+// out /usr/local/bin (AlmaLinux, Rocky, RHEL): a link to the program in
+// /usr/bin, which every secure_path has.
+const SudoLink = "/usr/bin/blackbox"
+
+// linkProgram points link at exe. A link already there is replaced; any
+// other file there (another program of that name) is left alone.
+func linkProgram(exe, link string) error {
+	if fi, err := os.Lstat(link); err == nil {
+		if fi.Mode()&os.ModeSymlink == 0 {
+			return fmt.Errorf("%s is already there and is not a link", link)
+		}
+		if to, _ := os.Readlink(link); to == exe {
+			return nil
+		}
+		if err := os.Remove(link); err != nil {
+			return err
+		}
+	}
+	return os.Symlink(exe, link)
+}
+
 func afterReportDirChange(logf func(string, ...any)) error {
 	if _, err := os.Stat(serviceFile); err != nil {
 		return nil // not installed as a service
