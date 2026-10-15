@@ -362,7 +362,9 @@ func TestWizardScapFolder(t *testing.T) {
 // before offering to keep the rest as they are.
 func TestWizardUpgradeAsksNewQuestions(t *testing.T) {
 	cur := Answers{Role: RoleStandalone, Site: "Lab 3", ReportEvery: "weekly", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute}
-	a, out, err := runWizard(t, lines("1", ""), cur, fakeEnv{}, true)
+	// Network: on its own; on Windows, who sees the status icon (Enter);
+	// then Enter to keep the rest.
+	a, out, err := runWizard(t, lines("1", "", ""), cur, fakeEnv{}, true)
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
