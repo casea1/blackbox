@@ -155,7 +155,7 @@ func TestWizardReinstallKeepsCurrentSettings(t *testing.T) {
 
 func TestWizardDefaultFolderAndClearSite(t *testing.T) {
 	cur := Answers{Site: "Old", ReportEvery: "weekly", ReportDir: abs("/srv/locked"), CollectEvery: time.Hour, Asked: allAsked}
-	a, _, err := runWizard(t, lines("n", "", "", "-", "", "", abs("/var/lib/blackbox/reports", ""), "", "", "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true}}, true)
+	a, _, err := runWizard(t, lines("n", "", "", "-", "", "", abs("/var/lib/blackbox/reports"), "", "", "", "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
