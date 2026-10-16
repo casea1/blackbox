@@ -66,6 +66,9 @@ func InboxShared() bool { return false }
 // TrayWanted is always false here.
 func TrayWanted() bool { return false }
 
+// WindowedPath is the Windows windowed program; none elsewhere.
+func WindowedPath() string { return "" }
+
 // CheckGroups is for the Windows status icon only.
 func CheckGroups([]string) error { return nil }
 

@@ -16,8 +16,7 @@ there is no .NET, Go or other runtime to install.
 
 | Page | Asks |
 |---|---|
-| This computer | How will this computer's audit events be reviewed? This computer only, send to a collector, or this is the collector |
-| Network | Is this computer on its own (standalone), or on an offline network with other computers (a domain or time server, file shares)? On its own, reports show network time sync as not applicable and give the update-media way to update antivirus |
+| This computer | How will this computer's audit events be reviewed? This computer only, send to a collector, or this is the collector. With "This computer only", **Not on a network (standalone)** (ticked by default) |
 | Reports | Site name; daily, weekly or monthly; when each report is ready (default Wednesday 00:00); where reports are saved, with **Browse…** |
 | Collection | How often events are collected (every 15 minutes is recommended), whether to show the status icon, and which groups see it (blank: Administrators; for example `LAB\Auditors`) |
 | Ready to install | A summary of your answers, and **Install** |
@@ -101,7 +100,7 @@ current settings filled in, so change only what you need.
 says which version is installed and lists your current settings; click
 **Upgrade now, keep current settings** to upgrade in one click, or **Next**
 to go through them. When the new version asks something the installed one
-didn't (such as the Network page in 0.29), there is no one-click upgrade:
+didn't (such as "Not on a network" in 0.29), there is no one-click upgrade:
 **Next** goes through the pages with your settings filled in and the new
 ones suggested. `blackbox install --yes` uses the suggestion and lists
 each new setting it set. It doesn't move the report schedule. A collection running at that moment, or an open

@@ -163,8 +163,6 @@ func (s *setupWin) header() (title, sub string) {
 		return "Welcome to Blackbox setup", "Audit log collection and reporting"
 	case pRole:
 		return "This computer", install.QRole
-	case pNetwork:
-		return "Network", install.QNetwork
 	case pReports:
 		return "Reports", "What reports are called, how often they are produced and where they are saved"
 	case pArchive:
@@ -247,17 +245,17 @@ func (s *setupWin) build() {
 			ch = append(ch, choiceText{c.Label, c.Detail})
 		}
 		s.radios = s.radios_(ch, indexOf(install.Roles, s.a.Role), x, y, w)
-	case pNetwork:
-		var ch []choiceText
-		for _, c := range install.NetworkChoices {
-			ch = append(ch, choiceText{c.Label, c.Detail})
-		}
+		// NET1: one box, for "This computer only" (the first choice).
 		cur := s.a.Network
 		if cur == "" {
-			cur = install.DefaultNetwork(s.a.Role)
+			cur = install.DefaultNetwork(install.RoleStandalone)
 		}
-		s.radios = s.radios_(ch, indexOf(install.Networks, cur), x, y, w)
-		s.note("Every Blackbox computer is assumed to be offline. This only decides what the reports expect from the network around it.", x, y+150, w, 34)
+		s.c["standalone"] = s.check(install.QStandalone, cur == install.NetStandalone, x+20, y+156, w-20)
+		on := func() { enable(s.c["standalone"], checked(s.radios[0])) }
+		for _, r := range s.radios {
+			s.on(r, func(uint16) { on() })
+		}
+		on()
 	case pReports:
 		s.label(install.QSite, x, y, w, 20)
 		s.c["site"] = s.edit(s.a.Site, x, y+22, w, false)
@@ -319,17 +317,22 @@ func (s *setupWin) build() {
 		s.c["acceptnew"] = s.check(install.QAcceptNewSenders+" (each computer signs what it sends; new ones appear in blackbox status)", !s.a.HoldNewSenders, x, y+80, w)
 		y += 112
 		s.label(install.QInboxReach, x, y, w, 20)
-		// Suggested only where VirtualBox is installed (S12).
-		vbox := install.VirtualBoxInstalled()
-		s.c["vm"] = s.check("Virtual machines on this PC send to it (VirtualBox shared folder)", len(s.a.InboxWriters) > 0 || (vbox && !s.a.ShareInbox), x, y+24, w)
-		s.note(install.NoteVirtualBox, x+20, y+48, w-20, 46)
+		// Rare: unticked unless already set up, its details shown only
+		// when ticked.
+		s.c["vm"] = s.check("Virtual machines on this PC also send to it (VirtualBox shared folder)", len(s.a.InboxWriters) > 0, x, y+24, w)
+		vmNote := s.note(install.NoteVirtualBox, x+20, y+48, w-20, 46)
 		writers := strings.Join(s.a.InboxWriters, ", ")
-		if writers == "" && vbox {
+		if writers == "" && install.VirtualBoxInstalled() {
 			writers = os.Getenv("USERNAME")
 		}
 		s.c["writers"] = s.edit(writers, x+20, y+96, w-20, false)
-		s.on(s.c["vm"], func(uint16) { enable(s.c["writers"], checked(s.c["vm"])) })
-		enable(s.c["writers"], checked(s.c["vm"]))
+		vmShow := func() {
+			on := checked(s.c["vm"])
+			show(vmNote, on)
+			show(s.c["writers"], on)
+		}
+		s.on(s.c["vm"], func(uint16) { vmShow() })
+		vmShow()
 		s.c["share"] = s.check("Share it on the network as "+install.ShareName+", so other computers can send to it", s.a.ShareInbox, x, y+128, w)
 		// The accounts other computers deliver as (S11).
 		s.note(install.NoteShareWriters, x+20, y+152, w-20, 34)
@@ -447,9 +450,8 @@ func (s *setupWin) save() {
 		if len(s.radios) > 0 {
 			s.a.Role = install.Roles[selected(s.radios)]
 		}
-	case pNetwork:
-		if len(s.radios) > 0 {
-			s.a.Network = install.Networks[selected(s.radios)]
+		if c, ok := s.c["standalone"]; ok && s.a.Role == install.RoleStandalone {
+			s.a.Network = map[bool]string{true: install.NetStandalone, false: install.NetLAN}[checked(c)]
 		}
 	case pReports:
 		s.a.Site = get("site")

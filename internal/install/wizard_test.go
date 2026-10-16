@@ -87,9 +87,9 @@ func TestWizardDefaults(t *testing.T) {
 	if !reflect.DeepEqual(a, want) {
 		t.Errorf("got %+v, want %+v", a, want)
 	}
-	for _, s := range []string{"1. How will this computer's audit events be reviewed?", "2. Is this computer on its own", "3. Site or system name", "4. How often should a report",
+	for _, s := range []string{"1. How will this computer's audit events be reviewed?", "2. Is this computer on a network with other computers", "3. Site or system name", "4. How often should a report",
 		"5. Which day and time should each weekly report be ready", "6. Where should reports be saved", "7. Where should the original logs wait for the next report",
-		"8. How often should events be collected", "9. Where are this computer's SCAP scan results", "Network:          on its own (standalone)", "Original logs:    " + DefaultArchiveDir(),
+		"8. How often should events be collected", "9. Where are this computer's SCAP scan results", "Network:          not on a network (standalone)", "Original logs:    " + DefaultArchiveDir(),
 		"SCAP results:     " + DefaultScapDir(),
 		"weekly, ready Wednesday 00:00 (each covers the week to Tuesday night)", "Summary", "Install these settings?"} {
 		if !strings.Contains(out, s) {
@@ -235,7 +235,6 @@ func TestWizardSenderKeepsUnreachableCollector(t *testing.T) {
 func TestWizardWindowsCollector(t *testing.T) {
 	input := lines(
 		"3",      // collector
-		"",       // an offline network (NET1)
 		"Lab 3",  // site
 		"1",      // daily
 		"",       // at midnight
@@ -259,7 +258,7 @@ func TestWizardWindowsCollector(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	want := Answers{Role: RoleCollector, Site: "Lab 3", ReportEvery: "daily", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute,
-		Inbox: abs("/srv/blackbox-inbox"), ShareInbox: true, InboxWriters: []string{"vmuser"}, ShareWriters: []string{"bbsend"}, Tray: true, Network: NetLAN, Asked: allAsked}
+		Inbox: abs("/srv/blackbox-inbox"), ShareInbox: true, InboxWriters: []string{"vmuser"}, ShareWriters: []string{"bbsend"}, Tray: true, Asked: allAsked}
 	if !reflect.DeepEqual(a, want) {
 		t.Errorf("got %+v, want %+v", a, want)
 	}
@@ -272,7 +271,7 @@ func TestWizardWindowsCollector(t *testing.T) {
 // S12: on a server without VirtualBox, the VirtualBox shared folder is not
 // suggested (Enter means no), and no account is filled in for it.
 func TestWizardNoVirtualBox(t *testing.T) {
-	input := lines("3", "", "", "", "", "", "", "", "y",
+	input := lines("3", "", "", "", "", "", "", "y",
 		"",       // accept new computers automatically
 		"",       // VMs on this PC send to it? Enter: no
 		"y",      // share it
@@ -364,11 +363,11 @@ func TestWizardUpgradeAsksNewQuestions(t *testing.T) {
 	cur := Answers{Role: RoleStandalone, Site: "Lab 3", ReportEvery: "weekly", ReportAt: config.DefaultReportAt, CollectEvery: 15 * time.Minute}
 	// Network: on its own; on Windows, who sees the status icon (Enter);
 	// then Enter to keep the rest.
-	a, out, err := runWizard(t, lines("1", "", ""), cur, fakeEnv{}, true)
+	a, out, err := runWizard(t, lines("n", "", ""), cur, fakeEnv{}, true)
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	if !strings.Contains(out, "This version adds new settings: whether this computer is on its own or on an offline network") {
+	if !strings.Contains(out, "This version adds new settings: whether this computer is on a network") {
 		t.Errorf("output:\n%s", out)
 	}
 	if a.Network != NetStandalone || !reflect.DeepEqual(a.Asked, allAsked) || a.Site != "Lab 3" {

@@ -121,8 +121,16 @@ func trayTaskName(i int) string {
 	return fmt.Sprintf("%s %d", TrayTaskName, i+1)
 }
 
-// maxTrayGroups bounds the tasks removed when the groups change.
-const maxTrayGroups = 20
+// trayTasks are the status icon's tasks registered now, read with one
+// schtasks call (0.29.0 queried each possible name in turn, a burst of
+// hidden processes Defender's behaviour rules took for an attack).
+func trayTasks() []string {
+	out, err := hidden.Command("schtasks.exe", "/Query", "/FO", "CSV", "/NH").Output()
+	if err != nil {
+		return nil
+	}
+	return trayTaskNames(string(out))
+}
 
 // setupTray registers or removes the tasks that start the status icon,
 // one per group whose members see it (none: Administrators).
@@ -152,9 +160,13 @@ func setupTray(on bool, groups []string, logf func(string, ...any)) error {
 		}
 	}
 	removed := false
-	for i := len(list); i < maxTrayGroups; i++ {
-		if hidden.Command("schtasks.exe", "/Query", "/TN", trayTaskName(i)).Run() == nil {
-			hidden.Command("schtasks.exe", "/Delete", "/TN", trayTaskName(i), "/F").Run()
+	keep := map[string]bool{}
+	for i := range list {
+		keep[trayTaskName(i)] = true
+	}
+	for _, name := range trayTasks() {
+		if !keep[name] {
+			hidden.Command("schtasks.exe", "/Delete", "/TN", name, "/F").Run()
 			removed = true
 		}
 	}

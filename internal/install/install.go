@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -550,6 +551,31 @@ const TrayTaskName = "Blackbox Status"
 // TrayQuitEvent is the named event the status icons watch: setting it
 // closes every running icon (on uninstall, or when the icon is turned off).
 const TrayQuitEvent = `Global\BlackboxTrayQuit`
+
+// trayTaskNames picks the status icon's tasks ("Blackbox Status",
+// "Blackbox Status 2", ...) out of `schtasks /Query /FO CSV /NH` output,
+// whose first field is the task's path ("\Blackbox Status").
+func trayTaskNames(csvText string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(csvText, "\n") {
+		f, _, _ := strings.Cut(strings.TrimSpace(line), ",")
+		name := strings.TrimPrefix(strings.Trim(f, `"`), `\`)
+		rest, ok := strings.CutPrefix(name, TrayTaskName)
+		if !ok || seen[name] {
+			continue
+		}
+		if rest != "" {
+			n, err := strconv.Atoi(strings.TrimPrefix(rest, " "))
+			if err != nil || n < 2 || !strings.HasPrefix(rest, " ") {
+				continue
+			}
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	return out
+}
 
 // AdministratorsSID is the built-in Administrators group: who sees the
 // status icon when no group is chosen.

@@ -28,7 +28,8 @@ const (
 	QInterval   = "How often should events be collected from the logs?"
 	QTray       = "Show Blackbox's status in the notification area (system tray)?"
 	QTrayGroups = "Who sees it: members of these Windows groups (several: separate with commas; blank: Administrators)"
-	QNetwork    = "Is this computer on its own, or on an offline network with other computers?"
+	QStandalone = "Not on a network (standalone)"
+	QNetwork    = "Is this computer on a network with other computers (a domain or a time server)?"
 	QScap       = "Where are this computer's SCAP scan results (SCC or OpenSCAP) saved?"
 	QQuickVerb  = "upgrade"
 
@@ -53,8 +54,8 @@ var (
 	Roles       = []string{RoleStandalone, RoleSender, RoleCollector}
 	RoleChoices = []Choice{
 		{"This computer only", "it collects its own events and makes its own reports"},
-		{"Send to a collector", "its events go to another computer on the network (or the PC hosting this virtual machine), which makes the reports"},
-		{"This is the collector", "it makes the reports, for itself and every computer that sends to it"},
+		{"Send to a collector", "its events go to the computer that makes the reports"},
+		{"This is the collector", "it makes reports for itself and every computer that sends to it"},
 	}
 )
 
@@ -63,14 +64,6 @@ var (
 const (
 	NetStandalone = "standalone"
 	NetLAN        = "lan"
-)
-
-var (
-	Networks       = []string{NetStandalone, NetLAN}
-	NetworkChoices = []Choice{
-		{"On its own (standalone)", "no other computers or servers: reports mark network time sync as not applicable, and give the update-media way to update antivirus"},
-		{"On an offline network with other computers", "a domain or time server and file shares: reports expect the network's time source and update share"},
-	}
 )
 
 // DefaultNetwork is the answer suggested to a question not asked before:
@@ -85,9 +78,9 @@ func DefaultNetwork(role string) string {
 // NetworkText is how a network answer reads in the summary.
 func NetworkText(n string) string {
 	if n == NetStandalone {
-		return "on its own (standalone)"
+		return "not on a network (standalone)"
 	}
-	return "offline network with other computers"
+	return "on a network with other computers"
 }
 
 // Report frequencies in the order they are offered.
@@ -140,7 +133,9 @@ func ForRole(a Answers) Answers {
 	if a.Role == RoleSender {
 		a.Tray = false // the status icon belongs where the reports are
 		a.TrayGroups = nil
-		a.Network = ""
+	}
+	if a.Role != RoleStandalone {
+		a.Network = "" // only "This computer only" is asked; the rest are on a network
 	}
 	return a
 }
@@ -267,7 +262,7 @@ func Summary(a Answers, defaultReports string, windows bool) []SummaryLine {
 			l = append(l, SummaryLine{"Share account", a.ShareUser})
 		}
 	}
-	if a.Role != RoleSender {
+	if a.Role == RoleStandalone {
 		l = append(l, SummaryLine{"Network", NetworkText(a.Network)})
 	}
 	l = append(l, SummaryLine{"Collect events", EveryText(a.CollectEvery)})
