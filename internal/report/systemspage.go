@@ -107,6 +107,9 @@ type SystemView struct {
 	Kind, Group string // server | workstation | vm | retired; the group's title
 	OS, OSKey   string // "Server 2025"; the OS filter's value
 	Chip        string // the problem in one chip: "Problem: Security log cleared"
+	// Issue is the Systems list's Status column: what needs a look, or
+	// "OK" (the checks themselves are on Audit health).
+	Issue       string
 	ChipLevel   string
 	Cells       []SysCheck // the six checks, in the list's column order
 	Checks      []SysCheck // the same, problems first, for the page
@@ -308,9 +311,14 @@ func (r *Report) systemsPage() *SystemsPage {
 		default:
 			v.Chip = v.Status + ": " + strings.Join(shorts, " · ")
 		}
+		v.Issue = strings.TrimPrefix(v.Chip, v.Status+": ")
+		if v.Level == "ok" {
+			v.Issue = "OK"
+		}
 		if retired {
 			v.Level, v.Status, v.Tag, v.ChipLevel = "retired", "Retired", "RETIRED", "retired"
 			v.Chip = "Retired " + s.Removed.In(r.Location).Format("2 Jan")
+			v.Issue = v.Chip
 			for i := range v.Cells {
 				if v.Cells[i].Label != "Reporting" {
 					continue

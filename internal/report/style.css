@@ -1112,3 +1112,6 @@ table.lt td.mute{color:#5A6785}
 
 /* UI-R1: owner answers (event kinds, problems) */
 .ovgt td small.ovgr{color:#B01C1C;font-weight:600}
+
+/* The Systems list's Status column (one per system; the checks are on Audit health). */
+table.syst td.sst{font-size:12.5px;color:#3A4766;max-width:360px}table.syst td.sst.bad{color:#B42318;font-weight:600}table.syst td.sst.warn{color:#8A5A00}table.syst td.sst.ok{color:#1E7B45}table.syst td.sst.retired{color:#5A6785}

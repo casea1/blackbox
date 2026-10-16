@@ -106,8 +106,13 @@ func TestOverviewUIR1(t *testing.T) {
 	if len(o.Glance) != 2 || o.Glance[0].Title != "Servers" || o.Glance[1].Title != "Workstations" || n == 0 || n >= 30 {
 		t.Errorf("glance: %d groups, %d rows", len(o.Glance), n)
 	}
-	if !strings.HasPrefix(o.GlanceMore, strconv.Itoa(30-n)+" more systems with no problems (") || !strings.Contains(h, "All 30 systems on the Systems page →") {
+	if !strings.HasPrefix(o.GlanceMore, strconv.Itoa(30-n)+" more systems with no problems (") {
 		t.Errorf("glance more: %q", o.GlanceMore)
+	}
+	// PAGES1: the per-system check grid is Audit health's alone; the
+	// Overview no longer repeats it.
+	if strings.Contains(h, `class="panel ovglance"`) {
+		t.Error("the Overview still has Systems at a glance")
 	}
 
 	// Removed from the Overview.

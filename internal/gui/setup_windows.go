@@ -244,18 +244,36 @@ func (s *setupWin) build() {
 		for _, c := range install.RoleChoices {
 			ch = append(ch, choiceText{c.Label, c.Detail})
 		}
-		s.radios = s.radios_(ch, indexOf(install.Roles, s.a.Role), x, y, w)
-		// NET1: one box, for "This computer only" (the first choice).
-		cur := s.a.Network
-		if cur == "" {
-			cur = install.DefaultNetwork(install.RoleStandalone)
+		// NET1: "Not on a network" belongs to "This computer only": shown
+		// under it, and only while it is chosen (the page is laid out again
+		// when the choice changes).
+		sel := indexOf(install.Roles, s.a.Role)
+		if sel < 0 {
+			sel = 0
 		}
-		s.c["standalone"] = s.check(install.QStandalone, cur == install.NetStandalone, x+20, y+156, w-20)
-		on := func() { enable(s.c["standalone"], checked(s.radios[0])) }
-		for _, r := range s.radios {
-			s.on(r, func(uint16) { on() })
+		gap := 0
+		if sel == 0 {
+			gap = 28
 		}
-		on()
+		s.radios = s.window.radiosGap(ch, sel, x, y, w, 0, gap)
+		if sel == 0 {
+			cur := s.a.Network
+			if cur == "" {
+				cur = install.DefaultNetwork(install.RoleStandalone)
+			}
+			s.c["standalone"] = s.check(install.QStandalone, cur == install.NetStandalone, x+20, y+50, w-20)
+		}
+		for i, r := range s.radios {
+			if i == sel {
+				continue
+			}
+			s.on(r, func(code uint16) {
+				if code == bnClicked {
+					s.save()
+					s.build()
+				}
+			})
+		}
 	case pReports:
 		s.label(install.QSite, x, y, w, 20)
 		s.c["site"] = s.edit(s.a.Site, x, y+22, w, false)

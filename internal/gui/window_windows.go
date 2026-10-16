@@ -241,6 +241,12 @@ func (win *window) check(text string, on bool, x, y, w int) uintptr {
 // radios adds a group of option buttons, each with grey detail text under
 // it, and returns them.
 func (win *window) radios(choices []choiceText, sel, x, y, w int) []uintptr {
+	return win.radiosGap(choices, sel, x, y, w, -1, 0)
+}
+
+// radiosGap is radios with gap pixels left free after choice number
+// after, for a control that belongs to that choice.
+func (win *window) radiosGap(choices []choiceText, sel, x, y, w, after, gap int) []uintptr {
 	var out []uintptr
 	for i, c := range choices {
 		style := uint32(bsAutoRadio)
@@ -256,6 +262,9 @@ func (win *window) radios(choices []choiceText, sel, x, y, w int) []uintptr {
 			y += 22
 		}
 		y += 4
+		if i == after {
+			y += gap
+		}
 	}
 	return out
 }
