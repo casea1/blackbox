@@ -109,7 +109,7 @@ type SystemView struct {
 	Chip        string // the problem in one chip: "Problem: Security log cleared"
 	// Issue is the Systems list's Status column: what needs a look, or
 	// "OK" (the checks themselves are on Audit health).
-	Issue string
+	Issue       string
 	ChipLevel   string
 	Cells       []SysCheck // the six checks, in the list's column order
 	Checks      []SysCheck // the same, problems first, for the page
