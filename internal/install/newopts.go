@@ -21,6 +21,8 @@ var NewOptions = []NewOption{
 		func(a Answers) bool { return a.Role == RoleStandalone }},
 	{"tray_groups", "who sees the status icon",
 		func(a Answers) bool { return runtime.GOOS == "windows" && a.Role != RoleSender }},
+	{"report_group", "who can open the reports",
+		func(a Answers) bool { return runtime.GOOS == "linux" && a.Role != RoleSender }},
 }
 
 // Unasked are the new questions this install has not answered.

@@ -260,7 +260,7 @@ func Current() (a install.Answers, defaultReports string, reinstall bool, err er
 	a = install.Answers{Site: cur.SiteName, ReportEvery: cur.ReportEvery, ReportAt: cur.ReportAt, ReportDir: cur.ReportDir, ArchiveDir: cur.ArchiveDir, ScapResults: cur.ScapResults,
 		CollectEvery: cur.CollectEvery, SendTo: cur.SendTo, ShareUser: cur.ShareUser, Inbox: cur.Inbox,
 		ShareInbox: install.InboxShared(), Tray: install.TrayWanted(), HoldNewSenders: cur.HoldNewSenders,
-		Network: cur.Network, TrayGroups: cur.TrayGroups, Asked: cur.SetupAsked}
+		Network: cur.Network, TrayGroups: cur.TrayGroups, ReportGroup: cur.ReportGroup, Asked: cur.SetupAsked}
 	return a, filepath.Join(config.DefaultDataDir(), "reports"), statErr == nil, nil
 }
 

@@ -60,6 +60,7 @@ Usage:
   blackbox reports accept NAME "why"
                                  Accept that a scheduled report is gone or changed on purpose
   blackbox report [options]      Collect and produce a report now
+  blackbox open [--index]        Linux: open the latest report (or the index) in your browser, without sudo
   blackbox fixes [--out FILE]    Write the fix list: what to fix on each system, with commands
   blackbox report --xml FILE     Produce a report from exported Windows event logs (any OS)
   blackbox report --audit FILE --syslog FILE
@@ -138,6 +139,8 @@ func main() {
 		err = cmdGaps(args)
 	case "reports":
 		err = cmdReports(args)
+	case "open":
+		err = cmdOpen(args)
 	case "verify":
 		err = cmdVerify(args)
 	case "uninstall":

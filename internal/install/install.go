@@ -4,6 +4,7 @@ package install
 import (
 	"fmt"
 	"os"
+	"os/user"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -60,6 +61,8 @@ func writeConfig(path string, opt Options, crlf bool) error {
 				opt.Logf("New setting:         %s: %s (change with: blackbox config set network standalone|lan)", o.What, NetworkText(opt.Network))
 			case "tray_groups":
 				opt.Logf("New setting:         %s: Administrators (change with: blackbox config set tray_groups \"GROUP, ...\", then run setup)", o.What)
+			case "report_group":
+				opt.Logf("New setting:         %s: root only (change with: blackbox config set report_group GROUP, then run setup)", o.What)
 			}
 		}
 	}
@@ -77,6 +80,7 @@ func writeConfig(path string, opt Options, crlf bool) error {
 		{"scap_results", opt.ScapResults},
 		{"network", opt.Network},
 		{"tray_groups", strings.Join(opt.TrayGroups, ", ")},
+		{"report_group", opt.ReportGroup},
 		{"setup_asked", AllAsked()},
 	})
 }
@@ -684,4 +688,15 @@ func recordRemoval(logf func(string, ...any)) {
 func versionLine(out []byte) string {
 	l, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
 	return strings.TrimSpace(l)
+}
+
+// CheckGroup says whether a typed group exists here ("" is fine: none).
+func CheckGroup(name string) error {
+	if name == "" {
+		return nil
+	}
+	if _, err := user.LookupGroup(name); err != nil {
+		return fmt.Errorf("no group %q on this computer (type -  for root only)", name)
+	}
+	return nil
 }

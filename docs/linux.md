@@ -60,7 +60,39 @@ Setup then:
   - a read-only view of the system
   - it can write only to `/var/lib/blackbox`, the report folder and, on a
     LAN, the folders it sends to and receives in
+- adds **Blackbox reports** to the applications menu (see below)
 - checks the audit configuration and produces the first report
+
+## Opening the reports
+
+The reports folder is root's. To let auditors open the reports without
+sudo, setup asks **who can open the reports**: a Linux group, such as
+`sudo` (Ubuntu) or `wheel` (RHEL, Alma). Its members can read the
+reports but not change them; everyone else can't see them. After every
+run Blackbox gives new report files to that group. Change it later with
+`sudo blackbox config set report_group GROUP`, then `sudo blackbox setup`.
+
+The group also has to be able to pass through the folders above the
+reports folder. Setup says so if one is closed to it, e.g. the default
+`/var/lib/blackbox` (root only): choose a report folder outside it, such as
+`/opt/_AuditFiles/reports`.
+
+Then any member can open the reports:
+
+- **Blackbox reports** in the applications menu opens the latest report.
+  Right-click it (or pin it to the dock and right-click) for **Open the
+  reports index** and **Make a report now** (which asks for an
+  administrator's password).
+- Or in a terminal: `blackbox open` (the latest report) or
+  `blackbox open --index`, without sudo.
+
+Ubuntu's Firefox is a snap, which can only open files in your home folder
+whatever their permissions. When the default browser is a snap,
+`blackbox open` copies the reports to `~/Blackbox reports` (only yours)
+and opens the copy. Each report is copied once and the index every time.
+The original-log zips are not copied; open them from the reports folder.
+Firefox installed from Mozilla's own package (not the snap) opens the
+reports folder directly.
 
 ## Changing settings later
 
@@ -300,7 +332,8 @@ STIG", and counts it on its own as "Blackbox's advice".
 |---|---|
 | Program | `/usr/local/bin/blackbox` |
 | Settings | `/etc/blackbox/blackbox.conf` ([reference](configuration.md)) |
-| Reports | `/var/lib/blackbox/reports/` by default, or the folder you chose (open `index.html`) |
+| Reports | `/var/lib/blackbox/reports/` by default, or the folder you chose (open `index.html`, or run `blackbox open`) |
+| Applications menu entry | `/usr/share/applications/blackbox-reports.desktop` |
 | Schedule | `systemctl list-timers blackbox.timer` |
 | Log of each run | `journalctl -u blackbox.service` |
 | Lock held by a run | `/var/lib/blackbox/blackbox.lock` (released when the run ends, even if it is killed; see [One run at a time](configuration.md#one-run-at-a-time)) |

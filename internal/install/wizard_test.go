@@ -74,11 +74,11 @@ func readPasswordPlain(r *bufio.Reader) (string, error) {
 func lines(l ...string) string { return strings.Join(l, "\n") + "\n" }
 
 // allAsked is Answers.Asked once setup has been through its questions.
-var allAsked = []string{"network", "tray_groups"}
+var allAsked = []string{"network", "tray_groups", "report_group"}
 
 func TestWizardDefaults(t *testing.T) {
 	// Enter on every question, then Enter to confirm.
-	a, out, err := runWizard(t, lines("", "", "", "", "", "", "", "", "", ""), Answers{}, fakeEnv{}, false)
+	a, out, err := runWizard(t, lines("", "", "", "", "", "", "", "", "", "", ""), Answers{}, fakeEnv{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,6 +118,7 @@ func TestWizardAnswersAndRetries(t *testing.T) {
 		abs("/srv/logs"),        // original logs on another volume…
 		"y",                     // …create it
 		"1",                     // every 15 minutes
+		"",                      // report readers: root only
 		"",                      // SCAP results: the default
 		"",                      // confirm
 	)...)
@@ -140,7 +141,7 @@ func TestWizardAnswersAndRetries(t *testing.T) {
 func TestWizardReinstallKeepsCurrentSettings(t *testing.T) {
 	cur := Answers{Role: RoleStandalone, Site: "Lab 3", ReportEvery: "monthly", ReportAt: config.ReportAt{Day: time.Thursday, Minute: 360}, ReportDir: abs("/srv/locked"), ArchiveDir: abs("/srv/logs"), CollectEvery: 2 * time.Hour,
 		Network: NetLAN, Asked: allAsked}
-	a, out, err := runWizard(t, lines("n", "", "", "", "", "", "", "", "", "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true, abs("/srv/logs"): true}}, true)
+	a, out, err := runWizard(t, lines("n", "", "", "", "", "", "", "", "", "", "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true, abs("/srv/logs"): true}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +155,7 @@ func TestWizardReinstallKeepsCurrentSettings(t *testing.T) {
 
 func TestWizardDefaultFolderAndClearSite(t *testing.T) {
 	cur := Answers{Site: "Old", ReportEvery: "weekly", ReportDir: abs("/srv/locked"), CollectEvery: time.Hour, Asked: allAsked}
-	a, _, err := runWizard(t, lines("n", "", "", "-", "", "", abs("/var/lib/blackbox/reports"), "", "", "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true}}, true)
+	a, _, err := runWizard(t, lines("n", "", "", "-", "", "", abs("/var/lib/blackbox/reports", ""), "", "", "", ""), cur, fakeEnv{existing: map[string]bool{abs("/srv/locked"): true}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +293,7 @@ func TestWizardNoVirtualBox(t *testing.T) {
 // Changing a collector back to standalone clears the LAN settings.
 func TestWizardBackToStandalone(t *testing.T) {
 	cur := Answers{Role: RoleCollector, Inbox: abs("/srv/blackbox-inbox"), ShareInbox: true, ReportEvery: "weekly", CollectEvery: time.Hour, Asked: allAsked}
-	a, _, err := runWizard(t, lines("n", "1", "", "", "", "", "", "", "", "", ""), cur, fakeEnv{}, true)
+	a, _, err := runWizard(t, lines("n", "1", "", "", "", "", "", "", "", "", "", ""), cur, fakeEnv{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
