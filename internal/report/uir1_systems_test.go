@@ -86,7 +86,7 @@ func TestSystemsUIR1(t *testing.T) {
 	}
 
 	h, _ := renderHTML(t, r)
-	for _, want := range []string{`data-sysfind`, `data-syslv="bad"`, `Problems <b>`, `data-sysos`, `data-syskind`, `<th scope="col" class="c">Orig. logs</th>`,
+	for _, want := range []string{`data-sysfind`, `data-syslv="bad"`, `Problems <b>`, `data-sysos`, `data-syskind`, `<th scope="col">Status</th>`, `<td class="sst bad">Security log cleared</td>`,
 		`data-sysrow="SRV-DC02"`, `<div data-sys="SRV-DC02" hidden>`, `<a class="link" href="#systems">Systems</a> › Servers › SRV-DC02`,
 		`<span class="schip bad">Problem: Security log cleared</span>`, `class="strip" role="img"`, "Audit health →", "Who was active", "Events by kind", "Search this system"} {
 		if !strings.Contains(h, want) {
