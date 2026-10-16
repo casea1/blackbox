@@ -89,7 +89,7 @@ func TestWizardDefaults(t *testing.T) {
 	}
 	for _, s := range []string{"1. How will this computer's audit events be reviewed?", "2. Is this computer on a network with other computers", "3. Site or system name", "4. How often should a report",
 		"5. Which day and time should each weekly report be ready", "6. Where should reports be saved", "7. Where should the original logs wait for the next report",
-		"8. How often should events be collected", "9. Where are this computer's SCAP scan results", "Network:          not on a network (standalone)", "Original logs:    " + DefaultArchiveDir(),
+		"8. How often should events be collected", "9. Who can open the reports without sudo", "10. Where are this computer's SCAP scan results", "Report readers:   root only", "Network:          not on a network (standalone)", "Original logs:    " + DefaultArchiveDir(),
 		"SCAP results:     " + DefaultScapDir(),
 		"weekly, ready Wednesday 00:00 (each covers the week to Tuesday night)", "Summary", "Install these settings?"} {
 		if !strings.Contains(out, s) {
