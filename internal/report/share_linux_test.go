@@ -64,3 +64,23 @@ func TestUnreachableNamesClosedFolder(t *testing.T) {
 		t.Errorf("group may pass through %s, got %q", closed, got)
 	}
 }
+
+// READ1: a reports folder others can write to isn't shared: a file in it
+// could be swapped for a link while it is walked.
+func TestShareRefusesFolderOthersCanWrite(t *testing.T) {
+	g, err := user.LookupGroupId(strconv.Itoa(os.Getgid()))
+	if err != nil {
+		t.Skip("no name for this group")
+	}
+	dir := t.TempDir()
+	open := filepath.Join(dir, "drop")
+	os.MkdirAll(open, 0o777)
+	os.Chmod(open, 0o777)
+	if err := Share(dir, g.Name); err == nil {
+		t.Error("shared a folder others can write to")
+	}
+	os.Chmod(open, 0o755)
+	if err := Share(dir, g.Name); err != nil {
+		t.Errorf("after locking it: %v", err)
+	}
+}
