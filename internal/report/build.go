@@ -192,6 +192,9 @@ type Finding struct {
 	// what it found, for the Involved panel.
 	Check string
 	Facts []KV
+	// senderRun: failed logons that look like a sender's old password
+	// (DET5), to name the computers silent in this period.
+	senderRun bool
 }
 
 // AttentionGroup summarises medium-severity events by kind.
@@ -363,6 +366,7 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	}
 	events = selfChanges(events, own)
 	events = installerWrites(events)
+	events = dropWriteTests(events)
 	events = exportWrites(events, own)
 	events = r.appPackageRules(events)
 	events = r.defenderState(events)
@@ -407,6 +411,7 @@ func Build(events []*event.Event, runs []*store.Run, opt Options) *Report {
 	r.buildHealth(runs, events)
 	r.clockFindings()
 	r.buildSystems(runs, events)
+	r.noteSilentSenders()
 	r.scapTable = r.scapRows()
 	r.checkArchives()
 	r.highDetections(rows)

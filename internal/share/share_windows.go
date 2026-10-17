@@ -21,6 +21,7 @@ var (
 	procLocalFree = kernel32.NewProc("LocalFree")
 	mpr           = syscall.NewLazyDLL("mpr.dll")
 	procAddConn   = mpr.NewProc("WNetAddConnection2W")
+	procCancel    = mpr.NewProc("WNetCancelConnection2W")
 )
 
 type dataBlob struct {
@@ -93,10 +94,8 @@ type netResource struct {
 }
 
 const (
-	resourcetypeDisk               = 1
-	connectTemporary               = 4
-	errorSessionCredentialConflict = 1219
-	errorAlreadyAssigned           = 85
+	resourcetypeDisk = 1
+	connectTemporary = 4
 )
 
 // Connect signs in to the share with the given account. With no account,
@@ -106,19 +105,22 @@ func Connect(path, user, password string) error {
 	if user == "" {
 		return nil
 	}
-	root, _ := Root(path)
-	remote, _ := syscall.UTF16PtrFromString(root)
-	u, _ := syscall.UTF16PtrFromString(user)
-	p, _ := syscall.UTF16PtrFromString(password)
-	nr := netResource{typ: resourcetypeDisk, remoteName: remote}
-	r, _, _ := procAddConn.Call(uintptr(unsafe.Pointer(&nr)), uintptr(unsafe.Pointer(p)), uintptr(unsafe.Pointer(u)), connectTemporary)
-	switch r {
-	case 0, errorAlreadyAssigned:
-		return nil
-	case errorSessionCredentialConflict:
-		return nil // already connected (with these or other credentials); try the folder anyway
-	}
-	return fmt.Errorf("connect to %s as %s: %v", root, user, syscall.Errno(r))
+	return connectWith(mprCalls{
+		add: func(root, user, password string) uintptr {
+			remote, _ := syscall.UTF16PtrFromString(root)
+			u, _ := syscall.UTF16PtrFromString(user)
+			p, _ := syscall.UTF16PtrFromString(password)
+			nr := netResource{typ: resourcetypeDisk, remoteName: remote}
+			r, _, _ := procAddConn.Call(uintptr(unsafe.Pointer(&nr)), uintptr(unsafe.Pointer(p)), uintptr(unsafe.Pointer(u)), connectTemporary)
+			return r
+		},
+		cancel: func(name string) uintptr {
+			n, _ := syscall.UTF16PtrFromString(name)
+			r, _, _ := procCancel.Call(uintptr(unsafe.Pointer(n)), 0, 0) // not forced: open files keep it
+			return r
+		},
+		text: func(c uintptr) string { return syscall.Errno(c).Error() },
+	}, path, user, password)
 }
 
 // Destination returns the folder batches are delivered to, connecting to

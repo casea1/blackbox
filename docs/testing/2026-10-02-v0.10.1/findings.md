@@ -572,6 +572,45 @@ All are covered by unit tests and CI only.
 
 All are covered by unit tests and CI only.
 
+## 0.30.0 live test (17 Oct 2026)
+
+All three machines were upgraded from 0.25.0 to 0.30.0, senders first. Checksums were OK; the release files are still unsigned (A10).
+- Signing keys were kept on both senders.
+- Ubuntu got the `/usr/bin/blackbox` link.
+- Defender recorded no detections on either Windows machine (the 0.29.1 fix).
+- The collector has its **Blackbox Status** task.
+
+**Confirmed live (prompt 14, #125):**
+- **DET1b, Linux:**
+  - a refused `sudo rm` of a stray file on the CIFS inbox is Medium, "claude ran rm on Blackbox's files";
+  - a real `sudo rm /etc/blackbox/det-030-test.conf` (no watch rule, so the command line only, and the file gone at the next run) is High, "deleted".
+- **DET1b, Windows:**
+  - a `del` refused because the file was held open ("being used by another process") is Medium, "claude ran del on Blackbox's files";
+  - a real `del` is High.
+- **LOG2:** after `blackbox send --resend 1303`, the collector logs "inbox: …1303… was already imported (sent again), written by win11-test\bbsend2".
+- **PAGES1:**
+  - the Overview has no systems table;
+  - Systems has one Status column, grouped into servers and workstations;
+  - the report has no console errors at 1440 px.
+- **NET1:** an upgraded collector with `network` blank still checks network time sync as before.
+
+| # | Finding | Status | Fixed in |
+|---|---|---|---|
+| SEND2 | **High: a Windows sender stopped delivering for 3 days, and setup's test hid it.** `share.Connect` treats `ERROR_SESSION_CREDENTIAL_CONFLICT` (1219) as success ("try the folder anyway").<br>**What happened:** Server 2025 had been a sender as `bbsend3` (a test account), then was set to `share_user = bbsend4` on 8 Oct, and `bbsend3` was deleted. SYSTEM's SMB session to the collector stayed signed in as `bbsend3`, and each `WNetAddConnection2(bbsend4)` got 1219, so deliveries kept working. On 13 Oct the collector rebooted (Windows Update). From 14 Oct 01:20 UTC, every run failed with "collector inbox not available … (The user name or password is incorrect.)", though bbsend4 and its stored password were correct. The collector logged ~20 failed logons for `bbsend3` (0xC0000064, no such user) per run.<br>**Why setup hid it:** the 0.30.0 upgrade (`install --yes`, run as an administrator over SSH) printed "Done. Sent 296 batches", because it ran in the admin's logon session. The next scheduled run, as SYSTEM, failed again.<br>**Workaround:** `net use \\192.168.1.76\BlackboxInbox /delete` as SYSTEM fixed it at once.<br>**Fix:**<ul><li>on 1219, cancel the existing connection to that server (`WNetCancelConnection2` on the share and `IPC$`) and connect again as `share_user`;</li><li>if that still fails, say "connected to SERVER as another account" and not "user name or password is incorrect";</li><li>setup's delivery check should run the send the way the scheduled task does (as SYSTEM), or say it hasn't checked that.</li></ul>The same happens on any sender after `config set share_user` or a password change. | Fixed | 0.32.0 |
+| DET5 | **Medium: one stuck sender gave 92 separate High detections a day.** The 16 Oct daily report has 92 "Possible password guessing" Highs, each "~20 failed logons for bbsend3 on WIN11-TEST between HH:MM and HH:MM from 192.168.1.21", one per 15-minute window. Today's manual report has 73 of 81 Highs from the same cause. An ISSO sees 92 alerts for one cause.<ul><li>Roll a continuing run (same account, same source, gaps under an hour) into one detection: first and last time, total count, "still going at the end of the period".</li><li>Say when the account doesn't exist (status 0xC0000064, "an account that isn't on this computer").</li><li>When the account or source is a known sender's (a `Blackbox Senders` member now or before, or a sender's address), say "probably a sender with old credentials: see Systems" and link to the silent system.</li></ul>The silent-system note itself worked: WIN-498EC8UMUEL was "silent … It may have been switched off, or it cannot reach the collector". | Fixed | 0.32.0 |
+| DET6 | Medium: the 0.30.0 upgrade itself raised a High, "Blackbox's files changed on WIN11-TEST … claude deleted the report .blackbox-write-test-829670534 (using Blackbox-Setup-0.30.0.exe)". That is setup's own write test in the reports folder. Skip Blackbox's own write-test files (or anything Blackbox-Setup does in its data folder while an upgrade is recorded, event 100), like the earlier AR2b fix. | Fixed | 0.32.0 |
+| CNT1 | Low: "settings to fix" totals disagree. For the same report:<ul><li>Overview card: "1 / 3 match the STIG · 47 to fix";</li><li>Needs attention: "51 settings to fix" (summary.json: 4 + 23 + 24);</li><li>`fix-list.html`: Settings 6 / 25 / 25 = 56;</li><li>Systems: WIN-498EC8UMUEL "23 audit settings to fix" (25 in the fix list).</li></ul>Use one count everywhere, or label what each one counts (STIG only, advice, grouped audit rules). | Confirmed | |
+| FIX1b | Low: `fix-list.html` is 1.2 MB (about 1 million characters of text) for 3 systems. Most of it is OpenSCAP fix scripts for 144 open SCAP rules on one Ubuntu system. At 30 systems it will be tens of MB and hundreds of printed pages. Fold the scripts (show on click; print only CAT I scripts), or put them in a separate `fix-scripts/` folder linked from the page. | Confirmed | |
+| UPG1b | Low: `Blackbox-Setup-0.30.0.exe install --yes` from 0.25.0 printed "New setting: who sees the status icon: Administrators", but no line for `network`. `blackbox.conf` was left with `network = ` (blank) on all three machines. The 0.29.0 notes say `--yes` "lists each new setting it set" and keeps `network = lan`. Write `network = lan` and say so, or document that blank means lan. | Fixed | 0.32.0 |
+| DET1c | Low: an `rm` of a file that wasn't there ("No such file or directory") is "claude tried to delete Blackbox's files (refused)". It wasn't refused. Say "tried to delete … (failed: not there)", or keep "refused" for EACCES/EPERM only. | Fixed | 0.32.0 |
+| UI23 | Low: the Systems Status cell repeats the system's name ("Blackbox's files removed on WIN11-TEST" in WIN11-TEST's row). Drop "on HOST" in that column. | Fixed | 0.32.0 |
+
+Rig notes, not Blackbox bugs:
+- The collector's Security log overwrote events on 13 Oct 17:06–18:03 PDT, during Windows Update restarts, so `status` exits 4 (LOGS INCOMPLETE). It is correctly reported.
+- Only the 0.29.0 release notes still named `99-blackbox.rules`; the product and `linux.md` use `zz-blackbox.rules`. (Notes corrected.)
+
+**Verdict: go for the report and detection changes; fix SEND2 before rolling Windows senders out.** Nothing was lost: the 296 waiting batches were kept and imported, and the collector called the sender silent. But a Windows sender can stop delivering for days with a misleading error, after any change of share account, and setup will say it works. DET5 buries that under 92 alerts a day. These are prompt 15.
+
 ## ISSO / ISSM review: audit coverage (AU-2, AU-6, AU-12)
 
 Looked at as an ISSO doing the weekly audit review, and as an assessor checking that what the STIG makes you audit is actually reviewed. Owner decisions respected and not re-raised: no review/sign-off section (reviews are recorded on a separate platform) and no classification banner (`design.md` §13).

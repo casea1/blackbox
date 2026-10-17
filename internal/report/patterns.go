@@ -17,7 +17,109 @@ const (
 	guessThreshold = 5
 	sprayThreshold = 3
 	successWindow  = 30 * time.Minute
+	// runGap: bursts of failed logons for one account from one source
+	// less than this apart are one continuing run, one detection (DET5).
+	runGap = time.Hour
 )
+
+// guessRuns keeps the bursts of at least guessThreshold failures and
+// joins those from the same source less than runGap apart: a program or
+// sender with an old password fails every few minutes for days, which is
+// one thing to look at, not one detection per 15 minutes (DET5).
+func guessRuns(bursts [][]*Row) [][]*Row {
+	var out [][]*Row
+	src := func(c []*Row) string { return distinct(c, func(x *Row) string { return x.SourceIP }) }
+	for _, c := range bursts {
+		if len(c) < guessThreshold {
+			continue
+		}
+		if n := len(out); n > 0 {
+			prev := out[n-1]
+			if c[0].Time.Sub(prev[len(prev)-1].Time) < runGap && src(c) == src(prev) {
+				out[n-1] = append(prev, c...)
+				continue
+			}
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// guessFinding is the "Possible password guessing" detection for one run.
+func (r *Report) guessFinding(c []*Row, rows []*Row) Finding {
+	first, last := c[0], c[len(c)-1]
+	src := distinct(c, func(x *Row) string { return x.SourceIP })
+	d := fmt.Sprintf("%d failed logons for %s on %s %s", len(c), first.Target, first.Host, r.span(first.Time, last.Time))
+	if src != "" {
+		d += " from " + src
+	}
+	d += "."
+	if last.Time.Sub(first.Time) > guessWindow {
+		d += fmt.Sprintf(" One continuing run: about %s from first to last.", roughDuration(last.Time.Sub(first.Time)))
+		if !r.WindowEnd.IsZero() && r.WindowEnd.Sub(last.Time) < runGap {
+			d += " Still going at the end of this period."
+		}
+	}
+	for _, x := range c {
+		if detail(x.Event, "Reason") == "the user name does not exist" {
+			d += fmt.Sprintf(" The account %s does not exist on %s.", first.Target, first.Host)
+			break
+		}
+	}
+	f := Finding{Severity: event.SevHigh, Category: event.CatFailedLogon,
+		Host: first.Host, Time: first.Time, RowID: first.ID, RowIDs: rowIDs(c),
+		Title: "Possible password guessing", Detail: d}
+	if r.fromSender(c, rows) {
+		f.Detail += " Probably a sender with an old or wrong password: it delivers to this computer with this account."
+		f.senderRun = true
+	}
+	return f
+}
+
+// fromSender says whether failed logons look like a Blackbox sender's: the
+// account is or was in the Blackbox Senders group, or they came from a
+// computer that reports here.
+func (r *Report) fromSender(c []*Row, rows []*Row) bool {
+	acct := acctKey(c[0].Target)
+	for _, x := range rows {
+		if (x.Action == "group_member_added" || x.Action == "group_member_removed") && acctKey(x.Target) == acct &&
+			strings.EqualFold(detail(x.Event, "Group"), "Blackbox Senders") {
+			return true
+		}
+	}
+	for _, x := range c {
+		ws := detail(x.Event, "Source workstation")
+		for _, h := range r.Hosts {
+			if ws != "" && !strings.EqualFold(h, x.Host) && strings.EqualFold(shortHost(h), shortHost(ws)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// noteSilentSenders names, on a sender's failed-logon run, the computers
+// that sent nothing or little in this period (known only once the
+// Systems page is built).
+func (r *Report) noteSilentSenders() {
+	var quiet []string
+	for _, s := range r.Silent {
+		quiet = append(quiet, s.Name)
+	}
+	for _, s := range r.SystemRows {
+		if s.Status == "warn" && strings.Contains(strings.ToLower(s.StatusMsg), "late") {
+			quiet = append(quiet, s.Name)
+		}
+	}
+	if len(quiet) == 0 {
+		return
+	}
+	for i := range r.Findings {
+		if r.Findings[i].senderRun {
+			r.Findings[i].Detail += " Silent or late in this period: " + strings.Join(quiet, ", ") + "."
+		}
+	}
+}
 
 // acctKey compares account names without their domain: a failed logon
 // over the network carries whatever domain the client sent (WORKGROUP,
@@ -45,19 +147,8 @@ func (r *Report) findPatterns(rows []*Row) {
 		byUser[k] = append(byUser[k], f)
 	}
 	for _, list := range byUser {
-		for _, c := range clusters(list, guessWindow) {
-			if len(c) < guessThreshold {
-				continue
-			}
-			first, last := c[0], c[len(c)-1]
-			src := distinct(c, func(x *Row) string { return x.SourceIP })
-			d := fmt.Sprintf("%d failed logons for %s on %s %s", len(c), first.Target, first.Host, r.span(first.Time, last.Time))
-			if src != "" {
-				d += " from " + src
-			}
-			r.Findings = append(r.Findings, Finding{Severity: event.SevHigh, Category: event.CatFailedLogon,
-				Host: first.Host, Time: first.Time, RowID: first.ID, RowIDs: rowIDs(c),
-				Title: "Possible password guessing", Detail: d + "."})
+		for _, c := range guessRuns(clusters(list, guessWindow)) {
+			r.Findings = append(r.Findings, r.guessFinding(c, rows))
 		}
 	}
 	// One source trying several accounts.

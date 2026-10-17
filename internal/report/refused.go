@@ -129,7 +129,9 @@ func processIDs(c, x *event.Event) (cmd, pid, ppid string) {
 
 func markRefused(c *event.Event, refused []*event.Event) {
 	what := event.FilesRemoveRefused
-	denied := len(refused) == 0 // the command's own record failed
+	// The command's own record failed: refused only when the system said
+	// so (EACCES, EPERM); "No such file or directory" is a failure (DET1c).
+	denied := len(refused) == 0 && permissionExit(firstNonEmpty(c.Fields["EXIT"], c.Fields["exit"]))
 	for _, x := range refused {
 		if x.Action == "file_access_denied" {
 			denied = true
@@ -181,4 +183,16 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// permissionExit says whether an auditd exit value is a refusal (EACCES,
+// EPERM), or is not given (then the refusal is assumed, as before).
+func permissionExit(exit string) bool {
+	switch e := strings.ToUpper(strings.TrimSpace(exit)); {
+	case e == "":
+		return true
+	case e == "-13", e == "-1", strings.HasPrefix(e, "EACCES"), strings.HasPrefix(e, "EPERM"):
+		return true
+	}
+	return false
 }

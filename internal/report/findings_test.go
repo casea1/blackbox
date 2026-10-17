@@ -231,3 +231,57 @@ func TestPrimaryGroupRemovalIsDropped(t *testing.T) {
 		t.Errorf("want only the Administrators removal, got %d rows", len(r.Events))
 	}
 }
+
+// DET5: a sender with an old password fails every few minutes all day:
+// one detection with the total, not one per 15 minutes.
+func TestContinuingFailedLogonsAreOneDetection(t *testing.T) {
+	var xml []string
+	rec := 1000
+	for w := 0; w < 96; w++ {
+		for i := 0; i < 20; i++ {
+			xml = append(xml, failedLogon(rec, fx0.Add(time.Duration(w)*15*time.Minute+time.Duration(i)*30*time.Second), "WORKGROUP", "bbsend", "10.1.1.20")...)
+			rec += 2
+		}
+	}
+	// Later, a real burst against another account stays its own.
+	for i := 0; i < 6; i++ {
+		xml = append(xml, failedLogon(rec, fx0.Add(25*time.Hour+time.Duration(i)*time.Second), "WORKGROUP", "Administrator", "10.1.1.99")...)
+		rec += 2
+	}
+	r := buildFrom(translateAll(t, xml...), Options{})
+	var got []Finding
+	for _, f := range r.Findings {
+		if f.Title == "Possible password guessing" {
+			got = append(got, f)
+		}
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 detections (one run, one burst), got %d: %v", len(got), got)
+	}
+	run := got[0]
+	if !strings.Contains(run.Detail, "bbsend") {
+		run = got[1]
+	}
+	if !strings.HasPrefix(run.Detail, "1920 failed logons for") || !strings.Contains(run.Detail, "One continuing run") {
+		t.Errorf("run detail = %q", run.Detail)
+	}
+}
+
+// DET5: failures for an account that doesn't exist say so.
+func TestGuessingNamesMissingAccount(t *testing.T) {
+	var xml []string
+	for i := 0; i < 6; i++ {
+		xml = append(xml, winEvent(4625, 3000+i, fx0.Add(time.Duration(i)*time.Second), "TargetUserName", "oldsend", "TargetDomainName", "WORKGROUP",
+			"Status", "0xc000006d", "SubStatus", "0xc0000064", "LogonType", "3", "IpAddress", "10.1.1.20", "WorkstationName", "KALI"))
+	}
+	r := buildFrom(translateAll(t, xml...), Options{})
+	for _, f := range r.Findings {
+		if f.Title == "Possible password guessing" {
+			if !strings.Contains(f.Detail, "does not exist on") {
+				t.Errorf("detail = %q", f.Detail)
+			}
+			return
+		}
+	}
+	t.Errorf("no detection: %v", findingTitles(r))
+}
