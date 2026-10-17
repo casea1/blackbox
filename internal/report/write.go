@@ -259,7 +259,7 @@ func (r *Report) Write(dir string) error {
 // large report is not held in memory, and returns its SHA-256.
 func (r *Report) writeEventsZip(path string) (string, error) {
 	tmp := path + ".partial"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o640)
+	f, err := createNew(tmp)
 	if err != nil {
 		return "", err
 	}
@@ -620,7 +620,7 @@ func copyFile(src, dst string) (string, error) {
 	}
 	defer in.Close()
 	part := dst + ".partial"
-	out, err := os.OpenFile(part, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o640)
+	out, err := createNew(part)
 	if err != nil {
 		return "", err
 	}
@@ -750,4 +750,11 @@ func outcomeCSV(o string) string {
 		return "not recorded"
 	}
 	return o
+}
+
+// createNew creates path for writing, replacing what is there; never
+// through a link left in its place (O_EXCL does not follow one).
+func createNew(path string) (*os.File, error) {
+	os.Remove(path)
+	return os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
 }

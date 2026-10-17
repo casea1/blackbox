@@ -10,9 +10,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/casea1/blackbox/internal/config"
+	"github.com/casea1/blackbox/internal/report"
 )
 
 // ProgramPath is where install copies the executable.
@@ -23,7 +25,52 @@ const (
 	timerFile    = "/etc/systemd/system/blackbox.timer"
 	shutdownFile = "/etc/systemd/system/blackbox-shutdown.service"
 	sendFile     = "/etc/systemd/system/" + sendUnitName
+	launcherFile = "/usr/share/applications/blackbox-reports.desktop"
 )
+
+// shareReports lets report_group's members read the reports folder now
+// (each run keeps it so), and says if a folder above it keeps them out.
+func shareReports(cfg *config.Config, logf func(string, ...any)) {
+	dir := cfg.ReportsDir()
+	if cfg.ReportGroup == "" {
+		logf("Reports opened by:   root only (sudo)")
+		return
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		logf("Could not create %s: %v", dir, err)
+		return
+	}
+	if err := report.Share(dir, cfg.ReportGroup); err != nil {
+		logf("Could not share the reports with %s: %v", cfg.ReportGroup, err)
+		return
+	}
+	logf("Reports opened by:   root and members of %s (read only)", cfg.ReportGroup)
+	if p := report.Unreachable(dir, cfg.ReportGroup); p != "" {
+		logf("   But %s is closed to %s, so they can't reach the reports yet. Choose a report folder outside it (blackbox config set report_dir FOLDER), or let them through it: sudo chmod o+x %s", p, cfg.ReportGroup, p)
+	}
+}
+
+// writeLauncher adds "Blackbox reports" to the applications menu (READ1):
+// a click opens the latest report as the person clicking, right-click
+// offers the index and a new report (which asks for an admin password).
+func writeLauncher(exe, reportsDir string) error {
+	q := func(s string) string { // a quoted argument in a desktop file's Exec
+		r := strings.NewReplacer(`\`, `\\\\`, `"`, `\\"`, "`", "\\\\`", "$", `\\$`, "%", "%%")
+		return `"` + r.Replace(s) + `"`
+	}
+	open := q(exe) + " open --dir " + q(reportsDir)
+	text := "[Desktop Entry]\nType=Application\nName=Blackbox reports\nComment=Open the latest Blackbox audit report\n" +
+		"Exec=" + open + "\nIcon=text-html\nTerminal=false\nCategories=Utility;\nActions=index;report;\n\n" +
+		"[Desktop Action index]\nName=Open the reports index\nExec=" + q(exe) + " open --index --dir " + q(reportsDir) + "\n\n" +
+		"[Desktop Action report]\nName=Make a report now\nExec=sh -c " + q("pkexec "+shellQuote(exe)+" report && "+shellQuote(exe)+" open --dir "+shellQuote(reportsDir)) + "\n"
+	if err := os.MkdirAll(filepath.Dir(launcherFile), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(launcherFile, []byte(text), 0o644)
+}
+
+// shellQuote quotes s for sh.
+func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 // Install copies the program, creates the data folder and config, and
 // enables the systemd timer. It is safe to run again (upgrade).
@@ -105,6 +152,14 @@ func Install(opt Options) error {
 			return fmt.Errorf("systemctl %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 		}
 	}
+	if opt.Role != RoleSender {
+		shareReports(cfg, logf)
+		if err := writeLauncher(dst, cfg.ReportsDir()); err != nil {
+			logf("Could not add Blackbox reports to the applications menu: %v", err)
+		} else {
+			logf("Applications menu:   Blackbox reports (opens the latest report; right-click for the index)")
+		}
+	}
 	logf("Scheduled:           blackbox.timer — collects %s as root; %s", EveryText(opt.CollectEvery), scheduleWhat(opt))
 	recordSetup(cfgPath, data, was, opt.Version, logf)
 	return nil
@@ -121,7 +176,7 @@ func Uninstall(logf func(string, ...any)) error {
 	if _, err := os.Stat(shutdownFile); err == nil {
 		removeShutdownUnit(shutdownFile)
 	}
-	for _, f := range []string{timerFile, serviceFile, shutdownFile, sendFile} {
+	for _, f := range []string{timerFile, serviceFile, shutdownFile, sendFile, launcherFile} {
 		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
 			return err
 		}
@@ -265,6 +320,36 @@ func unitPaths(cfg *config.Config) (mount string, writable []string) {
 
 // restrictDir limits a folder Blackbox created to root.
 func restrictDir(dir string) error { return os.Chmod(dir, 0o700) }
+
+// lockFolder makes an existing report or original-logs folder root's and
+// unwritable by group and others, if it isn't: the scheduled runs write in
+// it as root, and in a folder others can change, a name root is about to
+// write could be made a link to /etc first. Reading is left as it was.
+// It says what it changed ("" = nothing).
+func lockFolder(dir string) (string, error) {
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return "", err
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok || config.IsShare(dir) || os.Geteuid() != 0 {
+		return "", nil // not root: not the scheduled runs' folder to lock
+	}
+	var did []string
+	if st.Uid != 0 {
+		if err := os.Chown(dir, 0, -1); err != nil {
+			return "", fmt.Errorf("make root its owner: %w", err)
+		}
+		did = append(did, "owner changed to root")
+	}
+	if m := fi.Mode().Perm(); m&0o022 != 0 {
+		if err := os.Chmod(dir, m&^0o022); err != nil {
+			return "", fmt.Errorf("take away write for others: %w", err)
+		}
+		did = append(did, fmt.Sprintf("write access for group and others removed (was %o): only root writes here", m))
+	}
+	return strings.Join(did, "; "), nil
+}
 
 // CanGrantSystem is false: root can write to any local folder.
 const CanGrantSystem = false

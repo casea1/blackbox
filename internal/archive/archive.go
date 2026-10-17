@@ -189,7 +189,7 @@ func write(path string, info *Info, sources []Source) error {
 		seen[s.Name] = true
 	}
 	part := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".partial")
-	f, err := os.OpenFile(part, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o640)
+	f, err := createNew(part)
 	if err != nil {
 		return err
 	}
@@ -529,7 +529,7 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o640)
+	out, err := createNew(dst)
 	if err != nil {
 		return err
 	}
@@ -576,7 +576,7 @@ type LeftOut struct {
 func Bundle(dst string, list []Stored) (Bundled, error) {
 	var b Bundled
 	part := filepath.Join(filepath.Dir(dst), "."+filepath.Base(dst)+".partial")
-	f, err := os.OpenFile(part, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o640)
+	f, err := createNew(part)
 	if err != nil {
 		return b, err
 	}
@@ -710,4 +710,11 @@ func Contents(path string) ([]Info, error) {
 // that could not be saved.
 func Export(dir string, from, to time.Time) ([]Source, []string) {
 	return export(dir, from, to, nil)
+}
+
+// createNew creates path for writing, replacing what is there; never
+// through a link left in its place (O_EXCL does not follow one).
+func createNew(path string) (*os.File, error) {
+	os.Remove(path)
+	return os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
 }

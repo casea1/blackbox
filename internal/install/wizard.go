@@ -48,6 +48,9 @@ type Answers struct {
 	// TrayGroups are the Windows groups whose members see the status icon
 	// (none: Administrators) (TRAY4).
 	TrayGroups []string
+	// ReportGroup is the Linux group whose members can open the reports
+	// ("": root only) (READ1).
+	ReportGroup string
 	// Network is NetStandalone (a computer on its own) or NetLAN (an
 	// offline network with a domain or time server), for a standalone
 	// computer or a collector (NET1).
@@ -268,6 +271,11 @@ func (w *wizard) run(cur Answers, defaultReports string, reinstall bool) (Answer
 			if err := w.askNew(&a, "tray_groups"); err != nil {
 				return a, err
 			}
+		}
+	}
+	if !w.isWindows && a.Role != RoleSender {
+		if err := w.askNew(&a, "report_group"); err != nil {
+			return a, err
 		}
 	}
 	a.Asked = strings.Split(strings.ReplaceAll(AllAsked(), " ", ""), ",")
@@ -655,6 +663,23 @@ func (w *wizard) askNew(a *Answers, id string) error {
 				continue
 			}
 			a.TrayGroups = groups
+			break
+		}
+	case "report_group":
+		w.question(QReportGroup)
+		for {
+			s, err := w.ask(a.ReportGroup)
+			if err != nil {
+				return err
+			}
+			if s == "-" {
+				s = ""
+			}
+			if err := CheckGroup(s); err != nil {
+				w.printf("   %v\n", err)
+				continue
+			}
+			a.ReportGroup = s
 			break
 		}
 	}

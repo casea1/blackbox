@@ -72,6 +72,9 @@ type Config struct {
 	// TrayGroups (tray_groups) are the Windows groups whose members see
 	// the status icon; none = Administrators (TRAY4).
 	TrayGroups []string
+	// ReportGroup (report_group) is the Linux group whose members can
+	// open the reports without sudo; "" = root only (READ1).
+	ReportGroup string
 	// SetupAsked (setup_asked) are the setup questions this install has
 	// answered, so an upgrade asks only the new ones (UPG1).
 	SetupAsked []string
@@ -297,6 +300,8 @@ func (c *Config) set(k, v string) error {
 		}
 	case "tray_groups":
 		c.TrayGroups = list(v)
+	case "report_group":
+		c.ReportGroup = v
 	case "setup_asked":
 		c.SetupAsked = list(v)
 	case "new_senders":
@@ -438,7 +443,7 @@ func RawValues(path string) map[string]string {
 }
 
 // Settable lists the settings `blackbox config set` may change.
-var Settable = []string{"site_name", "report_every", "report_at", "report_dir", "archive_dir", "retention_days", "exclude_users", "exclude_processes", "working_hours", "people_aliases", "send_to", "inbox", "share_user", "keep_sent_days", "new_senders", "require_signed", "scap_results", "scap_max_age_days", "network", "tray_groups"}
+var Settable = []string{"site_name", "report_every", "report_at", "report_dir", "archive_dir", "retention_days", "exclude_users", "exclude_processes", "working_hours", "people_aliases", "send_to", "inbox", "share_user", "keep_sent_days", "new_senders", "require_signed", "scap_results", "scap_max_age_days", "network", "tray_groups", "report_group"}
 
 // SetValue changes one user-settable setting in the config file (see
 // Settable), keeping its comments and line endings.
@@ -790,6 +795,10 @@ network = lan
 # Windows: the groups whose members see the status icon (several:
 # separate with commas). Blank: Administrators. Run setup after changing.
 tray_groups =
+
+# Linux: the group whose members can open the reports without sudo (they
+# can read them, not change them), e.g. sudo or wheel. Blank: root only.
+report_group =
 
 # The setup questions this install has answered, so an upgrade asks only
 # new ones. Set by setup.

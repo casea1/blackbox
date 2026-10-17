@@ -4,6 +4,7 @@ package install
 
 import (
 	"fmt"
+	"github.com/casea1/blackbox/internal/config"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,14 +178,18 @@ func setupTray(on bool, groups []string, logf func(string, ...any)) error {
 		QuitTrays()
 		return nil
 	}
-	tmp := filepath.Join(os.TempDir(), "blackbox-tray-task.xml")
-	defer os.Remove(tmp)
 	var names []string
 	for i, g := range list {
-		if err := os.WriteFile(tmp, utf16LE(trayTaskXML(WindowedPath(), g.sid)), 0o600); err != nil {
+		// In the data folder, under a new random name: a fixed name in
+		// %TEMP% could be made first by someone else (C:\Windows\Temp, when
+		// setup runs as SYSTEM) and changed before schtasks reads it.
+		tmp, err := writeTemp(config.DefaultDataDir(), "blackbox-tray-task-*.xml", utf16LE(trayTaskXML(WindowedPath(), g.sid)))
+		if err != nil {
 			return err
 		}
-		if out, err := hidden.Command("schtasks.exe", "/Create", "/TN", trayTaskName(i), "/XML", tmp, "/F").CombinedOutput(); err != nil {
+		out, err := hidden.Command("schtasks.exe", "/Create", "/TN", trayTaskName(i), "/XML", tmp, "/F").CombinedOutput()
+		os.Remove(tmp)
+		if err != nil {
 			return fmt.Errorf("create status icon task for %s: %v: %s", g.name, err, strings.TrimSpace(string(out)))
 		}
 		names = append(names, g.name)

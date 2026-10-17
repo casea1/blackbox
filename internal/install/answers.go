@@ -15,23 +15,24 @@ import (
 
 // Question texts.
 const (
-	QRole       = "How will this computer's audit events be reviewed?"
-	QSite       = "Site or system name, shown at the top of each report"
-	QEvery      = "How often should a report be produced?"
-	QAtWeekly   = "Which day and time should each weekly report be ready?"
-	QAt         = "At what time should each report be ready?"
-	QReportDir  = "Where should reports be saved?"
-	QArchiveDir = "Where should the original logs wait for the next report?"
-	QInbox      = "Which folder should other computers deliver their events to (this computer's inbox)?"
-	QInboxReach = "How will the other computers reach this inbox?"
-	QSendTo     = "Where is the collector's inbox?"
-	QInterval   = "How often should events be collected from the logs?"
-	QTray       = "Show Blackbox's status in the notification area (system tray)?"
-	QTrayGroups = "Who sees it: members of these Windows groups (several: separate with commas; blank: Administrators)"
-	QStandalone = "Not on a network (standalone)"
-	QNetwork    = "Is this computer on a network with other computers (a domain or a time server)?"
-	QScap       = "Where are this computer's SCAP scan results (SCC or OpenSCAP) saved?"
-	QQuickVerb  = "upgrade"
+	QRole        = "How will this computer's audit events be reviewed?"
+	QSite        = "Site or system name, shown at the top of each report"
+	QEvery       = "How often should a report be produced?"
+	QAtWeekly    = "Which day and time should each weekly report be ready?"
+	QAt          = "At what time should each report be ready?"
+	QReportDir   = "Where should reports be saved?"
+	QArchiveDir  = "Where should the original logs wait for the next report?"
+	QInbox       = "Which folder should other computers deliver their events to (this computer's inbox)?"
+	QInboxReach  = "How will the other computers reach this inbox?"
+	QSendTo      = "Where is the collector's inbox?"
+	QInterval    = "How often should events be collected from the logs?"
+	QTray        = "Show Blackbox's status in the notification area (system tray)?"
+	QReportGroup = "Who can open the reports without sudo: members of this Linux group, e.g. sudo or wheel (they can read the reports, not change them; blank: root only)"
+	QTrayGroups  = "Who sees it: members of these Windows groups (several: separate with commas; blank: Administrators)"
+	QStandalone  = "Not on a network (standalone)"
+	QNetwork     = "Is this computer on a network with other computers (a domain or a time server)?"
+	QScap        = "Where are this computer's SCAP scan results (SCC or OpenSCAP) saved?"
+	QQuickVerb   = "upgrade"
 
 	NoteAtWeekly = "The week ends then. \"Wednesday 00:00\" covers the week up to Tuesday night,\nso auditors have a fresh report on Wednesday morning."
 	NoteReport   = "Use a folder you have locked down if you like; Blackbox only needs to write to it."
@@ -133,6 +134,7 @@ func ForRole(a Answers) Answers {
 	if a.Role == RoleSender {
 		a.Tray = false // the status icon belongs where the reports are
 		a.TrayGroups = nil
+		a.ReportGroup = ""
 	}
 	if a.Role != RoleStandalone {
 		a.Network = "" // only "This computer only" is asked; the rest are on a network
@@ -280,6 +282,13 @@ func Summary(a Answers, defaultReports string, windows bool) []SummaryLine {
 			who = strings.Join(a.TrayGroups, ", ")
 		}
 		l = append(l, SummaryLine{"Status icon", map[bool]string{true: "shown to " + who, false: "not shown"}[a.Tray]})
+	}
+	if !windows && a.Role != RoleSender {
+		who := "root only"
+		if a.ReportGroup != "" {
+			who = "root and members of " + a.ReportGroup
+		}
+		l = append(l, SummaryLine{"Report readers", who})
 	}
 	return l
 }

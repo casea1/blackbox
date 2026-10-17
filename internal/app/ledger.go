@@ -449,4 +449,7 @@ func (a *App) refreshIndex(st *store.Store) {
 	if err := report.WriteIndexWith(a.ReportsDir(), o); err != nil {
 		a.logf("updating report index: %v", err)
 	}
+	if err := report.Share(a.ReportsDir(), a.Cfg.ReportGroup); err != nil {
+		a.logf("sharing reports with group %s: %v", a.Cfg.ReportGroup, err)
+	}
 }

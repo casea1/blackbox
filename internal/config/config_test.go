@@ -201,6 +201,7 @@ func TestEverySettingRoundTrips(t *testing.T) {
 		{"keep_sent_days", "30", func(c *Config) string { return strconv.Itoa(c.KeepSentDays) }},
 		{"new_senders", "hold", func(c *Config) string { return map[bool]string{true: "hold", false: "accept"}[c.HoldNewSenders] }},
 		{"network", "standalone", func(c *Config) string { return c.Network }},
+		{"report_group", "wheel", func(c *Config) string { return c.ReportGroup }},
 		{"tray_groups", `LAB\Auditors, ISSO`, func(c *Config) string { return strings.Join(c.TrayGroups, ", ") }},
 		{"require_signed", "yes", func(c *Config) string { return map[bool]string{true: "yes", false: "no"}[c.RequireSigned] }},
 	}
