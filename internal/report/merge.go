@@ -713,6 +713,36 @@ func isBlackboxSetup(program string) bool {
 // are no step of "Possible covering of tracks". A program named like the
 // installer with no such record stays a High row. A deleted report is
 // never the installer's to drop.
+// dropWriteTests leaves out changes to setup's own write-test files
+// (.blackbox-write-test-*), which it makes in the reports folder to see it
+// can write there and deletes at once: not a change to Blackbox's files
+// (DET6).
+func dropWriteTests(events []*event.Event) []*event.Event {
+	out := events[:0]
+	for _, e := range events {
+		if (e.Action == "blackbox_files_changed" || e.Action == "blackbox_files_removed") && onlyWriteTests(e.Target) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+func onlyWriteTests(target string) bool {
+	found := false
+	for _, p := range strings.Split(target, ", ") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if !strings.HasPrefix(filepath.Base(strings.ReplaceAll(p, `\`, "/")), ".blackbox-write-test-") {
+			return false
+		}
+		found = true
+	}
+	return found
+}
+
 func installerWrites(events []*event.Event) []*event.Event {
 	events = installerHelpers(events)
 	var installs []*event.Event

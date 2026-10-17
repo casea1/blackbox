@@ -268,3 +268,12 @@ func TestRefusedDeleteWithoutProcessIDs(t *testing.T) {
 		t.Errorf("own refusal: %v", summaries(got))
 	}
 }
+
+// DET1c: only a permission error is "refused".
+func TestPermissionExit(t *testing.T) {
+	for ex, want := range map[string]bool{"": true, "-13": true, "-1": true, "EACCES(Permission denied)": true, "EPERM": true, "-2": false, "ENOENT(No such file or directory)": false} {
+		if got := permissionExit(ex); got != want {
+			t.Errorf("permissionExit(%q) = %v", ex, got)
+		}
+	}
+}

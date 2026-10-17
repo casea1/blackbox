@@ -78,7 +78,7 @@ func writeConfig(path string, opt Options, crlf bool) error {
 		{"inbox", opt.Inbox},
 		{"new_senders", newSenders(opt)},
 		{"scap_results", opt.ScapResults},
-		{"network", opt.Network},
+		{"network", networkValue(opt.Network)},
 		{"tray_groups", strings.Join(opt.TrayGroups, ", ")},
 		{"report_group", opt.ReportGroup},
 		{"setup_asked", AllAsked()},
@@ -710,4 +710,13 @@ func CheckGroup(name string) error {
 		return fmt.Errorf("no group %q on this computer (type -  for root only)", name)
 	}
 	return nil
+}
+
+// networkValue is the network setting as written: blank (a collector or
+// sender, or never asked) is lan, written out so the file says it (UPG1b).
+func networkValue(n string) string {
+	if n == "" {
+		return NetLAN
+	}
+	return n
 }

@@ -312,6 +312,7 @@ func (r *Report) systemsPage() *SystemsPage {
 			v.Chip = v.Status + ": " + strings.Join(shorts, " · ")
 		}
 		v.Issue = strings.TrimPrefix(v.Chip, v.Status+": ")
+		v.Issue = strings.ReplaceAll(v.Issue, " on "+s.Name, "") // its own row (UI23)
 		if v.Level == "ok" {
 			v.Issue = "OK"
 		}

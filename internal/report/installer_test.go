@@ -79,3 +79,18 @@ func TestInstallerWritesAreBlackbox(t *testing.T) {
 		t.Error("isBlackboxSetup")
 	}
 }
+
+// DET6: setup's own write-test file is not a change to Blackbox's files.
+func TestWriteTestFilesAreNotChanges(t *testing.T) {
+	for target, want := range map[string]bool{
+		`C:\Reports\.blackbox-write-test-1234`:                         true,
+		"/opt/r/.blackbox-write-test-9, /opt/r/.blackbox-write-test-8": true,
+		`C:\Reports\index.html`:                                        false,
+		"/opt/r/.blackbox-write-test-9, /opt/r/index.html":             false,
+		"": false,
+	} {
+		if got := onlyWriteTests(target); got != want {
+			t.Errorf("onlyWriteTests(%q) = %v", target, got)
+		}
+	}
+}

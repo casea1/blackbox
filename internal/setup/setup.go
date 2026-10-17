@@ -175,8 +175,14 @@ func sendLines(r app.SendResult, err error, sendTo string) []string {
 			fmt.Sprintf("The events are kept safely on this computer (%d batch%s waiting) and are sent at the next scheduled run that can reach it.", r.Waiting, es(r.Waiting)),
 			"Check with: blackbox status"}
 	}
-	return []string{fmt.Sprintf("Done. Sent %d batch%s to %s.", r.Delivered, es(r.Delivered), sendTo),
+	out := []string{fmt.Sprintf("Done. Sent %d batch%s to %s.", r.Delivered, es(r.Delivered), sendTo),
 		"This computer's events will appear in the collector's reports."}
+	if runtime.GOOS == "windows" && strings.HasPrefix(sendTo, `\\`) {
+		// SEND2: this send ran in the administrator's own session; the
+		// scheduled ones run as SYSTEM, which has its own connection.
+		out = append(out, "This send ran as you. The scheduled sends run as SYSTEM and connect on their own: the next one shows in blackbox status.")
+	}
+	return out
 }
 
 // Reported says whether this computer has produced a scheduled report.
