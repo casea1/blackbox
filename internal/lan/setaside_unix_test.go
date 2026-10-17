@@ -103,3 +103,28 @@ func TestSetAsideMovedOutOfInbox(t *testing.T) {
 		t.Error("inbox/rejected is still there")
 	}
 }
+
+// SEC7: a rejected folder or 0.23 sender folder a sender made itself is
+// not emptied: the sender could swap it for a link to /etc mid-way.
+func TestMigrationsSkipSenderMadeFolders(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("needs root to make a folder owned by someone else")
+	}
+	in := t.TempDir()
+	rej := filepath.Join(in, rejectedDir)
+	snd := filepath.Join(in, "WS-07")
+	for _, d := range []string{rej, snd} {
+		os.MkdirAll(d, 0o755)
+		os.WriteFile(filepath.Join(d, "x.zip"), []byte("x"), 0o644)
+		os.Chown(d, 65534, 65534)
+	}
+	os.WriteFile(filepath.Join(snd, legacyMarker), nil, 0o644)
+	aside := filepath.Join(t.TempDir(), "aside")
+	migrateSetAside(in, aside, t.Logf)
+	MigrateSenderFolders(nil, in, t.Logf)
+	for _, d := range []string{rej, snd} {
+		if _, err := os.Stat(filepath.Join(d, "x.zip")); err != nil {
+			t.Errorf("%s was emptied: %v", filepath.Base(d), err)
+		}
+	}
+}

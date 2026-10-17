@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf16"
+	"unsafe"
 
 	"github.com/casea1/blackbox/internal/brand"
 	"github.com/casea1/blackbox/internal/config"
@@ -170,12 +171,35 @@ func GrantSystem(dir string) error {
 	return nil
 }
 
-// restrictDir limits a folder Blackbox created to Administrators and
-// SYSTEM (by SID, so it works on any language version of Windows).
+// restrictDir limits a folder to Administrators and SYSTEM (by SID, so it
+// works on any language version of Windows). The folder may have been
+// made before setup by someone else, with their own access entries in it
+// (C:\ProgramData lets any user make folders): so Administrators are made
+// the owner of it and everything in it, its access list is replaced, not
+// added to, and what is in it takes only that list.
 func restrictDir(dir string) error {
-	if out, err := hidden.Command("icacls.exe", dir, "/inheritance:r",
-		"/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F").CombinedOutput(); err != nil {
-		return fmt.Errorf("restrict permissions on %s: %v: %s", dir, err, out)
+	if out, err := hidden.Command("icacls.exe", dir, "/setowner", "*S-1-5-32-544", "/T", "/C", "/Q").CombinedOutput(); err != nil {
+		return fmt.Errorf("make Administrators the owner of %s: %v: %s", dir, err, strings.TrimSpace(string(out)))
+	}
+	acl, err := buildACL([]dropACE{
+		{"S-1-5-18", objectInheritAce | containerInheritAce, fileAllAccess},
+		{"S-1-5-32-544", objectInheritAce | containerInheritAce, fileAllAccess},
+	})
+	if err != nil {
+		return err
+	}
+	p, err := syscall.UTF16PtrFromString(dir)
+	if err != nil {
+		return err
+	}
+	if r, _, _ := procSetNamedSecurityInfoW.Call(uintptr(unsafe.Pointer(p)), seFileObject,
+		daclSecurityInfo|protectedDaclSecInfo, 0, 0, uintptr(unsafe.Pointer(&acl[0])), 0); r != 0 {
+		return fmt.Errorf("restrict permissions on %s: %w", dir, syscall.Errno(r))
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) > 0 {
+		if out, err := hidden.Command("icacls.exe", filepath.Join(dir, "*"), "/reset", "/T", "/C", "/Q").CombinedOutput(); err != nil {
+			return fmt.Errorf("reset permissions inside %s: %v: %s", dir, err, strings.TrimSpace(string(out)))
+		}
 	}
 	return nil
 }
@@ -278,8 +302,8 @@ func VirtualBoxInstalled() bool {
 // registerTask creates (or replaces) the collection task.
 func registerTask(exe, data string, every time.Duration) error {
 	xml := taskXML(exe, every, TaskStart)
-	tmp := filepath.Join(data, "blackbox-task.xml")
-	if err := os.WriteFile(tmp, utf16LE(xml), 0o640); err != nil {
+	tmp, err := writeTemp(data, "blackbox-task-*.xml", utf16LE(xml))
+	if err != nil {
 		return err
 	}
 	defer os.Remove(tmp)
@@ -300,4 +324,23 @@ func RefreshSchedule(every time.Duration) error {
 		return nil
 	}
 	return registerTask(ProgramPath(), config.DefaultDataDir(), every)
+}
+
+// writeTemp writes b to a new file with a random name in dir (one no one
+// else can have made first, and only Administrators can open in the data
+// folder) and returns its path.
+func writeTemp(dir, pattern string, b []byte) (string, error) {
+	f, err := os.CreateTemp(dir, pattern)
+	if err != nil {
+		return "", err
+	}
+	_, err = f.Write(b)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
 }

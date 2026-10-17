@@ -3,6 +3,7 @@
 package lan
 
 import (
+	"os"
 	"syscall"
 	"unsafe"
 )
@@ -33,4 +34,11 @@ func fileOwner(path string) string {
 		return dom + `\` + acct
 	}
 	return acct
+}
+
+// ownDir: on Windows senders can't make folders in the inbox (they may
+// only add files), so a folder there is Blackbox's own.
+func ownDir(path string) bool {
+	fi, err := os.Lstat(path)
+	return err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0
 }

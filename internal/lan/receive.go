@@ -459,25 +459,49 @@ func stage(st *store.Store, path string, sig *sigFile) (string, error) {
 		return "", err
 	}
 	staged := filepath.Join(dir, filepath.Base(path))
-	os.Remove(staged)
-	if err := moveFile(path, staged); err != nil {
+	// Copied, not moved: a moved file would still be the sender's, and a
+	// sender holding it open could change it after it was checked (SEC9).
+	// The copy is Blackbox's own, made new (never through a link).
+	if err := copyInto(path, staged); err != nil {
 		return "", err
 	}
-	fi, err := os.Lstat(staged)
-	switch {
-	case err != nil:
-	case !fi.Mode().IsRegular():
-		err = errNotRegular
-	case sig != nil:
+	if sig != nil {
 		if sum, serr := fileSHA256(staged); serr != nil || !strings.EqualFold(sum, sig.SHA256) {
-			err = errors.New("it changed while it was being imported")
+			os.Remove(staged)
+			return "", errors.New("it changed while it was being imported")
 		}
 	}
-	if err != nil {
-		moveFile(staged, path)
-		return "", err
-	}
+	os.Remove(path)
 	return staged, nil
+}
+
+// copyInto copies the regular file at src (not a link) to a new file dst.
+func copyInto(src, dst string) error {
+	in, err := os.OpenFile(src, openFlags, 0)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	if fi, err := in.Stat(); err != nil {
+		return err
+	} else if !fi.Mode().IsRegular() {
+		return errNotRegular
+	}
+	os.Remove(dst)
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(dst)
+		return err
+	}
+	return nil
 }
 
 // parseInboxName reads HOST_ID_SEQ-RANDOM.bbx (0.24, DESIGN1), and
@@ -515,6 +539,9 @@ func MigrateSenderFolders(st *store.Store, inbox string, logf func(string, ...an
 			continue
 		}
 		dir := filepath.Join(inbox, n)
+		if !ownDir(dir) {
+			continue // a sender's own folder (Linux), not one Blackbox made
+		}
 		if _, err := os.Stat(filepath.Join(dir, legacyMarker)); err != nil && (st == nil || st.State.InboxFolders[strings.ToUpper(n)] == nil) {
 			continue // not a sender folder: someone else's, left alone
 		}

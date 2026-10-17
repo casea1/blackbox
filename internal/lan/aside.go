@@ -159,11 +159,11 @@ func writeNote(path, note string) error {
 // those folders. Only regular files are moved; anything else is removed.
 func migrateSetAside(inbox, aside string, logf func(string, ...any)) {
 	old := filepath.Join(inbox, rejectedDir)
-	if fi, err := os.Lstat(old); err != nil || !fi.IsDir() {
-		return
+	if !ownDir(old) {
+		return // none, or one a sender made: not ours to empty
 	}
 	for _, sub := range []struct{ from, to string }{{filepath.Join(old, heldDir), filepath.Join(aside, heldDir)}, {old, aside}} {
-		if fi, err := os.Lstat(sub.from); err != nil || !fi.IsDir() {
+		if !ownDir(sub.from) {
 			continue
 		}
 		entries, err := os.ReadDir(sub.from)

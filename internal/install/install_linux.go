@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/casea1/blackbox/internal/config"
@@ -319,6 +320,36 @@ func unitPaths(cfg *config.Config) (mount string, writable []string) {
 
 // restrictDir limits a folder Blackbox created to root.
 func restrictDir(dir string) error { return os.Chmod(dir, 0o700) }
+
+// lockFolder makes an existing report or original-logs folder root's and
+// unwritable by group and others, if it isn't: the scheduled runs write in
+// it as root, and in a folder others can change, a name root is about to
+// write could be made a link to /etc first. Reading is left as it was.
+// It says what it changed ("" = nothing).
+func lockFolder(dir string) (string, error) {
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return "", err
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok || config.IsShare(dir) {
+		return "", nil
+	}
+	var did []string
+	if st.Uid != 0 {
+		if err := os.Chown(dir, 0, -1); err != nil {
+			return "", fmt.Errorf("make root its owner: %w", err)
+		}
+		did = append(did, "owner changed to root")
+	}
+	if m := fi.Mode().Perm(); m&0o022 != 0 {
+		if err := os.Chmod(dir, m&^0o022); err != nil {
+			return "", fmt.Errorf("take away write for others: %w", err)
+		}
+		did = append(did, fmt.Sprintf("write access for group and others removed (was %o): only root writes here", m))
+	}
+	return strings.Join(did, "; "), nil
+}
 
 // CanGrantSystem is false: root can write to any local folder.
 const CanGrantSystem = false

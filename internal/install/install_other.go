@@ -25,6 +25,8 @@ func afterReportDirChange(func(string, ...any)) error { return nil }
 
 func restrictDir(dir string) error { return os.Chmod(dir, 0o700) }
 
+func lockFolder(string) (string, error) { return "", nil }
+
 // CanGrantSystem is false: root can write to any local folder.
 const CanGrantSystem = false
 

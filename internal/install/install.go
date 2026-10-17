@@ -133,8 +133,10 @@ func setupLAN(opt Options, dataDir string, logf func(string, ...any)) error {
 
 // PrepareReportDir makes sure reports can be written to dir. A folder that
 // does not exist yet is created and restricted to administrators (Windows)
-// or root (Linux); an existing folder's permissions are left exactly as
-// they are, so a folder you have already locked down stays that way.
+// or root (Linux). An existing folder keeps its permissions, except that
+// on Linux one others can write to is locked (owner root, no write for
+// group or others): root writing in a folder others can change could be
+// sent through a link anywhere. On Windows such a folder is pointed out.
 func PrepareReportDir(dir string, logf func(string, ...any)) error {
 	return prepareFolder(dir, "report folder", "Report folder:      ", logf)
 }
@@ -173,9 +175,18 @@ func prepareFolder(dir, what, label string, logf func(string, ...any)) error {
 				return fmt.Errorf("give SYSTEM access to %s %s: %w", what, dir, err)
 			}
 			logf("%s %s (existing folder; SYSTEM given Modify, as you can't write to it; no one else's access changed)", label, dir)
+			if what, _ := lockFolder(dir); what != "" {
+				logf("                     %s", what)
+			}
 			return nil
 		}
-		logf("%s %s (existing folder; its permissions were not changed)", label, dir)
+		if what, err := lockFolder(dir); err != nil {
+			return fmt.Errorf("%s %s: %w", what, dir, err)
+		} else if what != "" {
+			logf("%s %s (existing folder; %s)", label, dir, what)
+		} else {
+			logf("%s %s (existing folder; its permissions were not changed)", label, dir)
+		}
 	}
 	if err := CheckWritable(dir); err != nil {
 		return err
