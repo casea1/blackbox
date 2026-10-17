@@ -332,8 +332,8 @@ func lockFolder(dir string) (string, error) {
 		return "", err
 	}
 	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok || config.IsShare(dir) {
-		return "", nil
+	if !ok || config.IsShare(dir) || os.Geteuid() != 0 {
+		return "", nil // not root: not the scheduled runs' folder to lock
 	}
 	var did []string
 	if st.Uid != 0 {
